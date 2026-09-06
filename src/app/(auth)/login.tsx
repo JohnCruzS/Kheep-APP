@@ -39,7 +39,7 @@ export default function LoginScreen() {
       return;
     }
 
-    router.replace('/(app)/dashboard');
+    router.replace('/(app)/(tabs)/dashboard');
   }
 
   return (

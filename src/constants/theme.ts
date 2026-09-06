@@ -7,8 +7,11 @@
 export const Colors = {
   background: '#000000',
   backgroundAlt: '#111111',
+  surface: '#17171A',
+  surfaceBorder: 'rgba(255,255,255,0.09)',
   card: '#FFFFFF',
   cardText: '#1A1A1A',
+  cardTextMuted: '#8A8A90',
   accent: '#FF3B00',
   accentPressed: '#D80000',
   text: '#FFFFFF',
@@ -16,6 +19,11 @@ export const Colors = {
   inputBorder: '#E0E0E0',
   placeholder: '#9A9A9A',
   danger: '#D80000',
+  success: '#1FAA59',
+  successBg: 'rgba(31,170,89,0.14)',
+  warning: '#E8A93B',
+  warningBg: 'rgba(232,169,59,0.16)',
+  whatsapp: '#1FAA59',
 } as const;
 
 export const Spacing = {

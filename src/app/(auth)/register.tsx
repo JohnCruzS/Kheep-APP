@@ -60,7 +60,7 @@ export default function RegisterScreen() {
 
     if (data.session) {
       // Confirmación de correo desactivada en el proyecto: ya hay sesión.
-      router.replace('/(app)/dashboard');
+      router.replace('/(app)/(tabs)/dashboard');
       return;
     }
 

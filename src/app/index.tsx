@@ -1,8 +1,7 @@
 import { Redirect } from 'expo-router';
 
-import { useSession } from '@/providers/SessionProvider';
-
+// El catálogo es la puerta de entrada para todos, con o sin cuenta — el
+// login ya no decide a dónde va nadie, solo desbloquea acciones puntuales.
 export default function Index() {
-  const { session } = useSession();
-  return <Redirect href={session ? '/(app)/dashboard' : '/(auth)/login'} />;
+  return <Redirect href="/(app)/(tabs)/dashboard" />;
 }
