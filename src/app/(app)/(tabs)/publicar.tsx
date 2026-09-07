@@ -1,13 +1,23 @@
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PickerField } from '@/components/forms/PickerField';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { Categoria, Comuna, crearPublicacion, fetchCategorias, fetchComunas } from '@/lib/catalog';
+import {
+  Categoria,
+  Comuna,
+  MiPublicacion,
+  crearPublicacion,
+  fetchCategorias,
+  fetchComunas,
+  fetchMisPublicaciones,
+} from '@/lib/catalog';
+import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
 import { isValidChileanPhone, normalizeChileanPhone } from '@/lib/validation';
@@ -54,6 +64,25 @@ function GuestGate() {
 function PublicarForm() {
   const router = useRouter();
 
+  const [misPublicaciones, setMisPublicaciones] = useState<MiPublicacion[]>([]);
+  const [misPublicacionesLoading, setMisPublicacionesLoading] = useState(true);
+
+  // useFocusEffect en vez de useEffect: si edito una publicación y vuelvo
+  // acá con "Volver", la lista tiene que reflejar el cambio altiro, no
+  // quedarse con los datos de antes de entrar a editar.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      fetchMisPublicaciones()
+        .then((data) => active && setMisPublicaciones(data))
+        .catch(() => {})
+        .finally(() => active && setMisPublicacionesLoading(false));
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
   const [logo, setLogo] = useState<PickedImage | null>(null);
@@ -84,7 +113,7 @@ function PublicarForm() {
       const image = await pickAndCompressImage();
       if (image) setLogo(image);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo abrir la galería.');
+      setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
     }
   }
 
@@ -93,7 +122,7 @@ function PublicarForm() {
       const image = await pickAndCompressImage();
       if (image) setDraft((d) => ({ ...d, image }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo abrir la galería.');
+      setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
     }
   }
 
@@ -166,7 +195,7 @@ function PublicarForm() {
       setProductos([]);
       setDraft(EMPTY_DRAFT);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo guardar la publicación.');
+      setError(getErrorMessage(err, 'No se pudo guardar la publicación.'));
     } finally {
       setSaving(false);
     }
@@ -174,6 +203,36 @@ function PublicarForm() {
 
   return (
     <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
+      {!misPublicacionesLoading && misPublicaciones.length > 0 && (
+        <View style={styles.misPublicacionesSection}>
+          <Text style={styles.sectionLabel}>MIS PUBLICACIONES</Text>
+          {misPublicaciones.map((publicacion) => (
+            <Pressable
+              key={publicacion.id}
+              style={styles.miPublicacionRow}
+              onPress={() => router.push({ pathname: '/(app)/publicacion/editar/[id]', params: { id: publicacion.id } })}>
+              {publicacion.logo_url ? (
+                <Image source={{ uri: publicacion.logo_url }} style={styles.miPublicacionThumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.miPublicacionThumb, styles.productoThumbEmpty]} />
+              )}
+              <View style={styles.productoInfo}>
+                <Text style={styles.productoNombre} numberOfLines={1}>
+                  {publicacion.titulo}
+                </Text>
+                <Text style={styles.productoPrecio}>
+                  {[publicacion.categoria?.nombre, publicacion.comuna?.nombre].filter(Boolean).join(' · ') ||
+                    'Sin categoría/comuna'}
+                </Text>
+              </View>
+              <EstadoBadge estado={publicacion.estado} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      <Text style={styles.sectionLabel}>NUEVA PUBLICACIÓN</Text>
+
       <Pressable onPress={handlePickLogo} style={styles.avatarWrapper}>
         {logo ? (
           <Image source={{ uri: logo.uri }} style={styles.avatarImage} contentFit="cover" />
@@ -278,37 +337,16 @@ function PublicarForm() {
   );
 }
 
-function PickerField({
-  label,
-  value,
-  open,
-  onToggle,
-  options,
-  onSelect,
-}: {
-  label: string;
-  value: string;
-  open: boolean;
-  onToggle: () => void;
-  options: { id: string; label: string }[];
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <View style={styles.pickerContainer}>
-      <Pressable onPress={onToggle} style={styles.pickerRow}>
-        <Text style={value ? styles.pickerValue : styles.pickerPlaceholder}>{value || label}</Text>
-        <Text style={styles.pickerChevron}>{open ? '︿' : '﹀'}</Text>
-      </Pressable>
+function EstadoBadge({ estado }: { estado: MiPublicacion['estado'] }) {
+  const config = {
+    pendiente: { label: 'En revisión', style: styles.badgeRevision, labelStyle: styles.badgeLabelRevision },
+    aprobado: { label: 'Publicada', style: styles.badgeVerificado, labelStyle: styles.badgeLabelVerificado },
+    rechazado: { label: 'Rechazada', style: styles.badgeRechazado, labelStyle: styles.badgeLabelRechazado },
+  }[estado];
 
-      {open && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerOptions}>
-          {options.map((option) => (
-            <Pressable key={option.id} onPress={() => onSelect(option.id)} style={styles.pickerOption}>
-              <Text style={styles.pickerOptionLabel}>{option.label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
+  return (
+    <View style={[styles.badge, config.style]}>
+      <Text style={[styles.badgeLabel, config.labelStyle]}>{config.label}</Text>
     </View>
   );
 }
@@ -382,42 +420,46 @@ const styles = StyleSheet.create({
     height: 72,
     borderRadius: Radius.avatar,
   },
-  pickerContainer: {
-    marginTop: Spacing.four,
+  misPublicacionesSection: {
+    marginBottom: Spacing.two,
   },
-  pickerRow: {
+  miPublicacionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
-    paddingBottom: Spacing.two,
+    gap: Spacing.two + 4,
+    marginBottom: Spacing.three,
   },
-  pickerValue: {
-    fontSize: 16,
-    color: Colors.cardText,
+  miPublicacionThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
   },
-  pickerPlaceholder: {
-    fontSize: 16,
-    color: Colors.placeholder,
-  },
-  pickerChevron: {
-    color: Colors.textMuted,
-  },
-  pickerOptions: {
-    gap: Spacing.two,
-    paddingTop: Spacing.two,
-  },
-  pickerOption: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 7,
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 20,
-    backgroundColor: '#F1F1F1',
   },
-  pickerOptionLabel: {
-    fontSize: 12.5,
-    fontWeight: '600',
-    color: Colors.cardText,
+  badgeLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  badgeRevision: {
+    backgroundColor: Colors.warningBg,
+  },
+  badgeVerificado: {
+    backgroundColor: Colors.successBg,
+  },
+  badgeRechazado: {
+    backgroundColor: '#FFE0E0',
+  },
+  badgeLabelRevision: {
+    color: Colors.warning,
+  },
+  badgeLabelVerificado: {
+    color: Colors.success,
+  },
+  badgeLabelRechazado: {
+    color: Colors.danger,
   },
   sectionLabel: {
     marginTop: Spacing.five,

@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -6,18 +7,29 @@ import type { PublicacionResumen } from '@/lib/catalog';
 
 const BADGE_SIZE = 56;
 
-export function PublicacionCard({
-  publicacion,
-  onPress,
-}: {
+type Props = {
   publicacion: PublicacionResumen;
-  onPress: () => void;
-}) {
-  const producto = [...publicacion.productos].sort((a, b) => a.orden - b.orden)[0];
+  onPress: (id: string) => void;
+};
+
+/**
+ * Envuelta en `memo`: en una lista de 20-30 comercios, sin esto React vuelve
+ * a renderizar TODAS las tarjetas cada vez que cambia algo arriba (escribir
+ * en el buscador, abrir el selector de comuna) aunque los datos de cada
+ * tarjeta no hayan cambiado — se nota como "tirones" al hacer scroll justo
+ * después de tocar algo. `onPress` en el padre está memoizado con
+ * useCallback para que esta comparación funcione de verdad.
+ */
+function PublicacionCardComponent({ publicacion, onPress }: Props) {
+  const producto = useMemo(
+    () => [...publicacion.productos].sort((a, b) => a.orden - b.orden)[0],
+    [publicacion.productos],
+  );
   const icono = publicacion.categoria?.icono ?? '🛍️';
+  const handlePress = useCallback(() => onPress(publicacion.id), [onPress, publicacion.id]);
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.wrapper, pressed && styles.pressed]}>
+    <Pressable onPress={handlePress} style={({ pressed }) => [styles.wrapper, pressed && styles.pressed]}>
       <View style={styles.badge}>
         <Text style={styles.badgeIcon}>{icono}</Text>
       </View>
@@ -55,6 +67,8 @@ export function PublicacionCard({
   );
 }
 
+export const PublicacionCard = memo(PublicacionCardComponent);
+
 const styles = StyleSheet.create({
   wrapper: {
     position: 'relative',
@@ -69,7 +83,7 @@ const styles = StyleSheet.create({
     left: Spacing.three,
     width: BADGE_SIZE,
     height: BADGE_SIZE,
-    borderRadius: 18,
+    borderRadius: BADGE_SIZE / 2,
     backgroundColor: Colors.card,
     alignItems: 'center',
     justifyContent: 'center',

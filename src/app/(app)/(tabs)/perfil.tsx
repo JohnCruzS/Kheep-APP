@@ -81,12 +81,19 @@ function AccountView({
         </Text>
       )}
 
-      {profile.rol === 'admin' && (
-        <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/(tabs)/admin')}>
-          <Text style={styles.adminRowLabel}>🛡️ Panel de moderación</Text>
+      <View style={styles.actionRows}>
+        <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/perfil/editar')}>
+          <Text style={styles.adminRowLabel}>✏️ Editar perfil</Text>
           <Text style={styles.adminRowArrow}>›</Text>
         </Pressable>
-      )}
+
+        {profile.rol === 'admin' && (
+          <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/(tabs)/admin')}>
+            <Text style={styles.adminRowLabel}>🛡️ Panel de moderación</Text>
+            <Text style={styles.adminRowArrow}>›</Text>
+          </Pressable>
+        )}
+      </View>
 
       <Button label="Cerrar sesión" variant="secondary" onPress={() => supabase.auth.signOut()} />
     </View>
@@ -212,9 +219,13 @@ const styles = StyleSheet.create({
     color: Colors.cardTextMuted,
     textAlign: 'center',
   },
-  adminRow: {
+  actionRows: {
     width: '100%',
     marginTop: Spacing.five,
+    gap: Spacing.two,
+  },
+  adminRow: {
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',

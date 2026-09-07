@@ -5,8 +5,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { ImageViewer } from '@/components/catalog/ImageViewer';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { PublicacionDetalle, fetchPublicacionDetalle } from '@/lib/catalog';
+import { getErrorMessage } from '@/lib/errors';
 import { contactarPorWhatsApp } from '@/lib/whatsapp';
 
 export default function PublicacionDetalleScreen() {
@@ -17,6 +19,7 @@ export default function PublicacionDetalleScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contacting, setContacting] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -26,7 +29,7 @@ export default function PublicacionDetalleScreen() {
       const data = await fetchPublicacionDetalle(id);
       setPublicacion(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido.');
+      setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
       setLoading(false);
     }
@@ -45,6 +48,12 @@ export default function PublicacionDetalleScreen() {
       setContacting(false);
     }
   };
+
+  const galleryImages = publicacion
+    ? [publicacion.logo_url, ...publicacion.productos.map((p) => p.imagen_url)].filter(
+        (url): url is string => !!url,
+      )
+    : [];
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -65,7 +74,9 @@ export default function PublicacionDetalleScreen() {
       {!loading && !error && publicacion && (
         <ScrollView contentContainerStyle={styles.content}>
           {publicacion.logo_url ? (
-            <Image source={{ uri: publicacion.logo_url }} style={styles.hero} contentFit="cover" />
+            <Pressable onPress={() => setViewerIndex(0)}>
+              <Image source={{ uri: publicacion.logo_url }} style={styles.hero} contentFit="cover" />
+            </Pressable>
           ) : (
             <View style={[styles.hero, styles.heroFallback]} />
           )}
@@ -89,7 +100,9 @@ export default function PublicacionDetalleScreen() {
                   {publicacion.productos.map((producto) => (
                     <View key={producto.id} style={styles.productCard}>
                       {producto.imagen_url ? (
-                        <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="cover" />
+                        <Pressable onPress={() => setViewerIndex(galleryImages.indexOf(producto.imagen_url!))}>
+                          <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="cover" />
+                        </Pressable>
                       ) : (
                         <View style={[styles.productImage, styles.productImageFallback]} />
                       )}
@@ -116,6 +129,13 @@ export default function PublicacionDetalleScreen() {
           </Pressable>
         </View>
       )}
+
+      <ImageViewer
+        images={galleryImages}
+        visible={viewerIndex !== null}
+        initialIndex={viewerIndex ?? 0}
+        onClose={() => setViewerIndex(null)}
+      />
     </SafeAreaView>
   );
 }

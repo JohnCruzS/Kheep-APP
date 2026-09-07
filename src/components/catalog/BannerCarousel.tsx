@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { Dimensions, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -8,7 +8,7 @@ import type { Banner } from '@/lib/catalog';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BANNER_WIDTH = SCREEN_WIDTH - Spacing.three * 2;
 
-export function BannerCarousel({ banners }: { banners: Banner[] }) {
+function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -47,6 +47,8 @@ export function BannerCarousel({ banners }: { banners: Banner[] }) {
     </View>
   );
 }
+
+export const BannerCarousel = memo(BannerCarouselComponent);
 
 const styles = StyleSheet.create({
   wrapper: {

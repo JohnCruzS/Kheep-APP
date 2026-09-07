@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { Colors, Spacing } from '@/constants/theme';
@@ -14,7 +15,7 @@ type Props = {
  * seleccionada se resalta en rojo, tal como el mockup ("Delivery" en rojo,
  * el resto en blanco/gris).
  */
-export function CategoryChips({ categorias, selectedId, onSelect }: Props) {
+function CategoryChipsComponent({ categorias, selectedId, onSelect }: Props) {
   return (
     <ScrollView
       horizontal
@@ -32,6 +33,8 @@ export function CategoryChips({ categorias, selectedId, onSelect }: Props) {
     </ScrollView>
   );
 }
+
+export const CategoryChips = memo(CategoryChipsComponent);
 
 function Tab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
