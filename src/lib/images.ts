@@ -24,7 +24,7 @@ export type PickedImage = {
  * comprimida a JPEG — nunca el archivo original tal cual lo tenía el
  * usuario (que puede pesar 10-20MB en un celular moderno).
  */
-export async function pickAndCompressImage(): Promise<PickedImage | null> {
+export async function pickAndCompressImage(aspect: [number, number] = [1, 1]): Promise<PickedImage | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
     throw new Error('Necesitamos permiso para acceder a tus fotos.');
@@ -34,7 +34,7 @@ export async function pickAndCompressImage(): Promise<PickedImage | null> {
     mediaTypes: ['images'],
     quality: 1, // la compresión real la hacemos nosotros abajo, con control fino
     allowsEditing: true,
-    aspect: [1, 1],
+    aspect,
   });
 
   if (result.canceled || result.assets.length === 0) {
@@ -63,7 +63,7 @@ export async function pickAndCompressImage(): Promise<PickedImage | null> {
  * tabla correspondiente (logo_url / imagen_url).
  */
 export async function uploadCompressedImage(
-  bucket: 'logos' | 'productos',
+  bucket: 'logos' | 'productos' | 'banners',
   userId: string,
   image: PickedImage,
   fileNamePrefix: string,

@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 type TextFieldProps = TextInputProps & {
   label: string;
@@ -35,8 +36,14 @@ export function TextField({
           <Pressable
             onPress={() => setIsPasswordVisible((visible) => !visible)}
             hitSlop={10}
-            style={styles.toggle}>
-            <Text style={styles.toggleLabel}>{isPasswordVisible ? 'Ocultar' : 'Ver'}</Text>
+            style={styles.toggle}
+            accessibilityRole="button"
+            accessibilityLabel={isPasswordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}>
+            <Ionicons
+              name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+              size={22}
+              color={Colors.cardTextMuted}
+            />
           </Pressable>
         )}
       </View>
@@ -62,18 +69,14 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontFamily: Fonts.medium,
+    fontSize: 18,
     color: Colors.cardText,
     paddingBottom: Spacing.two,
   },
   toggle: {
     paddingLeft: Spacing.two,
     paddingBottom: Spacing.two,
-  },
-  toggleLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.accent,
   },
   error: {
     marginTop: Spacing.one,

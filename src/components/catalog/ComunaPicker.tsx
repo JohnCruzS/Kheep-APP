@@ -1,8 +1,9 @@
-import { memo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
+import { normalizarTexto } from '@/lib/text';
 
 type Props = {
   comunas: Comuna[];
@@ -10,15 +11,41 @@ type Props = {
   onSelect: (id: string | null) => void;
 };
 
+type Fila = { id: string | null; label: string };
+
 /**
  * "Filtro Geográfico Hiperlocal" del plan: selector de comuna en la barra
- * superior que adapta la vitrina al instante. Vive junto al logo porque es
- * lo primero que define qué ve cada comprador — antes de categoría o
- * búsqueda.
+ * superior que adapta la vitrina al instante. Con las ~346 comunas del país
+ * (antes eran solo 5, de prueba) esto necesita buscador y una lista
+ * virtualizada — mostrarlas todas de una en un View sin buscador se sentía
+ * lento para abrir y ni siquiera se podía hacer scroll.
  */
 function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
   const [open, setOpen] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
   const label = comunas.find((c) => c.id === selectedId)?.nombre ?? 'Todas las comunas';
+
+  const filas = useMemo<Fila[]>(() => {
+    const termino = normalizarTexto(busqueda);
+    const comunasFiltradas = termino
+      ? comunas.filter((c) => normalizarTexto(c.nombre).includes(termino))
+      : comunas;
+
+    const lista: Fila[] = comunasFiltradas.map((c) => ({ id: c.id, label: c.nombre }));
+    // "Todas las comunas" solo tiene sentido cuando no se está buscando algo
+    // puntual.
+    return termino ? lista : [{ id: null, label: 'Todas las comunas' }, ...lista];
+  }, [comunas, busqueda]);
+
+  function handleClose() {
+    setOpen(false);
+    setBusqueda('');
+  }
+
+  function handleSelect(id: string | null) {
+    onSelect(id);
+    handleClose();
+  }
 
   return (
     <>
@@ -27,31 +54,37 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
         <Text style={styles.chevron}>﹀</Text>
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <View style={styles.sheet}>
+      <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
+        <Pressable style={styles.backdrop} onPress={handleClose}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.sheetTitle}>Elige tu comuna</Text>
 
-            <Option
-              label="Todas las comunas"
-              active={selectedId === null}
-              onPress={() => {
-                onSelect(null);
-                setOpen(false);
-              }}
+            <TextInput
+              value={busqueda}
+              onChangeText={setBusqueda}
+              placeholder="Buscar comuna…"
+              placeholderTextColor={Colors.textMuted}
+              style={styles.buscador}
+              autoCorrect={false}
             />
-            {comunas.map((comuna) => (
-              <Option
-                key={comuna.id}
-                label={comuna.nombre}
-                active={selectedId === comuna.id}
-                onPress={() => {
-                  onSelect(comuna.id);
-                  setOpen(false);
-                }}
-              />
-            ))}
-          </View>
+
+            <FlatList
+              data={filas}
+              keyExtractor={(item) => item.id ?? 'todas'}
+              keyboardShouldPersistTaps="handled"
+              initialNumToRender={16}
+              maxToRenderPerBatch={16}
+              windowSize={10}
+              renderItem={({ item }) => (
+                <Option
+                  label={item.label}
+                  active={selectedId === item.id}
+                  onPress={() => handleSelect(item.id)}
+                />
+              )}
+              ListEmptyComponent={<Text style={styles.sinResultados}>No encontramos esa comuna.</Text>}
+            />
+          </Pressable>
         </Pressable>
       </Modal>
     </>
@@ -76,12 +109,13 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   label: {
-    fontSize: 13,
-    color: Colors.textMuted,
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+    color: '#B5B5B5',
   },
   chevron: {
-    fontSize: 10,
-    color: Colors.textMuted,
+    fontSize: 12,
+    color: '#B5B5B5',
   },
   backdrop: {
     flex: 1,
@@ -94,7 +128,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.card,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
-    paddingBottom: Spacing.six,
+    // Alto acotado: sin esto, un FlatList con 300+ filas simplemente se
+    // sale de la pantalla y no queda espacio donde hacer scroll.
+    height: '75%',
   },
   sheetTitle: {
     fontSize: 13,
@@ -102,6 +138,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     color: Colors.textMuted,
     marginBottom: Spacing.three,
+  },
+  buscador: {
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.three,
+    height: 44,
+    fontSize: 14,
+    color: Colors.text,
+    marginBottom: Spacing.two,
   },
   option: {
     flexDirection: 'row',
@@ -122,5 +169,11 @@ const styles = StyleSheet.create({
   check: {
     color: Colors.accent,
     fontWeight: '700',
+  },
+  sinResultados: {
+    paddingVertical: Spacing.four,
+    textAlign: 'center',
+    color: Colors.textMuted,
+    fontSize: 13,
   },
 });

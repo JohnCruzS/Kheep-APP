@@ -5,7 +5,7 @@ import { Pressable, Text } from 'react-native';
 import { AuthCard } from '@/components/ui/AuthCard';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { translateAuthError } from '@/lib/authErrors';
 import { supabase } from '@/lib/supabase';
 import { isValidEmail } from '@/lib/validation';
@@ -55,7 +55,7 @@ export default function ForgotPasswordScreen() {
       <Button label="Enviar enlace" onPress={handleSend} loading={loading} />
 
       <Pressable onPress={() => router.back()} style={{ marginTop: Spacing.four, alignItems: 'center' }}>
-        <Text style={{ color: Colors.textMuted }}>Volver</Text>
+        <Text style={{ fontFamily: Fonts.medium, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
       </Pressable>
     </AuthCard>
   );

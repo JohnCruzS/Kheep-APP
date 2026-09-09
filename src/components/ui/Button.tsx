@@ -1,6 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 type ButtonVariant = 'primary' | 'secondary';
 
@@ -38,14 +38,31 @@ export function Button({ label, onPress, variant = 'primary', loading, disabled 
 
 const styles = StyleSheet.create({
   base: {
-    height: 56,
-    borderRadius: Radius.button,
+    height: 60,
+    // Rectángulo bien redondeado, no una "píldora" — así se ve en el
+    // mockup, no un óvalo completo como daba Radius.button (28 = mitad de
+    // los 56 de alto).
+    borderRadius: 16,
+    // El botón siempre ocupa el ancho de su contenedor. Sin esto, dentro de
+    // una tarjeta con `alignItems: 'center'` (los avisos de "todavía no
+    // tienes cuenta" de Perfil y Publicar) se encogía al ancho del texto y
+    // quedaba como una cajita apretada, con las letras pegadas al borde.
+    alignSelf: 'stretch',
+    // Respaldo para cualquier caso donde el ancho igual quede al contenido.
+    paddingHorizontal: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.three,
   },
   primary: {
     backgroundColor: Colors.accent,
+    // El botón del mockup no es rojo plano: tiene un degradado vertical que
+    // arranca más anaranjado arriba y se hunde al rojo de marca abajo.
+    // `experimental_backgroundImage` viene en el core de React Native 0.86,
+    // así que no hace falta expo-linear-gradient (que obligaría a recompilar
+    // el APK). El `backgroundColor` de arriba queda como respaldo por si la
+    // propiedad no está disponible en alguna plataforma.
+    experimental_backgroundImage: 'linear-gradient(180deg, #F23A06 0%, #D90804 55%, #BC0603 100%)',
   },
   secondary: {
     backgroundColor: '#000000',
@@ -57,8 +74,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
+    fontSize: 18,
   },
   labelPrimary: {
     color: '#FFFFFF',

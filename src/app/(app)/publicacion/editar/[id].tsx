@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { PickerField } from '@/components/forms/PickerField';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
@@ -14,7 +15,6 @@ import {
   Comuna,
   Producto,
   PublicacionDetalle,
-  actualizarProducto,
   actualizarPublicacion,
   crearProducto,
   eliminarProducto,
@@ -26,7 +26,6 @@ import {
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
-import { isValidChileanPhone, normalizeChileanPhone } from '@/lib/validation';
 
 type ProductoDraft = { nombre: string; precio: string; image: PickedImage | null };
 const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
@@ -107,8 +106,8 @@ function EditarForm({
   categorias: Categoria[];
   onDeleted: () => void;
 }) {
+  const router = useRouter();
   const [titulo, setTitulo] = useState(publicacion.titulo);
-  const [telefono, setTelefono] = useState(publicacion.telefono.replace('+56', ''));
   const [logo, setLogo] = useState<PickedImage | null>(null);
   const [logoUrl, setLogoUrl] = useState(publicacion.logo_url);
 
@@ -116,7 +115,7 @@ function EditarForm({
   const categoriaInicial = categorias.find((c) => c.nombre === publicacion.categoria?.nombre)?.id ?? null;
   const [comunaId, setComunaId] = useState<string | null>(comunaInicial);
   const [categoriaId, setCategoriaId] = useState<string | null>(categoriaInicial);
-  const [pickerOpen, setPickerOpen] = useState<'comuna' | 'categoria' | null>(null);
+  const [pickerOpen, setPickerOpen] = useState<'categoria' | null>(null);
 
   const [productos, setProductos] = useState<Producto[]>(publicacion.productos);
   const [draft, setDraft] = useState<ProductoDraft>(EMPTY_DRAFT);
@@ -125,7 +124,6 @@ function EditarForm({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const comunaNombre = comunas.find((c) => c.id === comunaId)?.nombre ?? '';
   const categoriaNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
 
   async function handlePickLogo() {
@@ -210,10 +208,6 @@ function EditarForm({
       setError('Ponle un nombre a tu negocio.');
       return;
     }
-    if (!isValidChileanPhone(telefono)) {
-      setError('Ingresa un teléfono chileno válido (ej: 9 1234 5678).');
-      return;
-    }
 
     setSaving(true);
     try {
@@ -223,7 +217,6 @@ function EditarForm({
 
       await actualizarPublicacion(publicacion.id, {
         titulo: titulo.trim(),
-        telefono: normalizeChileanPhone(telefono),
         categoriaId,
         comunaId,
         logoUrl: finalLogoUrl,
@@ -275,17 +268,7 @@ function EditarForm({
 
       <TextField label="Nombre" value={titulo} onChangeText={setTitulo} autoCapitalize="words" />
 
-      <PickerField
-        label="Comuna"
-        value={comunaNombre}
-        open={pickerOpen === 'comuna'}
-        onToggle={() => setPickerOpen((p) => (p === 'comuna' ? null : 'comuna'))}
-        options={comunas.map((c) => ({ id: c.id, label: c.nombre }))}
-        onSelect={(comunaSelId) => {
-          setComunaId(comunaSelId);
-          setPickerOpen(null);
-        }}
-      />
+      <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
       <PickerField
         label="Categoría"
@@ -299,13 +282,12 @@ function EditarForm({
         }}
       />
 
-      <TextField
-        label="Teléfono"
-        value={telefono}
-        onChangeText={setTelefono}
-        keyboardType="phone-pad"
-        hint="9 1234 5678 (sin el +56, lo agregamos nosotros)"
-      />
+      <Pressable onPress={() => router.push('/(app)/perfil/editar')}>
+        <Text style={styles.telefonoNota}>
+          Los interesados te van a escribir al{' '}
+          <Text style={styles.telefonoNotaFuerte}>{publicacion.telefono}</Text> de tu perfil. ¿Cambió? Edítalo ahí →
+        </Text>
+      </Pressable>
 
       <Text style={styles.sectionLabel}>PRODUCTOS ({productos.length}/5)</Text>
 
@@ -431,6 +413,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.cardTextMuted,
+  },
+  telefonoNota: {
+    marginTop: Spacing.four,
+    fontSize: 13,
+    color: Colors.cardTextMuted,
+  },
+  telefonoNotaFuerte: {
+    fontWeight: '700',
+    color: Colors.cardText,
   },
   productoRow: {
     flexDirection: 'row',

@@ -7,6 +7,8 @@
 export const Colors = {
   background: '#000000',
   backgroundAlt: '#111111',
+  /** Gris muy claro sobre el que "flotan" las tarjetas blancas (login, catálogo). */
+  backgroundSoft: '#F2F2F2',
   surface: '#17171A',
   surfaceBorder: 'rgba(255,255,255,0.09)',
   card: '#FFFFFF',
@@ -41,4 +43,19 @@ export const Radius = {
   button: 28,
   card: 24,
   avatar: 999,
+} as const;
+
+/**
+ * "Baloo 2" — la tipografía redondeada y gruesa del mockup del cliente (el
+ * mismo estilo que usan apps de delivery como Swiggy). Cada peso es un
+ * archivo de fuente distinto, así que se usa en vez de `fontWeight` — mezclar
+ * ambos en Android puede terminar aplicando un negrita sintético feo encima
+ * del archivo ya negrita.
+ */
+export const Fonts = {
+  regular: 'Baloo2_400Regular',
+  medium: 'Baloo2_500Medium',
+  semiBold: 'Baloo2_600SemiBold',
+  bold: 'Baloo2_700Bold',
+  extraBold: 'Baloo2_800ExtraBold',
 } as const;

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { Tabs, type BottomTabBarButtonProps } from 'expo-router/js-tabs';
 import { Pressable } from 'react-native';
 
@@ -14,7 +15,8 @@ import { useSession } from '@/providers/SessionProvider';
  * instantáneo, como en cualquier app nativa.
  */
 export default function TabsLayout() {
-  const { profile } = useSession();
+  const { session, profile } = useSession();
+  const router = useRouter();
   const isAdmin = profile?.rol === 'admin';
 
   return (
@@ -23,14 +25,20 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: Colors.accent,
         tabBarInactiveTintColor: Colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: Colors.background,
-          borderTopColor: Colors.surfaceBorder,
-          borderTopWidth: 1,
-          height: 58,
-          paddingBottom: 6,
-          paddingTop: 6,
-        },
+        // Sin sesión la barra no aporta nada: "Publicar" y "Panel Admin" ya
+        // están ocultos, e "Inicio" es la única pantalla. El invitado entra a
+        // su cuenta tocando el logo del catálogo, así que la barra se
+        // esconde entera y aparece recién al iniciar sesión.
+        tabBarStyle: session
+          ? {
+              backgroundColor: Colors.background,
+              borderTopColor: Colors.surfaceBorder,
+              borderTopWidth: 1,
+              height: 58,
+              paddingBottom: 6,
+              paddingTop: 6,
+            }
+          : { display: 'none' },
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '600',
@@ -48,6 +56,7 @@ export default function TabsLayout() {
         name="publicar"
         options={{
           title: 'Publicar',
+          href: session ? undefined : null,
           tabBarIcon: ({ color, size }) => <Ionicons name="add-circle" color={color} size={size} />,
         }}
       />
@@ -64,6 +73,18 @@ export default function TabsLayout() {
         options={{
           title: 'Perfil',
           tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" color={color} size={size} />,
+        }}
+        listeners={{
+          // Sin sesión, "Perfil" no llega a abrirse: se cancela el cambio de
+          // pestaña y se abre el login encima. Así hay una sola pantalla de
+          // acceso en la app, y "atrás" desde el login vuelve a Inicio en vez
+          // de caer en una pestaña vacía que volvería a mandar al login.
+          tabPress: (e) => {
+            if (!session) {
+              e.preventDefault();
+              router.push('/(auth)/login');
+            }
+          },
         }}
       />
     </Tabs>

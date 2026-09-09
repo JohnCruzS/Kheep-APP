@@ -1,4 +1,23 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(adb -s emulator-5554 shell input tap 540 975)",
+      "Bash(adb -s emulator-5554 shell input tap 449 1150)",
+      "Bash(adb -s emulator-5554 shell input tap 588 1394)",
+      "Bash(npx expo *)",
+      "Bash(node -e \"console.log\\('RN:', require\\('./node_modules/react-native/package.json'\\).version\\)\")",
+      "Bash(npm uninstall *)",
+      "Bash(adb -s emulator-5554 shell am force-stop com.kheep.app)",
+      "Bash(adb -s emulator-5554 shell uiautomator dump //sdcard/u.xml)",
+      "Bash(adb -s emulator-5554 pull //sdcard/u.xml \"C:/Users/migra/AppData/Local/Temp/u.xml\")",
+      "Bash(python3 -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 python3 -c ' *)",
+      "Bash(adb -s emulator-5554 shell input tap 810 2368)",
+      "Bash(adb -s emulator-5554 shell uiautomator dump //sdcard/u2.xml)",
+      "Bash(adb -s emulator-5554 pull //sdcard/u2.xml \"C:/Users/migra/AppData/Local/Temp/u2.xml\")",
+      "Bash(adb -s emulator-5554 shell input tap 540 1490)"
+    ]
+  },
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   }

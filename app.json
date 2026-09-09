@@ -36,6 +36,13 @@
         {
           "photosPermission": "Kheep necesita acceso a tus fotos para que subas el logo de tu negocio y fotos de tus productos."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Kheep usa tu ubicación para mostrarte de una vez los comercios de tu comuna.",
+          "isAndroidBackgroundLocationEnabled": false
+        }
       ]
     ],
     "experiments": {

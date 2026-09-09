@@ -5,7 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 import { AuthCard } from '@/components/ui/AuthCard';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { translateAuthError } from '@/lib/authErrors';
 import { supabase } from '@/lib/supabase';
 import { isValidChileanPhone, isValidEmail, normalizeChileanPhone } from '@/lib/validation';
@@ -89,7 +89,6 @@ export default function RegisterScreen() {
         autoCapitalize="none"
         keyboardType="email-address"
         autoComplete="email"
-        hint="ejemplo@correo.com"
       />
       <TextField
         label="Teléfono"
@@ -113,7 +112,7 @@ export default function RegisterScreen() {
       <Button label="Guardar" onPress={handleRegister} loading={loading} />
 
       <Pressable onPress={() => router.back()} style={{ marginTop: Spacing.four, alignItems: 'center' }}>
-        <Text style={{ color: Colors.textMuted }}>Volver</Text>
+        <Text style={{ fontFamily: Fonts.medium, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
       </Pressable>
     </AuthCard>
   );

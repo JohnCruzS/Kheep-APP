@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { PickerField } from '@/components/forms/PickerField';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import {
   Categoria,
   Comuna,
@@ -20,7 +21,6 @@ import {
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
-import { isValidChileanPhone, normalizeChileanPhone } from '@/lib/validation';
 import { useSession } from '@/providers/SessionProvider';
 
 type ProductoDraft = {
@@ -32,7 +32,7 @@ type ProductoDraft = {
 const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
 
 export default function PublicarScreen() {
-  const { session } = useSession();
+  const { session, profile } = useSession();
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -43,7 +43,9 @@ export default function PublicarScreen() {
         <Text style={styles.eyebrow}>Publicar</Text>
       </View>
 
-      <View style={styles.card}>{session ? <PublicarForm /> : <GuestGate />}</View>
+      <View style={styles.card}>
+        {session ? <PublicarForm telefonoContacto={profile?.telefono_contacto ?? null} /> : <GuestGate />}
+      </View>
     </SafeAreaView>
   );
 }
@@ -61,7 +63,7 @@ function GuestGate() {
   );
 }
 
-function PublicarForm() {
+function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null }) {
   const router = useRouter();
 
   const [misPublicaciones, setMisPublicaciones] = useState<MiPublicacion[]>([]);
@@ -84,14 +86,13 @@ function PublicarForm() {
   );
 
   const [nombre, setNombre] = useState('');
-  const [telefono, setTelefono] = useState('');
   const [logo, setLogo] = useState<PickedImage | null>(null);
 
   const [comunas, setComunas] = useState<Comuna[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [comunaId, setComunaId] = useState<string | null>(null);
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState<'comuna' | 'categoria' | null>(null);
+  const [pickerOpen, setPickerOpen] = useState<'categoria' | null>(null);
 
   const [draft, setDraft] = useState<ProductoDraft>(EMPTY_DRAFT);
   const [productos, setProductos] = useState<ProductoDraft[]>([]);
@@ -105,7 +106,6 @@ function PublicarForm() {
     fetchCategorias().then(setCategorias).catch(() => {});
   }, []);
 
-  const comunaNombre = comunas.find((c) => c.id === comunaId)?.nombre ?? '';
   const categoriaNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
 
   async function handlePickLogo() {
@@ -157,8 +157,8 @@ function PublicarForm() {
       setError('Ponle un nombre a tu negocio.');
       return;
     }
-    if (!isValidChileanPhone(telefono)) {
-      setError('Ingresa un teléfono chileno válido (ej: 9 1234 5678).');
+    if (!telefonoContacto) {
+      setError('Agrega un teléfono de contacto en tu perfil antes de publicar.');
       return;
     }
 
@@ -179,7 +179,6 @@ function PublicarForm() {
 
       await crearPublicacion({
         titulo: nombre.trim(),
-        telefono: normalizeChileanPhone(telefono),
         categoriaId,
         comunaId,
         logoUrl,
@@ -188,7 +187,6 @@ function PublicarForm() {
 
       setSuccess('¡Listo! Tu publicación fue creada. Si tu cuenta está en revisión, un admin la va a aprobar pronto.');
       setNombre('');
-      setTelefono('');
       setLogo(null);
       setComunaId(null);
       setCategoriaId(null);
@@ -243,17 +241,7 @@ function PublicarForm() {
 
       <TextField label="Nombre" value={nombre} onChangeText={setNombre} autoCapitalize="words" />
 
-      <PickerField
-        label="Comuna"
-        value={comunaNombre}
-        open={pickerOpen === 'comuna'}
-        onToggle={() => setPickerOpen((p) => (p === 'comuna' ? null : 'comuna'))}
-        options={comunas.map((c) => ({ id: c.id, label: c.nombre }))}
-        onSelect={(id) => {
-          setComunaId(id);
-          setPickerOpen(null);
-        }}
-      />
+      <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
       <PickerField
         label="Categoría"
@@ -267,13 +255,18 @@ function PublicarForm() {
         }}
       />
 
-      <TextField
-        label="Teléfono"
-        value={telefono}
-        onChangeText={setTelefono}
-        keyboardType="phone-pad"
-        hint="9 1234 5678 (sin el +56, lo agregamos nosotros)"
-      />
+      {telefonoContacto ? (
+        <Text style={styles.telefonoNota}>
+          Los interesados te van a escribir al <Text style={styles.telefonoNotaFuerte}>{telefonoContacto}</Text> de
+          tu perfil.
+        </Text>
+      ) : (
+        <Pressable onPress={() => router.push('/(app)/perfil/editar')}>
+          <Text style={styles.telefonoNotaAlerta}>
+            Todavía no tienes un teléfono de contacto en tu perfil. Agrégalo para poder publicar →
+          </Text>
+        </Pressable>
+      )}
 
       <Text style={styles.sectionLabel}>PRODUCTOS ({productos.length}/5)</Text>
 
@@ -362,8 +355,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.four,
   },
   logo: {
+    fontFamily: Fonts.extraBold,
     fontSize: 26,
-    fontWeight: '800',
     color: Colors.text,
   },
   logoAccent: {
@@ -468,6 +461,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.cardTextMuted,
+  },
+  telefonoNota: {
+    marginTop: Spacing.four,
+    fontSize: 13,
+    color: Colors.cardTextMuted,
+  },
+  telefonoNotaFuerte: {
+    fontWeight: '700',
+    color: Colors.cardText,
+  },
+  telefonoNotaAlerta: {
+    marginTop: Spacing.four,
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.danger,
   },
   productoRow: {
     flexDirection: 'row',

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -16,6 +16,15 @@ import { useSession } from '@/providers/SessionProvider';
 export default function PerfilScreen() {
   const { session, profile } = useSession();
 
+  // Sin sesión esta pantalla no tiene nada que mostrar: el toque en la
+  // pestaña se intercepta en el layout y abre el login directamente (ver
+  // `listeners.tabPress`). Esto es solo una red de seguridad para el
+  // instante entre cerrar sesión y salir de aquí — no navega durante el
+  // render, que es justo lo que hacía crashear con <Redirect>.
+  if (!session || !profile) {
+    return null;
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
@@ -26,27 +35,12 @@ export default function PerfilScreen() {
       </View>
 
       <View style={styles.card}>
-        {!session || !profile ? <GuestView /> : <AccountView profile={profile} email={session.user.email} />}
+        <AccountView profile={profile} email={session.user.email} />
       </View>
     </SafeAreaView>
   );
 }
 
-function GuestView() {
-  const router = useRouter();
-  return (
-    <View style={styles.guest}>
-      <View style={styles.avatarPlaceholder} />
-      <Text style={styles.guestTitle}>Todavía no tienes cuenta</Text>
-      <Text style={styles.guestMessage}>
-        Inicia sesión para publicar tu negocio, subir productos y responder a tus clientes.
-      </Text>
-
-      <Button label="Ingresar" onPress={() => router.push('/(auth)/login')} />
-      <Button label="Registrar" variant="secondary" onPress={() => router.push('/(auth)/register')} />
-    </View>
-  );
-}
 
 function AccountView({
   profile,
@@ -87,6 +81,11 @@ function AccountView({
           <Text style={styles.adminRowArrow}>›</Text>
         </Pressable>
 
+        <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/banner/publicar')}>
+          <Text style={styles.adminRowLabel}>📣 Publicar banner</Text>
+          <Text style={styles.adminRowArrow}>›</Text>
+        </Pressable>
+
         {profile.rol === 'admin' && (
           <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/(tabs)/admin')}>
             <Text style={styles.adminRowLabel}>🛡️ Panel de moderación</Text>
@@ -95,7 +94,14 @@ function AccountView({
         )}
       </View>
 
-      <Button label="Cerrar sesión" variant="secondary" onPress={() => supabase.auth.signOut()} />
+      <Button
+        label="Cerrar sesión"
+        variant="secondary"
+        onPress={async () => {
+          await supabase.auth.signOut();
+          router.replace('/(app)/(tabs)/dashboard');
+        }}
+      />
     </View>
   );
 }
@@ -120,8 +126,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.four,
   },
   logo: {
+    fontFamily: Fonts.extraBold,
     fontSize: 26,
-    fontWeight: '800',
     color: Colors.text,
   },
   logoAccent: {
@@ -139,23 +145,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.card,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.five,
-  },
-  guest: {
-    alignItems: 'center',
-  },
-  guestTitle: {
-    marginTop: Spacing.three,
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.cardText,
-  },
-  guestMessage: {
-    marginTop: Spacing.two,
-    fontSize: 13.5,
-    lineHeight: 20,
-    color: Colors.cardTextMuted,
-    textAlign: 'center',
-    maxWidth: 280,
   },
   avatarPlaceholder: {
     width: 72,

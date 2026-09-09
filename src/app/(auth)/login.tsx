@@ -5,7 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 import { AuthCard } from '@/components/ui/AuthCard';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { isValidEmail } from '@/lib/validation';
 
@@ -51,7 +51,6 @@ export default function LoginScreen() {
         autoCapitalize="none"
         keyboardType="email-address"
         autoComplete="email"
-        hint="ejemplo@correo.com"
       />
       <TextField
         label="Contraseña"
@@ -61,16 +60,32 @@ export default function LoginScreen() {
         autoComplete="password"
       />
 
-      {error ? <Text style={{ color: Colors.danger, marginTop: Spacing.three }}>{error}</Text> : null}
+      {error ? (
+        <Text style={{ fontFamily: Fonts.medium, color: Colors.danger, marginTop: Spacing.three }}>{error}</Text>
+      ) : (
+        // Respiro entre el último campo y los botones, como en el mockup.
+        <View style={{ height: Spacing.three }} />
+      )}
 
       <Button label="Ingresar" onPress={handleLogin} loading={loading} />
       <Button label="Registrar" variant="secondary" onPress={() => router.push('/(auth)/register')} />
 
       <Link href="/(auth)/forgot-password" asChild>
         <Pressable style={{ marginTop: Spacing.four, alignItems: 'center' }}>
-          <Text style={{ color: Colors.textMuted }}>Olvidaste tu contraseña</Text>
+          <Text style={{ fontFamily: Fonts.medium, fontSize: 15, color: Colors.textMuted }}>
+            Olvidaste tu contraseña
+          </Text>
         </Pressable>
       </Link>
+
+      {/* A Inicio, no router.back(): al entrar desde la pestaña Perfil sin
+          sesión, "atrás" sería el redirect que trajo aquí y volvería a caer
+          en este mismo login. */}
+      <Pressable
+        onPress={() => router.replace('/(app)/(tabs)/dashboard')}
+        style={{ marginTop: Spacing.three, alignItems: 'center' }}>
+        <Text style={{ fontFamily: Fonts.medium, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
+      </Pressable>
     </AuthCard>
   );
 }

@@ -1,19 +1,32 @@
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { fetchPublicacionesPendientes } from '@/lib/catalog';
 import { useSession } from '@/providers/SessionProvider';
 
 /**
- * Panel de Administración. La moderación de publicaciones (aprobar/
- * rechazar, historial) y las métricas de WhatsApp siguen pendientes — lo
- * que ya está listo es la administración de Comunas y Categorías que pidió
- * el cliente.
+ * Panel de Administración: vitrina (comunas/categorías), moderación de
+ * publicaciones y métricas de WhatsApp.
  */
 export default function AdminScreen() {
   const { profile } = useSession();
   const router = useRouter();
+  const [pendientes, setPendientes] = useState<number | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let activo = true;
+      fetchPublicacionesPendientes()
+        .then((lista) => activo && setPendientes(lista.length))
+        .catch(() => activo && setPendientes(null));
+      return () => {
+        activo = false;
+      };
+    }, []),
+  );
 
   if (profile && profile.rol !== 'admin') {
     return <Redirect href="/(app)/(tabs)/dashboard" />;
@@ -29,26 +42,43 @@ export default function AdminScreen() {
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.sectionLabel}>VITRINA</Text>
+        <Text style={styles.sectionLabel}>MODERACIÓN</Text>
+        <AdminRow
+          icon="🛡️"
+          label="Publicaciones pendientes"
+          badge={pendientes && pendientes > 0 ? pendientes : undefined}
+          onPress={() => router.push('/(app)/admin/moderacion')}
+        />
+        <AdminRow icon="📊" label="Métricas de WhatsApp" onPress={() => router.push('/(app)/admin/metricas')} />
+
+        <Text style={[styles.sectionLabel, { marginTop: Spacing.five }]}>VITRINA</Text>
         <AdminRow icon="📍" label="Comunas" onPress={() => router.push('/(app)/admin/comunas')} />
         <AdminRow icon="🏷️" label="Categorías" onPress={() => router.push('/(app)/admin/categorias')} />
-
-        <Text style={[styles.sectionLabel, { marginTop: Spacing.five }]}>PRÓXIMAMENTE</Text>
-        <View style={styles.pendingCard}>
-          <Text style={styles.pendingText}>
-            Moderación de publicaciones (aprobar/rechazar con historial) y métricas de clics a WhatsApp.
-          </Text>
-        </View>
       </View>
     </SafeAreaView>
   );
 }
 
-function AdminRow({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+function AdminRow({
+  icon,
+  label,
+  badge,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  badge?: number;
+  onPress: () => void;
+}) {
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <Text style={styles.rowIcon}>{icon}</Text>
       <Text style={styles.rowLabel}>{label}</Text>
+      {badge !== undefined && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeLabel}>{badge}</Text>
+        </View>
+      )}
       <Text style={styles.rowArrow}>›</Text>
     </Pressable>
   );
@@ -65,8 +95,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.four,
   },
   logo: {
+    fontFamily: Fonts.extraBold,
     fontSize: 26,
-    fontWeight: '800',
     color: Colors.text,
   },
   logoAccent: {
@@ -108,21 +138,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.text,
   },
+  badge: {
+    backgroundColor: Colors.accent,
+    borderRadius: 20,
+    minWidth: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  badgeLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   rowArrow: {
     fontSize: 18,
-    color: Colors.textMuted,
-  },
-  pendingCard: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 14,
-    padding: Spacing.three,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    borderStyle: 'dashed',
-  },
-  pendingText: {
-    fontSize: 12.5,
-    lineHeight: 18,
     color: Colors.textMuted,
   },
 });

@@ -2,10 +2,8 @@ import { Image } from 'expo-image';
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import type { PublicacionResumen } from '@/lib/catalog';
-
-const BADGE_SIZE = 56;
 
 type Props = {
   publicacion: PublicacionResumen;
@@ -19,6 +17,11 @@ type Props = {
  * tarjeta no hayan cambiado — se nota como "tirones" al hacer scroll justo
  * después de tocar algo. `onPress` en el padre está memoizado con
  * useCallback para que esta comparación funcione de verdad.
+ *
+ * Layout según el mockup del cliente: panel blanco angosto a la izquierda
+ * con el icono de la categoría en un círculo rojo, y a la derecha una
+ * tarjeta negra con el título arriba, la foto del producto grande al medio
+ * y nombre + precio abajo.
  */
 function PublicacionCardComponent({ publicacion, onPress }: Props) {
   const producto = useMemo(
@@ -29,12 +32,14 @@ function PublicacionCardComponent({ publicacion, onPress }: Props) {
   const handlePress = useCallback(() => onPress(publicacion.id), [onPress, publicacion.id]);
 
   return (
-    <Pressable onPress={handlePress} style={({ pressed }) => [styles.wrapper, pressed && styles.pressed]}>
-      <View style={styles.badge}>
-        <Text style={styles.badgeIcon}>{icono}</Text>
+    <Pressable onPress={handlePress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+      <View style={styles.iconPanel}>
+        <View style={styles.iconCircle}>
+          <Text style={styles.iconGlyph}>{icono}</Text>
+        </View>
       </View>
 
-      <View style={styles.card}>
+      <View style={styles.contentPanel}>
         <View style={styles.titleRow}>
           <Text style={styles.title} numberOfLines={1}>
             {publicacion.titulo}
@@ -42,11 +47,7 @@ function PublicacionCardComponent({ publicacion, onPress }: Props) {
           {publicacion.destacado && <Text style={styles.destacado}>★</Text>}
         </View>
 
-        <Text style={styles.subtitle} numberOfLines={1}>
-          {[publicacion.categoria?.nombre, publicacion.comuna?.nombre].filter(Boolean).join(' · ')}
-        </Text>
-
-        <View style={styles.imageRow}>
+        <View style={styles.imageWrap}>
           {producto?.imagen_url ? (
             <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="cover" />
           ) : (
@@ -70,66 +71,60 @@ function PublicacionCardComponent({ publicacion, onPress }: Props) {
 export const PublicacionCard = memo(PublicacionCardComponent);
 
 const styles = StyleSheet.create({
-  wrapper: {
-    position: 'relative',
-    paddingTop: BADGE_SIZE / 2,
+  row: {
+    flexDirection: 'row',
+    height: 340,
   },
   pressed: {
     opacity: 0.9,
   },
-  badge: {
-    position: 'absolute',
-    top: 0,
-    left: Spacing.three,
-    width: BADGE_SIZE,
-    height: BADGE_SIZE,
-    borderRadius: BADGE_SIZE / 2,
+  iconPanel: {
+    width: '30%',
     backgroundColor: Colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 2,
   },
-  badgeIcon: {
-    fontSize: 24,
+  iconCircle: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  card: {
+  iconGlyph: {
+    fontSize: 34,
+  },
+  contentPanel: {
+    flex: 1,
     backgroundColor: '#0D0D0D',
-    borderRadius: Radius.card - 4,
-    paddingTop: BADGE_SIZE / 2 + Spacing.two,
-    paddingBottom: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    gap: 6,
+    padding: Spacing.four,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingLeft: BADGE_SIZE + Spacing.two,
   },
   title: {
     flexShrink: 1,
-    fontSize: 18,
-    fontWeight: '800',
+    fontFamily: Fonts.extraBold,
+    fontSize: 26,
     color: Colors.text,
   },
   destacado: {
     fontSize: 14,
     color: Colors.accent,
   },
-  subtitle: {
-    fontSize: 12,
-    color: Colors.textMuted,
-    paddingLeft: BADGE_SIZE + Spacing.two,
-    marginTop: 2,
-  },
-  imageRow: {
-    alignItems: 'flex-end',
-    marginTop: Spacing.two,
+  imageWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: Spacing.three,
   },
   productImage: {
-    width: 88,
-    height: 66,
-    borderRadius: 14,
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
   },
   productImageFallback: {
     backgroundColor: Colors.surface,
@@ -140,12 +135,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   productName: {
-    fontSize: 13,
-    color: Colors.textMuted,
+    fontFamily: Fonts.medium,
+    fontSize: 18,
+    color: '#8A8A90',
   },
   price: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontFamily: Fonts.bold,
+    fontSize: 20,
     color: Colors.text,
   },
 });

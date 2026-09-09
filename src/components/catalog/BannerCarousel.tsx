@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 128,
+    height: 210,
     borderRadius: Radius.card - 12,
     backgroundColor: Colors.surface,
   },

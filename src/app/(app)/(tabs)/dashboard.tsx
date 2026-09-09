@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BannerCarousel } from '@/components/catalog/BannerCarousel';
@@ -8,8 +8,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/Catal
 import { CategoryChips } from '@/components/catalog/CategoryChips';
 import { ComunaPicker } from '@/components/catalog/ComunaPicker';
 import { PublicacionCard } from '@/components/catalog/PublicacionCard';
-import { SearchBar } from '@/components/catalog/SearchBar';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   Banner,
   Categoria,
@@ -21,11 +20,12 @@ import {
   fetchPublicaciones,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
-
-const SEARCH_DEBOUNCE_MS = 350;
+import { detectarComunaActual } from '@/lib/location';
+import { useSession } from '@/providers/SessionProvider';
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { session } = useSession();
 
   // Datos "de vitrina": banners, categorías y comunas casi no cambian
   // sesión a sesión — se piden UNA vez al entrar, nunca de nuevo solo
@@ -41,21 +41,14 @@ export default function DashboardScreen() {
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [comunaId, setComunaId] = useState<string | null>(null);
 
-  // `query` es lo que el usuario escribe letra a letra; `debouncedQuery` es
-  // lo que realmente dispara la búsqueda, 350ms después de que deja de
-  // teclear — sin este paso, "buscador en tiempo real" era una consulta a
-  // Supabase por cada tecla.
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
-  }, [query]);
+  // Si el usuario ya tocó el selector de comuna con su propio dedo, la
+  // detección automática por GPS (que puede tardar unos segundos en
+  // resolver) no debe pisarle la elección cuando llegue.
+  const comunaElegidaAMano = useRef(false);
 
   // Vitrina: se carga una sola vez al montar la pantalla.
   useEffect(() => {
@@ -64,8 +57,23 @@ export default function DashboardScreen() {
         setBanners(bannersData);
         setCategorias(categoriasData);
         setComunas(comunasData);
+
+        // Identificar la zona del usuario es "mejor esfuerzo": si no da
+        // permiso de ubicación, o su comuna no calza con la lista, el
+        // catálogo se queda tal cual (con "Todas las comunas"), nunca
+        // bloquea ni muestra error.
+        detectarComunaActual(comunasData).then((detectadaId) => {
+          if (detectadaId && !comunaElegidaAMano.current) {
+            setComunaId(detectadaId);
+          }
+        });
       })
       .catch((err) => setError(getErrorMessage(err, 'Error desconocido.')));
+  }, []);
+
+  const handleSeleccionarComuna = useCallback((id: string | null) => {
+    comunaElegidaAMano.current = true;
+    setComunaId(id);
   }, []);
 
   // Publicaciones: se cargan de nuevo cada vez (y solo) que cambia un
@@ -75,7 +83,7 @@ export default function DashboardScreen() {
       isRefresh ? setRefreshing(true) : setLoading(true);
       setError(null);
       try {
-        const data = await fetchPublicaciones({ categoriaId, comunaId, query: debouncedQuery });
+        const data = await fetchPublicaciones({ categoriaId, comunaId });
         setPublicaciones(data);
       } catch (err) {
         setError(getErrorMessage(err, 'Error desconocido.'));
@@ -83,7 +91,7 @@ export default function DashboardScreen() {
         isRefresh ? setRefreshing(false) : setLoading(false);
       }
     },
-    [categoriaId, comunaId, debouncedQuery],
+    [categoriaId, comunaId],
   );
 
   useEffect(() => {
@@ -122,18 +130,32 @@ export default function DashboardScreen() {
         ItemSeparatorComponent={ItemSeparator}
         ListHeaderComponent={
           <View>
-            <View style={styles.header}>
-              <Text style={styles.logo}>
-                <Text style={styles.logoAccent}>Kh</Text>eep
-              </Text>
-              <ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
-            </View>
+            <View style={styles.blackHeader}>
+              <View style={styles.header}>
+                {/* Sin sesión el logo es el acceso a la cuenta: no hay barra
+                    inferior que lleve a "Perfil". Con sesión no hace falta,
+                    porque la barra ya está ahí. */}
+                {session ? (
+                  <Text style={styles.logo}>
+                    <Text style={styles.logoAccent}>Kh</Text>eep
+                  </Text>
+                ) : (
+                  <Pressable
+                    onPress={() => router.push('/(auth)/login')}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Iniciar sesión o crear cuenta">
+                    <Text style={styles.logo}>
+                      <Text style={styles.logoAccent}>Kh</Text>eep
+                    </Text>
+                  </Pressable>
+                )}
+                <ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={handleSeleccionarComuna} />
+              </View>
 
-            <View style={styles.section}>
-              <SearchBar value={query} onChangeText={setQuery} />
+              <BannerCarousel banners={banners} />
+              <CategoryChips categorias={categorias} selectedId={categoriaId} onSelect={setCategoriaId} />
             </View>
-            <BannerCarousel banners={banners} />
-            <CategoryChips categorias={categorias} selectedId={categoriaId} onSelect={setCategoriaId} />
 
             {loading && <LoadingState />}
             {error && <ErrorState message={error} onRetry={() => loadPublicaciones()} />}
@@ -143,7 +165,7 @@ export default function DashboardScreen() {
           !loading && !error ? (
             <EmptyState
               title="No encontramos comercios"
-              message="Prueba con otra categoría, otra comuna o busca con otra palabra."
+              message="Prueba con otra categoría o cambia de comuna."
             />
           ) : null
         }
@@ -153,7 +175,7 @@ export default function DashboardScreen() {
 }
 
 function ItemSeparator() {
-  return <View style={{ height: Spacing.two }} />;
+  return <View style={{ height: Spacing.three }} />;
 }
 
 const styles = StyleSheet.create({
@@ -163,26 +185,39 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+    // Gris muy claro, no blanco puro: si fuera el mismo blanco que el panel
+    // del icono de cada tarjeta, la tarjeta se perdería contra el fondo.
+    backgroundColor: Colors.backgroundSoft,
   },
   listContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.five,
   },
+  // Todo lo de arriba (logo, buscador, banner, categorías) va sobre negro;
+  // debajo de las categorías el fondo pasa a blanco, con las tarjetas
+  // flotando encima (pedido del cliente). El margen negativo hace que el
+  // negro llegue de borde a borde aunque `listContent` le ponga relleno
+  // horizontal a todo lo demás.
+  blackHeader: {
+    backgroundColor: Colors.background,
+    marginHorizontal: -Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
   header: {
     alignItems: 'center',
-    paddingTop: Spacing.four,
-    paddingBottom: Spacing.four,
+    paddingTop: Spacing.five,
+    paddingBottom: Spacing.three,
+    gap: 4,
   },
   logo: {
-    fontSize: 26,
-    fontWeight: '800',
+    fontFamily: Fonts.extraBold,
+    fontSize: 34,
     color: Colors.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
   },
   logoAccent: {
     color: Colors.accent,
-  },
-  section: {
-    marginBottom: 2,
   },
 });

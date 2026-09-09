@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
-import { PickerField } from '@/components/forms/PickerField';
+import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -90,12 +90,9 @@ function EditarPerfilForm({
   const [logo, setLogo] = useState<PickedImage | null>(null);
   const [logoUrl, setLogoUrl] = useState(perfil.logo_url);
   const [comunaId, setComunaId] = useState<string | null>(perfil.comuna_id);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  const comunaNombre = comunas.find((c) => c.id === comunaId)?.nombre ?? '';
 
   async function handlePickLogo() {
     try {
@@ -151,17 +148,7 @@ function EditarPerfilForm({
 
       <TextField label="Nombre" value={nombre} onChangeText={setNombre} autoCapitalize="words" />
 
-      <PickerField
-        label="Comuna"
-        value={comunaNombre}
-        open={pickerOpen}
-        onToggle={() => setPickerOpen((p) => !p)}
-        options={comunas.map((c) => ({ id: c.id, label: c.nombre }))}
-        onSelect={(id) => {
-          setComunaId(id);
-          setPickerOpen(false);
-        }}
-      />
+      <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
       <TextField
         label="Teléfono"

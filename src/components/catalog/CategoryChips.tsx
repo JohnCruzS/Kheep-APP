@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import type { Categoria } from '@/lib/catalog';
 
 type Props = {
@@ -46,17 +46,18 @@ function Tab({ label, active, onPress }: { label: string; active: boolean; onPre
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.four,
+    gap: Spacing.four + 4,
+    paddingHorizontal: 2,
     paddingBottom: Spacing.four,
+    paddingTop: Spacing.two,
     alignItems: 'center',
   },
   label: {
-    fontSize: 14.5,
-    fontWeight: '500',
-    color: Colors.textMuted,
+    fontFamily: Fonts.semiBold,
+    fontSize: 22,
+    color: '#E8E8E8',
   },
   labelActive: {
     color: Colors.accent,
-    fontWeight: '700',
   },
 });
