@@ -56,7 +56,10 @@ export default function TabsLayout() {
         name="publicar"
         options={{
           title: 'Publicar',
-          href: session ? undefined : null,
+          // Oculta para invitados (no tienen cuenta) y también para admin:
+          // el admin modera desde "Panel Admin", no publica comercios
+          // propios.
+          href: session && !isAdmin ? undefined : null,
           tabBarIcon: ({ color, size }) => <Ionicons name="add-circle" color={color} size={size} />,
         }}
       />

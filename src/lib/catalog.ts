@@ -100,10 +100,18 @@ type FetchPublicacionesParams = {
 };
 
 /**
- * Lista de publicaciones del catálogo público. `estado`/`deleted_at` no se
- * mandan como filtro: la política RLS "catálogo público solo muestra
- * aprobadas y no eliminadas" ya se encarga — pedir de más simplemente
- * devolvería menos filas de las que la fila realmente permite, nunca más.
+ * Lista de publicaciones del catálogo público.
+ *
+ * `estado`/`deleted_at` SÍ se filtran acá, aunque exista la política RLS.
+ * Antes no se hacía, asumiendo que RLS bastaba — y era un error: esa
+ * política dice `estado = 'aprobado' OR usuario_id = auth.uid() OR
+ * is_admin()`, así que al dueño y al admin les dejaba ver sus pendientes
+ * mezcladas en la vitrina, como si ya estuvieran publicadas.
+ *
+ * Son dos cosas distintas y hacen falta las dos: RLS decide a qué filas
+ * tienes *derecho* a acceder (y ahí está bien que el dueño vea las suyas,
+ * porque las necesita en "Mis publicaciones"); este filtro decide qué se
+ * muestra *en el catálogo*, que es solo lo aprobado, mire quien mire.
  */
 export async function fetchPublicaciones({
   categoriaId,
@@ -115,6 +123,8 @@ export async function fetchPublicaciones({
     .select(
       'id, titulo, descripcion, logo_url, telefono, destacado, categoria:categorias(nombre, icono), comuna:comunas(nombre), productos(nombre, precio, imagen_url, orden)',
     )
+    .eq('estado', 'aprobado')
+    .is('deleted_at', null)
     .order('destacado', { ascending: false })
     .order('orden_peso', { ascending: false });
 
@@ -165,19 +175,35 @@ type NuevaPublicacion = {
  * Crea una publicación nueva a nombre del usuario logueado, junto con sus
  * productos. El `estado` (pendiente/aprobado) no se manda — lo decide solo
  * el trigger `fn_set_estado_publicacion` según el nivel del dueño, nunca el
- * cliente (ver migración 0001). Tampoco se manda `telefono`: siempre es el
- * del perfil del dueño, lo fuerza el trigger `fn_publicacion_telefono_desde_perfil`
- * (ver migración 0014), así que ni vale la pena mandarlo desde acá.
+ * cliente (ver migración 0001).
+ *
+ * El `telefono` sí se manda, tomado del perfil: la columna es NOT NULL y el
+ * trigger que la rellena sola vive en la migración 0014, que puede no estar
+ * aplicada todavía en un entorno dado. Mandarlo hace que publicar funcione
+ * en los dos casos — donde 0014 sí está, el trigger lo reescribe con este
+ * mismo valor y no cambia nada.
  */
 export async function crearPublicacion(input: NuevaPublicacion): Promise<string> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('Debes iniciar sesión para publicar.');
+
+  const { data: perfil, error: perfilError } = await supabase
+    .from('profiles')
+    .select('telefono_contacto')
+    .eq('id', auth.user.id)
+    .single();
+
+  if (perfilError) throw perfilError;
+  if (!perfil?.telefono_contacto) {
+    throw new Error('Agrega un teléfono de contacto en tu perfil antes de publicar.');
+  }
 
   const { data: publicacion, error } = await supabase
     .from('publicaciones')
     .insert({
       usuario_id: auth.user.id,
       titulo: input.titulo,
+      telefono: perfil.telefono_contacto,
       categoria_id: input.categoriaId,
       comuna_id: input.comunaId,
       logo_url: input.logoUrl,
