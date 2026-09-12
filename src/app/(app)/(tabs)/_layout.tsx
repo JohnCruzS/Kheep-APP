@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Tabs, type BottomTabBarButtonProps } from 'expo-router/js-tabs';
 import { Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/constants/theme';
+import { Colors, Fonts } from '@/constants/theme';
 import { useSession } from '@/providers/SessionProvider';
 
 /**
@@ -17,6 +18,11 @@ import { useSession } from '@/providers/SessionProvider';
 export default function TabsLayout() {
   const { session, profile } = useSession();
   const router = useRouter();
+  // Alto de la barra de navegación del sistema (3 botones o gestos). La app
+  // se dibuja por detrás de ella, así que la barra de pestañas debe sumar
+  // ese espacio; si no, en teléfonos con 3 botones quedan encimadas y los
+  // botones de la app no se pueden tocar.
+  const insets = useSafeAreaInsets();
   const isAdmin = profile?.rol === 'admin';
 
   return (
@@ -34,14 +40,14 @@ export default function TabsLayout() {
               backgroundColor: Colors.background,
               borderTopColor: Colors.surfaceBorder,
               borderTopWidth: 1,
-              height: 58,
-              paddingBottom: 6,
+              height: 58 + insets.bottom,
+              paddingBottom: 6 + insets.bottom,
               paddingTop: 6,
             }
           : { display: 'none' },
         tabBarLabelStyle: {
           fontSize: 10,
-          fontWeight: '600',
+          fontFamily: Fonts.medium,
         },
         tabBarButton: (props) => <TabButton {...props} />,
       }}>

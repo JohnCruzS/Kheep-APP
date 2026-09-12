@@ -7,6 +7,7 @@ export type Profile = {
   id: string;
   nombre: string;
   telefono_contacto: string | null;
+  logo_url: string | null;
   rol: 'comerciante' | 'admin';
   nivel: 1 | 2;
 };
@@ -51,7 +52,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }
     const { data } = await supabase
       .from('profiles')
-      .select('id, nombre, telefono_contacto, rol, nivel')
+      .select('id, nombre, telefono_contacto, logo_url, rol, nivel')
       .eq('id', userId)
       .maybeSingle();
     setProfile((data as Profile) ?? null);

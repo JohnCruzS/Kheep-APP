@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
@@ -9,7 +9,7 @@ import { PickerField } from '@/components/forms/PickerField';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import {
   Categoria,
   Comuna,
@@ -254,8 +254,13 @@ function EditarForm({
     );
   }
 
+  // Con la pantalla de borde a borde, Android ya no achica la ventana al abrir
+  // el teclado (el `adjustResize` del manifiesto deja de aplicar), así que el
+  // teclado tapaba los campos. `KeyboardAvoidingView` agrega abajo el alto del
+  // teclado para que el formulario se corra solo.
   return (
-    <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
       <Pressable onPress={handlePickLogo} style={styles.avatarWrapper}>
         {logo ? (
           <Image source={{ uri: logo.uri }} style={styles.avatarImage} contentFit="cover" />
@@ -354,6 +359,7 @@ function EditarForm({
         <Text style={styles.deleteLabel}>Eliminar publicación</Text>
       </Pressable>
     </ScrollView>
+      </KeyboardAvoidingView>
   );
 }
 
@@ -370,15 +376,15 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   backLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '600',
     width: 70,
   },
   topTitle: {
+    fontFamily: Fonts.semiBold,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '700',
   },
   card: {
     flex: 1,
@@ -407,20 +413,22 @@ const styles = StyleSheet.create({
     borderRadius: Radius.avatar,
   },
   sectionLabel: {
+    fontFamily: Fonts.semiBold,
     marginTop: Spacing.five,
     marginBottom: Spacing.two,
     fontSize: 11,
-    fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.cardTextMuted,
   },
   telefonoNota: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.four,
     fontSize: 13,
     color: Colors.cardTextMuted,
   },
   telefonoNotaFuerte: {
-    fontWeight: '700',
+    fontFamily: Fonts.semiBold,
+
     color: Colors.cardText,
   },
   productoRow: {
@@ -441,35 +449,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   productoNombre: {
+    fontFamily: Fonts.semiBold,
     fontSize: 15,
-    fontWeight: '700',
     color: Colors.cardText,
   },
   productoPrecio: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     color: Colors.cardTextMuted,
     marginTop: 2,
   },
   productoInput: {
+    fontFamily: Fonts.light,
     fontSize: 15,
     color: Colors.cardText,
     paddingVertical: 2,
   },
   productoInputMuted: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     color: Colors.cardTextMuted,
   },
   productoQuitar: {
+    fontFamily: Fonts.medium,
     fontSize: 12,
     color: Colors.danger,
-    fontWeight: '600',
   },
   errorText: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.three,
     fontSize: 13,
     color: Colors.danger,
   },
   successText: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.three,
     fontSize: 13,
     color: Colors.success,
@@ -479,8 +492,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteLabel: {
+    fontFamily: Fonts.medium,
     fontSize: 13,
-    fontWeight: '600',
     color: Colors.danger,
   },
 });

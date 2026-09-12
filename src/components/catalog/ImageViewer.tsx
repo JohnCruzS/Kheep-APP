@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Colors } from '@/constants/theme';
+import { Fonts, Colors } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -92,14 +92,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 16,
-    fontWeight: '600',
   },
   counter: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 13,
-    fontWeight: '600',
     backgroundColor: 'rgba(255,255,255,0.12)',
     paddingHorizontal: 10,
     paddingVertical: 4,

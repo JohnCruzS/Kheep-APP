@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { ComunaAdmin, actualizarComunaActiva, fetchComunasAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -82,8 +82,8 @@ export default function ComunasAdminScreen() {
       {!loading && !error && comunas.length > 0 && (
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.intro}>
-            Estas comunas son fijas — solo puedes mostrarlas u ocultarlas del selector de comuna. Para agregar una
-            nueva zona, coordina conmigo directamente.
+            El interruptor muestra u oculta la comuna en el selector. Toca el nombre para entrar a su catálogo:
+            qué categorías tiene, en qué orden, y los perfiles que publican en cada una.
           </Text>
 
           {grupos.map(([region, lista]) => {
@@ -105,7 +105,15 @@ export default function ComunasAdminScreen() {
                   <View style={styles.comunaList}>
                     {lista.map((comuna) => (
                       <View key={comuna.id} style={styles.comunaRow}>
-                        <Text style={styles.comunaNombre}>{comuna.nombre}</Text>
+                        {/* El nombre entra al catálogo de esa comuna
+                            (categorías y perfiles); el interruptor solo
+                            decide si aparece en el selector de comunas. */}
+                        <Pressable
+                          style={styles.comunaNombreZona}
+                          onPress={() => router.push({ pathname: '/(app)/admin/comuna/[id]', params: { id: comuna.id } })}>
+                          <Text style={styles.comunaNombre}>{comuna.nombre}</Text>
+                          <Text style={styles.comunaArrow}>›</Text>
+                        </Pressable>
                         <Switch
                           value={comuna.activa}
                           onValueChange={() => handleToggle(comuna)}
@@ -138,21 +146,22 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   backLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '600',
     width: 70,
   },
   topTitle: {
+    fontFamily: Fonts.semiBold,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '700',
   },
   content: {
     padding: Spacing.three,
     paddingBottom: Spacing.six,
   },
   intro: {
+    fontFamily: Fonts.light,
     fontSize: 12.5,
     lineHeight: 18,
     color: Colors.textMuted,
@@ -173,16 +182,18 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
   },
   regionTitle: {
+    fontFamily: Fonts.semiBold,
     fontSize: 15,
-    fontWeight: '700',
     color: Colors.text,
   },
   regionSubtitle: {
+    fontFamily: Fonts.light,
     fontSize: 11.5,
     color: Colors.textMuted,
     marginTop: 2,
   },
   chevron: {
+    fontFamily: Fonts.light,
     fontSize: 12,
     color: Colors.textMuted,
   },
@@ -199,7 +210,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.04)',
   },
+  comunaNombreZona: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+    marginRight: Spacing.three,
+  },
+  comunaArrow: {
+    fontFamily: Fonts.light,
+    fontSize: 18,
+    color: Colors.textMuted,
+  },
   comunaNombre: {
+    fontFamily: Fonts.light,
     fontSize: 14,
     color: Colors.text,
   },

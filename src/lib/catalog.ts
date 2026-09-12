@@ -32,6 +32,7 @@ export type PublicacionResumen = {
   logo_url: string | null;
   telefono: string;
   destacado: boolean;
+  categoria_id: string | null;
   categoria: { nombre: string; icono: string | null } | null;
   comuna: { nombre: string } | null;
   productos: { nombre: string; precio: number; imagen_url: string | null; orden: number }[];
@@ -82,7 +83,23 @@ export async function fetchComunas(): Promise<Comuna[]> {
   return data ?? [];
 }
 
-export async function fetchCategorias(): Promise<Categoria[]> {
+/**
+ * Las categorías que se muestran en el catálogo.
+ *
+ * Cada comuna puede tener su propia lista: el admin entra a una comuna y
+ * decide qué categorías van, en qué orden y cuáles oculta (ver migración
+ * 0017). Mientras no haya tocado esa comuna, se usa la lista global de
+ * siempre — así las ~346 comunas del país funcionan sin configurar ninguna.
+ *
+ * Con "Todas las comunas" (comunaId null) tampoco hay una comuna de la cual
+ * sacar la lista, así que se usa la global.
+ */
+export async function fetchCategorias(comunaId?: string | null): Promise<Categoria[]> {
+  if (comunaId) {
+    const propias = await fetchCategoriasDeComuna(comunaId);
+    if (propias) return propias;
+  }
+
   const { data, error } = await supabase
     .from('categorias')
     .select('id, nombre, icono, orden')
@@ -91,6 +108,40 @@ export async function fetchCategorias(): Promise<Categoria[]> {
 
   if (error) throw error;
   return data ?? [];
+}
+
+/**
+ * La lista propia de una comuna, o null si esa comuna todavía usa la global.
+ *
+ * Se distingue "sin personalizar" de "personalizada y vacía" con la marca
+ * `comunas.categorias_personalizadas`: sin ella, una comuna donde el admin
+ * quitó todas las categorías sería indistinguible de una recién creada y
+ * volvería a mostrar la lista global entera.
+ */
+async function fetchCategoriasDeComuna(comunaId: string): Promise<Categoria[] | null> {
+  const { data: comuna, error: errorComuna } = await supabase
+    .from('comunas')
+    .select('categorias_personalizadas')
+    .eq('id', comunaId)
+    .maybeSingle();
+
+  // Si falta la migración 0017, la columna no existe: el catálogo sigue
+  // funcionando con la lista global en vez de quedarse sin categorías.
+  if (errorComuna || !comuna?.categorias_personalizadas) return null;
+
+  const { data, error } = await supabase
+    .from('categorias_comuna')
+    .select('orden, categoria:categorias(id, nombre, icono)')
+    .eq('comuna_id', comunaId)
+    .eq('visible', true)
+    .order('orden', { ascending: true });
+
+  if (error) return null;
+
+  type Fila = { orden: number; categoria: { id: string; nombre: string; icono: string | null } | null };
+  return ((data as unknown as Fila[]) ?? [])
+    .filter((fila): fila is Fila & { categoria: NonNullable<Fila['categoria']> } => fila.categoria !== null)
+    .map((fila) => ({ ...fila.categoria, orden: fila.orden }));
 }
 
 type FetchPublicacionesParams = {
@@ -121,7 +172,7 @@ export async function fetchPublicaciones({
   let request = supabase
     .from('publicaciones')
     .select(
-      'id, titulo, descripcion, logo_url, telefono, destacado, categoria:categorias(nombre, icono), comuna:comunas(nombre), productos(nombre, precio, imagen_url, orden)',
+      'id, titulo, descripcion, logo_url, telefono, destacado, categoria_id, categoria:categorias(nombre, icono), comuna:comunas(nombre), productos(nombre, precio, imagen_url, orden)',
     )
     .eq('estado', 'aprobado')
     .is('deleted_at', null)
@@ -147,7 +198,7 @@ export async function fetchPublicacionDetalle(id: string): Promise<PublicacionDe
   const { data, error } = await supabase
     .from('publicaciones')
     .select(
-      'id, titulo, descripcion, logo_url, telefono, destacado, categoria:categorias(nombre), comuna:comunas(nombre), productos(id, nombre, descripcion, precio, imagen_url, orden)',
+      'id, titulo, descripcion, logo_url, telefono, destacado, categoria_id, categoria:categorias(nombre), comuna:comunas(nombre), productos(id, nombre, descripcion, precio, imagen_url, orden)',
     )
     .eq('id', id)
     .order('orden', { referencedTable: 'productos', ascending: true })
@@ -306,8 +357,11 @@ export async function actualizarProducto(
 }
 
 export async function eliminarProducto(id: string): Promise<void> {
-  const { error } = await supabase.from('productos').delete().eq('id', id);
+  const { data, error } = await supabase.from('productos').delete().eq('id', id).select('id, imagen_url');
   if (error) throw error;
+  // Igual que con los banners: sin esto, la foto del producto quedaría en el
+  // almacenamiento para siempre, sin que nadie pueda verla ni encontrarla.
+  await borrarImagenDeStorage('productos', (data?.[0]?.imagen_url as string | null) ?? null);
 }
 
 export type MiPerfil = {
@@ -447,6 +501,110 @@ export async function actualizarCategoriaActiva(id: string, activa: boolean): Pr
   if (error) throw error;
 }
 
+/**
+ * Guarda el orden manual que define el admin: `orden` pasa a ser la posición
+ * en la lista (1, 2, 3…). Las filas se actualizan todas a la vez, no una tras
+ * otra — son independientes, y en serie cada flecha tardaba varios segundos
+ * con la latencia del celular. Cada escritura se confirma pidiendo la fila de
+ * vuelta: con RLS, un UPDATE sin permiso "tiene éxito" igual pero no cambia
+ * nada.
+ */
+export async function guardarOrdenCategorias(idsEnOrden: string[]): Promise<void> {
+  const resultados = await Promise.all(
+    idsEnOrden.map((id, i) => supabase.from('categorias').update({ orden: i + 1 }).eq('id', id).select('id')),
+  );
+  for (const { data, error } of resultados) {
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('No se pudo guardar el orden. Revisa que tu cuenta sea de administrador.');
+    }
+  }
+}
+
+/** Categoría que recibe las publicaciones de las categorías que se eliminan. */
+export const CATEGORIA_OTRO = 'Otro';
+
+export async function contarPublicacionesDeCategoria(id: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('publicaciones')
+    .select('id', { count: 'exact', head: true })
+    .eq('categoria_id', id);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * Elimina una categoría sin dejar publicaciones huérfanas: antes de borrarla,
+ * todas sus publicaciones pasan a "Otro" (que se crea sola si todavía no
+ * existe). "Otro" en sí no se puede eliminar — es el destino de las demás.
+ *
+ * El orden importa: primero se mueven y recién después se borra. La columna
+ * `publicaciones.categoria_id` tiene una FK a categorías, así que si el paso
+ * de mover fallara, la base rechaza el borrado y no se pierde nada. Se mueven
+ * también las publicaciones eliminadas lógicamente (`deleted_at`), porque
+ * igual cuentan para esa FK.
+ *
+ * El borrado se confirma pidiendo la fila de vuelta: con RLS, un DELETE que
+ * no afecta nada devuelve "éxito" igual, y eso no debe pasar por eliminado.
+ */
+/**
+ * El id de la categoría "Otro", creándola si no existe y reactivándola si
+ * estaba apagada: va a recibir publicaciones y, oculta, quedarían invisibles
+ * para todos. Es el destino de lo que pierde su categoría, tanto al eliminar
+ * una categoría de toda la app como al quitarla de una comuna.
+ */
+export async function obtenerCategoriaOtro(): Promise<string> {
+  const { data: existente, error: buscarError } = await supabase
+    .from('categorias')
+    .select('id, activa')
+    .ilike('nombre', CATEGORIA_OTRO)
+    .limit(1)
+    .maybeSingle();
+  if (buscarError) throw buscarError;
+
+  if (existente?.id) {
+    if (existente.activa === false) {
+      const { error: activarError } = await supabase
+        .from('categorias')
+        .update({ activa: true })
+        .eq('id', existente.id);
+      if (activarError) throw activarError;
+    }
+    return existente.id as string;
+  }
+
+  const { data: creada, error: crearError } = await supabase
+    .from('categorias')
+    .insert({ nombre: CATEGORIA_OTRO, icono: '🛍️', orden: 999, activa: true })
+    .select('id')
+    .single();
+  if (crearError) throw crearError;
+  return creada.id as string;
+}
+
+export async function eliminarCategoria(id: string): Promise<void> {
+  const otroId = await obtenerCategoriaOtro();
+  if (otroId === id) {
+    throw new Error(`"${CATEGORIA_OTRO}" no se puede eliminar: ahí van las publicaciones de las categorías eliminadas.`);
+  }
+
+  const { error: moverError } = await supabase
+    .from('publicaciones')
+    .update({ categoria_id: otroId })
+    .eq('categoria_id', id);
+  if (moverError) throw moverError;
+
+  const { data: borradas, error: borrarError } = await supabase
+    .from('categorias')
+    .delete()
+    .eq('id', id)
+    .select('id');
+  if (borrarError) throw borrarError;
+  if (!borradas || borradas.length === 0) {
+    throw new Error('No se pudo eliminar la categoría. Revisa que tu cuenta sea de administrador.');
+  }
+}
+
 // ============================================================================
 // Banner de perfil — cada comerciante publica su propio banner
 // ============================================================================
@@ -455,6 +613,69 @@ export async function actualizarCategoriaActiva(id: string, activa: boolean): Pr
 // propósito. Cuando se conecte un proveedor real, `pagarBanner` deja de
 // existir tal cual: el pago se confirma desde un webhook del proveedor, no
 // desde la app — ver la nota en la migración 0012.
+export type BannerAdmin = {
+  id: string;
+  imagen_url: string;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  pagado: boolean;
+  autor: { nombre: string } | null;
+  comuna: { nombre: string } | null;
+};
+
+/**
+ * Banners que hoy se están mostrando en la app, para el panel admin. El
+ * filtro de "activo y vigente" va acá explícito: al admin, RLS le devuelve
+ * todos los banners (también vencidos y pendientes de pago), y sin este
+ * filtro la lista mezclaría banners que ya nadie ve.
+ */
+export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
+  const ahora = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('banners')
+    .select(
+      'id, imagen_url, fecha_inicio, fecha_fin, pagado, autor:profiles!banners_usuario_id_fkey(nombre), comuna:comunas(nombre)',
+    )
+    .eq('activo', true)
+    .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
+    .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}`)
+    .order('orden', { ascending: true });
+  if (error) throw error;
+  return (data as unknown as BannerAdmin[]) ?? [];
+}
+
+/**
+ * Borra del almacenamiento la imagen a la que apunta una URL pública nuestra.
+ * Es "mejor esfuerzo": si falla, no se interrumpe nada — la fila ya se borró
+ * y lo peor que pasa es que quede un archivo sin usar. Ignora URLs externas
+ * (por ejemplo las de prueba de placehold.co), que no viven en nuestro
+ * almacenamiento.
+ */
+async function borrarImagenDeStorage(bucket: 'logos' | 'productos' | 'banners', url: string | null) {
+  if (!url) return;
+  const marca = `/storage/v1/object/public/${bucket}/`;
+  const i = url.indexOf(marca);
+  if (i === -1) return;
+  try {
+    await supabase.storage.from(bucket).remove([url.slice(i + marca.length)]);
+  } catch {
+    // Sin ruido: no vale la pena fallar un borrado por un archivo suelto.
+  }
+}
+
+/**
+ * Se confirma pidiendo la fila de vuelta: con RLS, un DELETE sin permiso
+ * "tiene éxito" igual. Después se borra también la imagen: si solo se
+ * borrara la fila, el archivo quedaría para siempre ocupando espacio sin que
+ * nadie pueda verlo ni encontrarlo.
+ */
+export async function eliminarBanner(id: string): Promise<void> {
+  const { data, error } = await supabase.from('banners').delete().eq('id', id).select('id, imagen_url');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo eliminar el banner.');
+  await borrarImagenDeStorage('banners', data[0].imagen_url as string | null);
+}
+
 export const PRECIO_BANNER_POR_DIA = 500;
 
 export type MiBanner = {
@@ -605,4 +826,274 @@ export async function fetchMetricas(): Promise<MetricaPublicacion[]> {
 
   if (error) throw error;
   return (data as MetricaPublicacion[]) ?? [];
+}
+
+
+// ============================================================================
+// Administración por comuna — categorías propias y perfiles
+// ============================================================================
+// El admin recorre: comuna → sus categorías → los perfiles que publican en
+// esa categoría dentro de esa comuna. Ver migración 0017.
+
+/** Una categoría vista desde una comuna concreta. */
+export type CategoriaDeComuna = {
+  id: string;
+  nombre: string;
+  icono: string | null;
+  /** Se muestra en el catálogo de esta comuna. */
+  visible: boolean;
+  orden: number;
+};
+
+export type ConfigCategoriasComuna = {
+  /** false = esta comuna todavía muestra la lista global. */
+  personalizada: boolean;
+  categorias: CategoriaDeComuna[];
+};
+
+/**
+ * Las categorías de una comuna tal como las ve el admin: si la comuna no está
+ * personalizada, se le muestra la lista global (que es lo que sus usuarios
+ * están viendo) marcando que aún no es propia.
+ */
+export async function fetchConfigCategoriasComuna(comunaId: string): Promise<ConfigCategoriasComuna> {
+  const { data: comuna, error: errorComuna } = await supabase
+    .from('comunas')
+    .select('categorias_personalizadas')
+    .eq('id', comunaId)
+    .maybeSingle();
+  if (errorComuna) throw errorComuna;
+
+  if (!comuna?.categorias_personalizadas) {
+    const globales = await fetchCategoriasAdmin();
+    return {
+      personalizada: false,
+      categorias: globales.map((c) => ({
+        id: c.id,
+        nombre: c.nombre,
+        icono: c.icono,
+        visible: c.activa,
+        orden: c.orden,
+      })),
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('categorias_comuna')
+    .select('visible, orden, categoria:categorias(id, nombre, icono)')
+    .eq('comuna_id', comunaId)
+    .order('orden', { ascending: true });
+  if (error) throw error;
+
+  type Fila = { visible: boolean; orden: number; categoria: { id: string; nombre: string; icono: string | null } | null };
+  const categorias = ((data as unknown as Fila[]) ?? [])
+    .filter((fila): fila is Fila & { categoria: NonNullable<Fila['categoria']> } => fila.categoria !== null)
+    .map((fila) => ({ ...fila.categoria, visible: fila.visible, orden: fila.orden }));
+
+  return { personalizada: true, categorias };
+}
+
+/**
+ * Copia la lista global a esta comuna si todavía no tiene la suya. Se llama
+ * antes de cualquier cambio: hasta ese momento la comuna no tiene filas
+ * propias que modificar. Es idempotente (ver 0017).
+ */
+export async function personalizarComuna(comunaId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_personalizar_comuna', { p_comuna: comunaId });
+  if (error) throw error;
+}
+
+/** Ocultar / volver a mostrar una categoría en esta comuna. Reversible. */
+export async function actualizarVisibilidadCategoriaComuna(
+  comunaId: string,
+  categoriaId: string,
+  visible: boolean,
+): Promise<void> {
+  await personalizarComuna(comunaId);
+  const { data, error } = await supabase
+    .from('categorias_comuna')
+    .update({ visible })
+    .eq('comuna_id', comunaId)
+    .eq('categoria_id', categoriaId)
+    .select('categoria_id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo actualizar la categoría en esta comuna.');
+}
+
+/**
+ * Saca la categoría de esta comuna (sigue existiendo en las demás).
+ *
+ * Las publicaciones de esta comuna que estaban ahí se mueven a "Otro", igual
+ * que al eliminar una categoría de toda la app: si se dejaran apuntando a una
+ * categoría que la comuna ya no muestra, desaparecerían del catálogo sin que
+ * su dueño entienda por qué.
+ */
+export async function quitarCategoriaDeComuna(comunaId: string, categoriaId: string): Promise<void> {
+  await personalizarComuna(comunaId);
+
+  const otroId = await obtenerCategoriaOtro();
+  if (otroId === categoriaId) {
+    throw new Error(`"${CATEGORIA_OTRO}" no se puede quitar: ahí van las publicaciones de las categorías eliminadas.`);
+  }
+
+  const { error: moverError } = await supabase
+    .from('publicaciones')
+    .update({ categoria_id: otroId })
+    .eq('comuna_id', comunaId)
+    .eq('categoria_id', categoriaId);
+  if (moverError) throw moverError;
+
+  const { data, error } = await supabase
+    .from('categorias_comuna')
+    .delete()
+    .eq('comuna_id', comunaId)
+    .eq('categoria_id', categoriaId)
+    .select('categoria_id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo quitar la categoría de esta comuna.');
+}
+
+/** Agrega a esta comuna una categoría que ya existe en la app. */
+export async function agregarCategoriaAComuna(comunaId: string, categoriaId: string): Promise<void> {
+  await personalizarComuna(comunaId);
+
+  const { data: ultima } = await supabase
+    .from('categorias_comuna')
+    .select('orden')
+    .eq('comuna_id', comunaId)
+    .order('orden', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from('categorias_comuna')
+    .upsert(
+      { comuna_id: comunaId, categoria_id: categoriaId, visible: true, orden: (ultima?.orden ?? 0) + 1 },
+      { onConflict: 'comuna_id,categoria_id' },
+    );
+  if (error) throw error;
+}
+
+/**
+ * Crea una categoría que existe SOLO en esta comuna.
+ *
+ * Se crea en la lista global apagada (`activa: false`) y se enciende
+ * únicamente en esta comuna: así no aparece en las comunas que todavía usan
+ * la lista global, pero el admin puede agregarla a otra comuna cuando quiera
+ * — la categoría existe una sola vez y las publicaciones siempre apuntan a
+ * ella.
+ */
+export async function crearCategoriaEnComuna(
+  comunaId: string,
+  input: { nombre: string; icono: string | null },
+): Promise<void> {
+  await personalizarComuna(comunaId);
+
+  const { data: maxOrden } = await supabase
+    .from('categorias')
+    .select('orden')
+    .order('orden', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: creada, error } = await supabase
+    .from('categorias')
+    .insert({ nombre: input.nombre, icono: input.icono, orden: (maxOrden?.orden ?? 0) + 1, activa: false })
+    .select('id')
+    .single();
+  if (error) throw error;
+
+  await agregarCategoriaAComuna(comunaId, creada.id as string);
+}
+
+/** Guarda el orden de las categorías de esta comuna (▲ ▼ del panel). */
+export async function guardarOrdenCategoriasComuna(comunaId: string, idsEnOrden: string[]): Promise<void> {
+  await personalizarComuna(comunaId);
+  const resultados = await Promise.all(
+    idsEnOrden.map((categoriaId, indice) =>
+      supabase
+        .from('categorias_comuna')
+        .update({ orden: indice + 1 })
+        .eq('comuna_id', comunaId)
+        .eq('categoria_id', categoriaId),
+    ),
+  );
+  const fallo = resultados.find((r) => r.error);
+  if (fallo?.error) throw fallo.error;
+}
+
+// ------------------------------ Perfiles ------------------------------------
+
+export type PerfilEnCategoria = {
+  id: string;
+  nombre: string;
+  logo_url: string | null;
+  telefono_contacto: string | null;
+  rol: string;
+  /** false = oculto: no se ve él ni sus publicaciones en el catálogo. */
+  activo: boolean;
+  /** Cuántas publicaciones tiene en esta comuna y categoría. */
+  publicaciones: number;
+};
+
+/**
+ * Los perfiles que publican en esta categoría dentro de esta comuna.
+ *
+ * Un perfil no pertenece a una categoría: lo que tiene categoría es cada
+ * publicación. Así que la lista sale de sus publicaciones (las eliminadas no
+ * cuentan) y se agrupa por autor.
+ */
+export async function fetchPerfilesDeCategoria(comunaId: string, categoriaId: string): Promise<PerfilEnCategoria[]> {
+  const { data, error } = await supabase
+    .from('publicaciones')
+    .select('usuario_id, autor:profiles!publicaciones_usuario_id_fkey(id, nombre, logo_url, telefono_contacto, rol, activo)')
+    .eq('comuna_id', comunaId)
+    .eq('categoria_id', categoriaId)
+    .is('deleted_at', null);
+  if (error) throw error;
+
+  type Fila = { autor: Omit<PerfilEnCategoria, 'publicaciones'> | null };
+  const porPerfil = new Map<string, PerfilEnCategoria>();
+  for (const fila of (data as unknown as Fila[]) ?? []) {
+    if (!fila.autor) continue;
+    const existente = porPerfil.get(fila.autor.id);
+    if (existente) existente.publicaciones += 1;
+    else porPerfil.set(fila.autor.id, { ...fila.autor, publicaciones: 1 });
+  }
+  return [...porPerfil.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+/**
+ * Ocultar / volver a mostrar un perfil. Oculto, ni él ni sus publicaciones
+ * aparecen en el catálogo (lo aplica la base, ver 0017), pero la cuenta sigue
+ * intacta y se puede volver a mostrar con un toque.
+ */
+export async function actualizarVisibilidadPerfil(perfilId: string, activo: boolean): Promise<void> {
+  const { data, error } = await supabase.from('profiles').update({ activo }).eq('id', perfilId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('No se pudo actualizar el perfil. Revisa que tu cuenta sea de administrador.');
+  }
+}
+
+/**
+ * Elimina el perfil y todo lo suyo: cuenta, publicaciones y productos. No se
+ * puede deshacer — para algo temporal está "ocultar". Lo ejecuta una función
+ * de la base, porque borrar la cuenta de acceso no es algo que la app pueda
+ * hacer desde el teléfono (ver 0017).
+ */
+export async function eliminarPerfil(perfilId: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_eliminar_perfil', { p_perfil: perfilId });
+  if (error) throw error;
+}
+
+/** Elimina todas las publicaciones de un perfil, dejando la cuenta en pie. */
+export async function eliminarPublicacionesDePerfil(perfilId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('publicaciones')
+    .delete()
+    .eq('usuario_id', perfilId)
+    .select('id');
+  if (error) throw error;
+  return data?.length ?? 0;
 }

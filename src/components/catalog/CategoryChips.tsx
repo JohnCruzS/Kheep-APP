@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Colors, Fonts } from '@/constants/theme';
 import type { Categoria } from '@/lib/catalog';
 
 type Props = {
@@ -11,17 +11,13 @@ type Props = {
 };
 
 /**
- * Fila de categorías como texto plano (sin fondo de "chip") — la
- * seleccionada se resalta en rojo, tal como el mockup ("Delivery" en rojo,
- * el resto en blanco/gris).
+ * Fila de categorías como texto plano (sin fondo de "chip"), en Poppins
+ * Light como la plantilla: la seleccionada en rojo, el resto en blanco.
+ * Arranca más adentro que las tarjetas (sangría de la plantilla).
  */
 function CategoryChipsComponent({ categorias, selectedId, onSelect }: Props) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.container}>
-      <Tab label="Todas" active={selectedId === null} onPress={() => onSelect(null)} />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.container}>
       {categorias.map((categoria) => (
         <Tab
           key={categoria.id}
@@ -30,6 +26,8 @@ function CategoryChipsComponent({ categorias, selectedId, onSelect }: Props) {
           onPress={() => onSelect(categoria.id)}
         />
       ))}
+      {/* "Todas" va al final de la fila, no al principio (pedido del cliente). */}
+      <Tab label="Todas" active={selectedId === null} onPress={() => onSelect(null)} />
     </ScrollView>
   );
 }
@@ -46,18 +44,21 @@ function Tab({ label, active, onPress }: { label: string; active: boolean; onPre
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.four + 4,
-    paddingHorizontal: 2,
-    paddingBottom: Spacing.four,
-    paddingTop: Spacing.two,
+    gap: 24,
+    // Sin sangría propia: el contenedor del catálogo ya aplica el margen
+    // lateral de la rejilla (30 de 400), y las categorías deben alinearse
+    // con el borde del banner y de las tarjetas.
+    paddingHorizontal: 0,
     alignItems: 'center',
   },
   label: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 22,
-    color: '#E8E8E8',
+    fontFamily: Fonts.light,
+    fontSize: 21,
+    lineHeight: 30,
+    color: Colors.text,
   },
   labelActive: {
+    fontFamily: Fonts.light,
     color: Colors.accent,
   },
 });

@@ -1,3 +1,5 @@
+import { Dimensions } from 'react-native';
+
 /**
  * Paleta de marca de Kheep — fondo oscuro fijo (no adaptativo por sistema),
  * según la especificación visual: negro dominante, rojo de acento, tarjetas
@@ -46,16 +48,35 @@ export const Radius = {
 } as const;
 
 /**
- * "Baloo 2" — la tipografía redondeada y gruesa del mockup del cliente (el
- * mismo estilo que usan apps de delivery como Swiggy). Cada peso es un
- * archivo de fuente distinto, así que se usa en vez de `fontWeight` — mezclar
- * ambos en Android puede terminar aplicando un negrita sintético feo encima
- * del archivo ya negrita.
+ * "Poppins" — la tipografía de la plantilla del cliente. Light es la base de
+ * toda la app; los pesos más gruesos quedan solo para jerarquía (logo,
+ * títulos). Cada peso es un archivo de fuente distinto, así que se usa en vez
+ * de `fontWeight` — mezclar ambos en Android puede hacer que caiga a la
+ * fuente del sistema.
  */
 export const Fonts = {
-  regular: 'Baloo2_400Regular',
-  medium: 'Baloo2_500Medium',
-  semiBold: 'Baloo2_600SemiBold',
-  bold: 'Baloo2_700Bold',
-  extraBold: 'Baloo2_800ExtraBold',
+  light: 'Poppins_300Light',
+  regular: 'Poppins_400Regular',
+  medium: 'Poppins_500Medium',
+  semiBold: 'Poppins_600SemiBold',
+  bold: 'Poppins_700Bold',
+  extraBold: 'Poppins_800ExtraBold',
+} as const;
+
+/**
+ * Distribución en la rejilla base 100 del cliente: la pantalla mide 400, el
+ * contenido (banner y tarjetas) 340 — o sea 30 por lado — y el logo 120,
+ * centrado entre 110 y 110.
+ *
+ * Se guardan como proporción del ancho real del teléfono, no como píxeles
+ * fijos: así el reparto se mantiene igual en una pantalla chica y en una
+ * grande, que es el sentido de trabajar con esas medidas.
+ */
+const ANCHO_PANTALLA = Dimensions.get('window').width;
+
+export const Layout = {
+  /** 30 de 400 = 7,5% del ancho, a cada lado. */
+  catalogMargin: Math.round(ANCHO_PANTALLA * 0.075),
+  /** 120 de 400 = 30% del ancho. */
+  logoWidth: Math.round(ANCHO_PANTALLA * 0.3),
 } as const;

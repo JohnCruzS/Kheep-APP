@@ -2,11 +2,11 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { ImageViewer } from '@/components/catalog/ImageViewer';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { PublicacionDetalle, fetchPublicacionDetalle } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { contactarPorWhatsApp } from '@/lib/whatsapp';
@@ -14,6 +14,9 @@ import { contactarPorWhatsApp } from '@/lib/whatsapp';
 export default function PublicacionDetalleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  // La barra de 3 botones de Android se dibuja encima de la app: el botón
+  // de WhatsApp (fijo abajo) debe quedar por sobre ella para poder tocarse.
+  const insets = useSafeAreaInsets();
 
   const [publicacion, setPublicacion] = useState<PublicacionDetalle | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +75,7 @@ export default function PublicacionDetalleScreen() {
       )}
 
       {!loading && !error && publicacion && (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}>
           {publicacion.logo_url ? (
             <Pressable onPress={() => setViewerIndex(0)}>
               <Image source={{ uri: publicacion.logo_url }} style={styles.hero} contentFit="cover" />
@@ -120,7 +123,7 @@ export default function PublicacionDetalleScreen() {
       )}
 
       {!loading && !error && publicacion && (
-        <View style={styles.ctaBar}>
+        <View style={[styles.ctaBar, { paddingBottom: Spacing.three + insets.bottom }]}>
           <Pressable
             onPress={handleContact}
             disabled={contacting}
@@ -153,9 +156,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   backLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '600',
   },
   content: {
     paddingBottom: 120,
@@ -178,22 +181,24 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   title: {
+    fontFamily: Fonts.bold,
     flexShrink: 1,
     fontSize: 22,
-    fontWeight: '800',
     color: Colors.text,
   },
   destacado: {
+    fontFamily: Fonts.semiBold,
     fontSize: 12,
-    fontWeight: '700',
     color: Colors.accent,
     marginTop: 4,
   },
   subtitle: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     color: Colors.textMuted,
   },
   description: {
+    fontFamily: Fonts.light,
     fontSize: 14,
     lineHeight: 21,
     color: Colors.text,
@@ -203,8 +208,8 @@ const styles = StyleSheet.create({
     marginTop: Spacing.four,
   },
   sectionLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: 11,
-    fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.textMuted,
     marginBottom: Spacing.two,
@@ -227,11 +232,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   productName: {
+    fontFamily: Fonts.medium,
     fontSize: 12,
-    fontWeight: '600',
     color: Colors.text,
   },
   productPrice: {
+    fontFamily: Fonts.light,
     fontSize: 12,
     color: Colors.textMuted,
     marginTop: 1,
@@ -257,8 +263,8 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   ctaLabel: {
+    fontFamily: Fonts.semiBold,
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '700',
   },
 });

@@ -1,8 +1,12 @@
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ImageViewer } from '@/components/catalog/ImageViewer';
 import { Button } from '@/components/ui/Button';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
@@ -28,14 +32,16 @@ export default function PerfilScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.logo}>
-          <Text style={styles.logoAccent}>Kh</Text>eep
-        </Text>
+        <BrandLogo height={29} />
         <Text style={styles.eyebrow}>Perfil</Text>
       </View>
 
+      {/* Desplazable: en pantallas más chicas el contenido no cabe entero y
+          el botón de cerrar sesión quedaba cortado bajo la barra de abajo. */}
       <View style={styles.card}>
-        <AccountView profile={profile} email={session.user.email} />
+        <ScrollView contentContainerStyle={styles.cardContent} showsVerticalScrollIndicator={false}>
+          <AccountView profile={profile} email={session.user.email} />
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -50,6 +56,7 @@ function AccountView({
   email: string | undefined;
 }) {
   const router = useRouter();
+  const [verFoto, setVerFoto] = useState(false);
 
   const nivelLabel = profile.rol === 'admin' ? 'Administrador' : profile.nivel === 2 ? 'Verificado' : 'En revisión';
   const nivelStyle =
@@ -57,7 +64,25 @@ function AccountView({
 
   return (
     <View style={styles.account}>
-      <View style={styles.avatarPlaceholder} />
+      {/* Al tocar la foto se abre completa; sin foto no hay nada que ampliar. */}
+      {profile.logo_url ? (
+        <Pressable
+          onPress={() => setVerFoto(true)}
+          accessibilityRole="imagebutton"
+          accessibilityLabel="Ver foto de perfil">
+          <Image source={{ uri: profile.logo_url }} style={styles.avatarImage} contentFit="cover" />
+        </Pressable>
+      ) : (
+        <View style={styles.avatarPlaceholder} />
+      )}
+      {profile.logo_url ? (
+        <ImageViewer
+          images={[profile.logo_url]}
+          visible={verFoto}
+          initialIndex={0}
+          onClose={() => setVerFoto(false)}
+        />
+      ) : null}
       <Text style={styles.accountName}>{profile.nombre}</Text>
       <View style={[styles.badge, nivelStyle]}>
         <Text style={styles.badgeLabel}>{nivelLabel}</Text>
@@ -125,15 +150,8 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four,
     paddingBottom: Spacing.four,
   },
-  logo: {
-    fontFamily: Fonts.extraBold,
-    fontSize: 26,
-    color: Colors.text,
-  },
-  logoAccent: {
-    color: Colors.accent,
-  },
   eyebrow: {
+    fontFamily: Fonts.light,
     marginTop: 2,
     fontSize: 13,
     color: Colors.textMuted,
@@ -143,8 +161,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
+  },
+  cardContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.five,
+    paddingBottom: Spacing.six,
   },
   avatarPlaceholder: {
     width: 72,
@@ -152,13 +173,18 @@ const styles = StyleSheet.create({
     borderRadius: Radius.avatar,
     backgroundColor: '#D9D9D9',
   },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.avatar,
+  },
   account: {
     alignItems: 'center',
   },
   accountName: {
+    fontFamily: Fonts.bold,
     marginTop: Spacing.three,
     fontSize: 19,
-    fontWeight: '800',
     color: Colors.cardText,
   },
   badge: {
@@ -168,8 +194,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   badgeLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: 11.5,
-    fontWeight: '700',
   },
   badgeRevision: {
     backgroundColor: Colors.warningBg,
@@ -193,15 +219,17 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   infoLabel: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     color: Colors.cardTextMuted,
   },
   infoValue: {
+    fontFamily: Fonts.medium,
     fontSize: 13,
-    fontWeight: '600',
     color: Colors.cardText,
   },
   hintText: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.four,
     fontSize: 12.5,
     lineHeight: 18,
@@ -224,11 +252,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   adminRowLabel: {
+    fontFamily: Fonts.medium,
     fontSize: 14,
-    fontWeight: '600',
     color: Colors.cardText,
   },
   adminRowArrow: {
+    fontFamily: Fonts.light,
     fontSize: 18,
     color: Colors.cardTextMuted,
   },

@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { fetchPublicacionesPendientes } from '@/lib/catalog';
 import { useSession } from '@/providers/SessionProvider';
@@ -35,9 +36,7 @@ export default function AdminScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.logo}>
-          <Text style={styles.logoAccent}>Kh</Text>eep
-        </Text>
+        <BrandLogo height={29} />
         <Text style={styles.eyebrow}>Panel de administración</Text>
       </View>
 
@@ -54,6 +53,8 @@ export default function AdminScreen() {
         <Text style={[styles.sectionLabel, { marginTop: Spacing.five }]}>VITRINA</Text>
         <AdminRow icon="📍" label="Comunas" onPress={() => router.push('/(app)/admin/comunas')} />
         <AdminRow icon="🏷️" label="Categorías" onPress={() => router.push('/(app)/admin/categorias')} />
+        <AdminRow icon="🎨" label="Logo de la app" onPress={() => router.push('/(app)/admin/logos')} />
+        <AdminRow icon="🖼️" label="Banners activos" onPress={() => router.push('/(app)/admin/banners')} />
       </View>
     </SafeAreaView>
   );
@@ -94,15 +95,8 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four,
     paddingBottom: Spacing.four,
   },
-  logo: {
-    fontFamily: Fonts.extraBold,
-    fontSize: 26,
-    color: Colors.text,
-  },
-  logoAccent: {
-    color: Colors.accent,
-  },
   eyebrow: {
+    fontFamily: Fonts.light,
     marginTop: 2,
     fontSize: 13,
     color: Colors.textMuted,
@@ -112,8 +106,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   sectionLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: 11,
-    fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.textMuted,
     marginBottom: Spacing.two,
@@ -130,12 +124,13 @@ const styles = StyleSheet.create({
     borderColor: Colors.surfaceBorder,
   },
   rowIcon: {
+    fontFamily: Fonts.light,
     fontSize: 18,
   },
   rowLabel: {
+    fontFamily: Fonts.medium,
     flex: 1,
     fontSize: 14.5,
-    fontWeight: '600',
     color: Colors.text,
   },
   badge: {
@@ -148,11 +143,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   badgeLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: 11.5,
-    fontWeight: '700',
     color: '#FFFFFF',
   },
   rowArrow: {
+    fontFamily: Fonts.light,
     fontSize: 18,
     color: Colors.textMuted,
   },

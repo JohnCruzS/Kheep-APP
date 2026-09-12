@@ -74,13 +74,15 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   label: {
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.medium,
     fontSize: 18,
   },
   labelPrimary: {
+    fontFamily: Fonts.light,
     color: '#FFFFFF',
   },
   labelSecondary: {
+    fontFamily: Fonts.light,
     color: '#FFFFFF',
   },
 });

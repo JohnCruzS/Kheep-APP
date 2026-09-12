@@ -3,25 +3,48 @@ import * as Location from 'expo-location';
 import type { Comuna } from '@/lib/catalog';
 import { normalizarTexto } from '@/lib/text';
 
+/** ¿Ya está concedido el permiso? No abre ningún diálogo. */
+export async function tienePermisoUbicacion(): Promise<boolean> {
+  try {
+    const { status } = await Location.getForegroundPermissionsAsync();
+    return status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Detecta en qué comuna está el usuario ahora mismo, para preseleccionarla
- * en el catálogo — nunca reemplaza la elección manual del selector, solo la
- * sugiere la primera vez. Si el usuario no da permiso, no hay GPS, o la
- * comuna detectada no calza con ninguna de nuestra lista (puede pasar fuera
- * de Chile, o con nombres que el proveedor de mapas arma distinto), se
- * devuelve `null` en silencio — la app sigue funcionando con "Todas las
- * comunas" como hasta ahora, no es un error visible para nadie.
+ * Pide el permiso de ubicación y responde si quedó concedido.
+ *
+ * Está separado de la detección a propósito: la pantalla de bienvenida
+ * necesita saber la respuesta del usuario para elegir el camino (identificar
+ * su comuna, o mandarlo a elegirla a mano) y no puede hacerlo si el permiso
+ * se pide escondido dentro de la búsqueda de coordenadas. Android solo
+ * muestra el diálogo la primera vez; después responde al instante con lo que
+ * el usuario decidió entonces.
+ */
+export async function pedirPermisoUbicacion(): Promise<boolean> {
+  try {
+    if (await tienePermisoUbicacion()) return true;
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    return status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detecta en qué comuna está el usuario ahora mismo. Si no hay permiso, no
+ * hay GPS, o la comuna detectada no calza con ninguna de nuestra lista (puede
+ * pasar fuera de Chile, o con nombres que el proveedor de mapas arma
+ * distinto), devuelve `null` en silencio: quien llama decide qué hacer —
+ * hoy, mandar al usuario a elegir su comuna a mano.
+ *
+ * No pide el permiso: eso lo hace `pedirPermisoUbicacion()` antes.
  */
 export async function detectarComunaActual(comunas: Comuna[]): Promise<string | null> {
   try {
-    const permisoActual = await Location.getForegroundPermissionsAsync();
-    let concedido = permisoActual.status === 'granted';
-
-    if (!concedido) {
-      const solicitado = await Location.requestForegroundPermissionsAsync();
-      concedido = solicitado.status === 'granted';
-    }
-    if (!concedido) return null;
+    if (!(await tienePermisoUbicacion())) return null;
 
     // `Accuracy.Low` usa el proveedor de red, que en el emulador casi nunca
     // responde; `Balanced` sí usa GPS. Además, un límite de tiempo: el GPS

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
 import { normalizarTexto } from '@/lib/text';
 
@@ -103,14 +103,17 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   value: {
+    fontFamily: Fonts.light,
     fontSize: 16,
     color: Colors.cardText,
   },
   placeholder: {
+    fontFamily: Fonts.light,
     fontSize: 16,
     color: Colors.placeholder,
   },
   chevron: {
+    fontFamily: Fonts.light,
     color: Colors.textMuted,
   },
   backdrop: {
@@ -127,12 +130,13 @@ const styles = StyleSheet.create({
     height: '75%',
   },
   sheetTitle: {
+    fontFamily: Fonts.semiBold,
     fontSize: 17,
-    fontWeight: '700',
     color: Colors.cardText,
     marginBottom: Spacing.three,
   },
   buscador: {
+    fontFamily: Fonts.light,
     backgroundColor: '#F1F1F1',
     borderRadius: 12,
     paddingHorizontal: Spacing.three,
@@ -150,18 +154,20 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.inputBorder,
   },
   optionLabel: {
+    fontFamily: Fonts.light,
     fontSize: 15,
     color: Colors.cardText,
   },
   optionLabelActive: {
+    fontFamily: Fonts.semiBold,
     color: Colors.accent,
-    fontWeight: '700',
   },
   check: {
+    fontFamily: Fonts.semiBold,
     color: Colors.accent,
-    fontWeight: '700',
   },
   sinResultados: {
+    fontFamily: Fonts.light,
     paddingVertical: Spacing.four,
     textAlign: 'center',
     color: Colors.cardTextMuted,

@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Colors, Fonts } from '@/constants/theme';
 import type { PublicacionResumen } from '@/lib/catalog';
 
 type Props = {
@@ -12,16 +12,16 @@ type Props = {
 
 /**
  * Envuelta en `memo`: en una lista de 20-30 comercios, sin esto React vuelve
- * a renderizar TODAS las tarjetas cada vez que cambia algo arriba (escribir
- * en el buscador, abrir el selector de comuna) aunque los datos de cada
- * tarjeta no hayan cambiado — se nota como "tirones" al hacer scroll justo
- * después de tocar algo. `onPress` en el padre está memoizado con
- * useCallback para que esta comparación funcione de verdad.
+ * a renderizar TODAS las tarjetas cada vez que cambia algo arriba (tocar una
+ * categoría, abrir el selector de comuna) aunque sus datos no hayan cambiado.
+ * `onPress` en el padre está memoizado con useCallback para que la
+ * comparación funcione de verdad.
  *
- * Layout según el mockup del cliente: panel blanco angosto a la izquierda
- * con el icono de la categoría en un círculo rojo, y a la derecha una
- * tarjeta negra con el título arriba, la foto del producto grande al medio
- * y nombre + precio abajo.
+ * Layout según la plantilla del cliente: una sola tarjeta de esquinas
+ * redondeadas, con un panel blanco angosto a la izquierda — el ícono de la
+ * categoría arriba (no centrado) con una sombra suave debajo, como si
+ * flotara — y el panel negro con título, foto del producto al centro y
+ * nombre + precio abajo, todo en Poppins.
  */
 function PublicacionCardComponent({ publicacion, onPress }: Props) {
   const producto = useMemo(
@@ -37,6 +37,7 @@ function PublicacionCardComponent({ publicacion, onPress }: Props) {
         <View style={styles.iconCircle}>
           <Text style={styles.iconGlyph}>{icono}</Text>
         </View>
+        <View style={styles.iconShadow} />
       </View>
 
       <View style={styles.contentPanel}>
@@ -49,7 +50,7 @@ function PublicacionCardComponent({ publicacion, onPress }: Props) {
 
         <View style={styles.imageWrap}>
           {producto?.imagen_url ? (
-            <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="cover" />
+            <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="contain" />
           ) : (
             <View style={[styles.productImage, styles.productImageFallback]} />
           )}
@@ -60,7 +61,7 @@ function PublicacionCardComponent({ publicacion, onPress }: Props) {
             <Text style={styles.productName} numberOfLines={1}>
               {producto.nombre}
             </Text>
-            <Text style={styles.price}>${producto.precio.toLocaleString('es-CL')}</Text>
+            <Text style={styles.price}>$ {producto.precio.toLocaleString('es-CL')}</Text>
           </View>
         )}
       </View>
@@ -73,32 +74,46 @@ export const PublicacionCard = memo(PublicacionCardComponent);
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    height: 340,
+    height: 218,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#0D0D0D',
   },
   pressed: {
     opacity: 0.9,
   },
   iconPanel: {
-    width: '30%',
+    width: '23%',
     backgroundColor: Colors.card,
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingTop: 10,
   },
   iconCircle: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     backgroundColor: Colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconGlyph: {
-    fontSize: 34,
+    fontFamily: Fonts.light,
+    fontSize: 28,
+  },
+  // "Sombra en el piso" debajo del círculo: una elipse que se desvanece hacia
+  // los bordes. `radial-gradient` viene en el core de React Native 0.86.
+  iconShadow: {
+    width: 46,
+    height: 12,
+    marginTop: 6,
+    experimental_backgroundImage: 'radial-gradient(ellipse closest-side, rgba(0,0,0,0.30), rgba(0,0,0,0))',
   },
   contentPanel: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
-    padding: Spacing.four,
+    paddingTop: 18,
+    paddingLeft: 19,
+    paddingRight: 12,
+    paddingBottom: 14,
   },
   titleRow: {
     flexDirection: 'row',
@@ -107,11 +122,13 @@ const styles = StyleSheet.create({
   },
   title: {
     flexShrink: 1,
-    fontFamily: Fonts.extraBold,
-    fontSize: 26,
+    fontFamily: Fonts.medium,
+    fontSize: 24,
+    lineHeight: 32,
     color: Colors.text,
   },
   destacado: {
+    fontFamily: Fonts.light,
     fontSize: 14,
     color: Colors.accent,
   },
@@ -119,15 +136,15 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: Spacing.three,
+    marginVertical: 6,
   },
   productImage: {
-    width: '100%',
+    width: '72%',
     height: '100%',
-    borderRadius: 0,
   },
   productImageFallback: {
     backgroundColor: Colors.surface,
+    borderRadius: 6,
   },
   bottomRow: {
     flexDirection: 'row',
@@ -135,13 +152,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   productName: {
-    fontFamily: Fonts.medium,
-    fontSize: 18,
-    color: '#8A8A90',
+    flexShrink: 1,
+    fontFamily: Fonts.light,
+    fontSize: 20,
+    lineHeight: 26,
+    color: Colors.text,
   },
   price: {
-    fontFamily: Fonts.bold,
+    marginLeft: 8,
+    fontFamily: Fonts.light,
     fontSize: 20,
+    lineHeight: 26,
     color: Colors.text,
   },
 });

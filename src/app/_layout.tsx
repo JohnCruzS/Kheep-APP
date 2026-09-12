@@ -1,26 +1,29 @@
 import {
-  Baloo2_400Regular,
-  Baloo2_500Medium,
-  Baloo2_600SemiBold,
-  Baloo2_700Bold,
-  Baloo2_800ExtraBold,
+  Poppins_300Light,
+  Poppins_400Regular,
+  Poppins_500Medium,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+  Poppins_800ExtraBold,
   useFonts,
-} from '@expo-google-fonts/baloo-2';
+} from '@expo-google-fonts/poppins';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { SessionProvider, useSession } from '@/providers/SessionProvider';
+import { UbicacionProvider } from '@/providers/UbicacionProvider';
 
 function RootNavigator() {
   const { isLoading } = useSession();
   const [fontsLoaded] = useFonts({
-    Baloo2_400Regular,
-    Baloo2_500Medium,
-    Baloo2_600SemiBold,
-    Baloo2_700Bold,
-    Baloo2_800ExtraBold,
+    Poppins_300Light,
+    Poppins_400Regular,
+    Poppins_500Medium,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+    Poppins_800ExtraBold,
   });
 
   if (isLoading || !fontsLoaded) {
@@ -42,7 +45,9 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <SessionProvider>
-      <RootNavigator />
+      <UbicacionProvider>
+        <RootNavigator />
+      </UbicacionProvider>
     </SessionProvider>
   );
 }

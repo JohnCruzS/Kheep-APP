@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.light,
     fontSize: 18,
     color: Colors.cardText,
     paddingBottom: Spacing.two,
@@ -79,11 +79,13 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   error: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.one,
     fontSize: 12,
     color: Colors.danger,
   },
   hint: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.one,
     fontSize: 12,
     color: Colors.textMuted,

@@ -61,7 +61,7 @@ export default function LoginScreen() {
       />
 
       {error ? (
-        <Text style={{ fontFamily: Fonts.medium, color: Colors.danger, marginTop: Spacing.three }}>{error}</Text>
+        <Text style={{ fontFamily: Fonts.light, color: Colors.danger, marginTop: Spacing.three }}>{error}</Text>
       ) : (
         // Respiro entre el último campo y los botones, como en el mockup.
         <View style={{ height: Spacing.three }} />
@@ -72,7 +72,7 @@ export default function LoginScreen() {
 
       <Link href="/(auth)/forgot-password" asChild>
         <Pressable style={{ marginTop: Spacing.four, alignItems: 'center' }}>
-          <Text style={{ fontFamily: Fonts.medium, fontSize: 15, color: Colors.textMuted }}>
+          <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: Colors.textMuted }}>
             Olvidaste tu contraseña
           </Text>
         </Pressable>
@@ -84,7 +84,7 @@ export default function LoginScreen() {
       <Pressable
         onPress={() => router.replace('/(app)/(tabs)/dashboard')}
         style={{ marginTop: Spacing.three, alignItems: 'center' }}>
-        <Text style={{ fontFamily: Fonts.medium, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
+        <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
       </Pressable>
     </AuthCard>
   );

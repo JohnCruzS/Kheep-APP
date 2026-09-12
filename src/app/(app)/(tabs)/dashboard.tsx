@@ -1,14 +1,16 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BannerCarousel } from '@/components/catalog/BannerCarousel';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { CategoryChips } from '@/components/catalog/CategoryChips';
 import { ComunaPicker } from '@/components/catalog/ComunaPicker';
 import { PublicacionCard } from '@/components/catalog/PublicacionCard';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { BrandLogo } from '@/components/ui/BrandLogo';
+import { invalidarMarca } from '@/lib/marca';
+import { Colors, Layout, Spacing } from '@/constants/theme';
 import {
   Banner,
   Categoria,
@@ -20,12 +22,23 @@ import {
   fetchPublicaciones,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
-import { detectarComunaActual } from '@/lib/location';
+import { leerUsoCategorias, ordenarPorUso, registrarUsoCategoria } from '@/lib/preferencias';
 import { useSession } from '@/providers/SessionProvider';
+import { useUbicacion } from '@/providers/UbicacionProvider';
+
+/**
+ * Cuánto se mete la primera tarjeta dentro de la zona negra: en la plantilla
+ * el negro no termina donde empieza la tarjeta, sino ~41dp más abajo, así la
+ * tarjeta queda "montada" sobre el cambio de fondo negro → gris.
+ */
+const SOLAPE_TARJETA = 41;
+/** Espacio entre la fila de categorías y el borde superior de la tarjeta. */
+const ESPACIO_CATEGORIAS_TARJETA = 21;
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { session } = useSession();
+  const insets = useSafeAreaInsets();
 
   // Datos "de vitrina": banners, categorías y comunas casi no cambian
   // sesión a sesión — se piden UNA vez al entrar, nunca de nuevo solo
@@ -39,41 +52,92 @@ export default function DashboardScreen() {
 
   const [publicaciones, setPublicaciones] = useState<PublicacionResumen[]>([]);
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
-  const [comunaId, setComunaId] = useState<string | null>(null);
+  // La comuna no es estado de esta pantalla: se resolvió antes de entrar (en
+  // la bienvenida) y queda guardada en el teléfono, así que al volver a abrir
+  // la app el catálogo ya arranca en la comuna del usuario.
+  const { comunaId, elegirComuna } = useUbicacion();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Si el usuario ya tocó el selector de comuna con su propio dedo, la
-  // detección automática por GPS (que puede tardar unos segundos en
-  // resolver) no debe pisarle la elección cuando llegue.
-  const comunaElegidaAMano = useRef(false);
+  const publicacionesRef = useRef<PublicacionResumen[]>([]);
 
-  // Vitrina: se carga una sola vez al montar la pantalla.
-  useEffect(() => {
-    Promise.all([fetchBanners(), fetchCategorias(), fetchComunas()])
-      .then(([bannersData, categoriasData, comunasData]) => {
-        setBanners(bannersData);
-        setCategorias(categoriasData);
-        setComunas(comunasData);
-
-        // Identificar la zona del usuario es "mejor esfuerzo": si no da
-        // permiso de ubicación, o su comuna no calza con la lista, el
-        // catálogo se queda tal cual (con "Todas las comunas"), nunca
-        // bloquea ni muestra error.
-        detectarComunaActual(comunasData).then((detectadaId) => {
-          if (detectadaId && !comunaElegidaAMano.current) {
-            setComunaId(detectadaId);
-          }
-        });
-      })
-      .catch((err) => setError(getErrorMessage(err, 'Error desconocido.')));
+  // Banners: se vuelven a pedir cada vez que se regresa a Inicio. La
+  // pestaña queda montada todo el tiempo, y mientras tanto el admin puede
+  // eliminar un banner (o un comerciante activar uno nuevo): si se pidieran
+  // una sola vez, el carrusel seguiría mostrando los viejos hasta cerrar la
+  // app. Es una sola consulta liviana.
+  const recargarBanners = useCallback(() => {
+    // De paso se vuelve a preguntar por el título: así el logo especial que
+    // programó el admin (y el tamaño que le puso) llega al resto de los
+    // usuarios sin que tengan que cerrar y abrir la app, y el que vence hoy
+    // desaparece solo.
+    invalidarMarca();
+    fetchBanners()
+      .then(setBanners)
+      .catch(() => {
+        // Si falla, se queda con los que ya tenía: no vale la pena un error visible.
+      });
   }, []);
+  useFocusEffect(recargarBanners);
 
-  const handleSeleccionarComuna = useCallback((id: string | null) => {
-    comunaElegidaAMano.current = true;
-    setComunaId(id);
+  // Categorías: igual que los banners, se vuelven a pedir cada vez que se
+  // regresa a Inicio. La pestaña queda montada todo el tiempo y mientras
+  // tanto el admin puede crear o eliminar una categoría; si se pidieran una
+  // sola vez, la eliminada seguiría apareciendo en el catálogo hasta cerrar
+  // la app. El orden que ya se está mostrando se conserva —reordenar en vivo
+  // movería un chip justo debajo del dedo—: las nuevas entran al final y las
+  // eliminadas simplemente desaparecen.
+  const ordenMostrado = useRef<string[] | null>(null);
+  const recargarCategorias = useCallback(() => {
+    Promise.all([fetchCategorias(comunaId), leerUsoCategorias()])
+      .then(([categoriasData, uso]) => {
+        const previo = ordenMostrado.current;
+        const ordenadas = previo
+          ? [
+              ...previo
+                .map((id) => categoriasData.find((c) => c.id === id))
+                .filter((c): c is Categoria => c !== undefined),
+              ...categoriasData.filter((c) => !previo.includes(c.id)),
+            ]
+          : // Primera carga: orden del admin + las más usadas por este usuario.
+            ordenarPorUso(categoriasData, uso);
+        ordenMostrado.current = ordenadas.map((c) => c.id);
+        setCategorias(ordenadas);
+        // Si el filtro activo era la categoría recién eliminada, el catálogo
+        // quedaría vacío para siempre: se vuelve a "Todas".
+        setCategoriaId((actual) => (actual && !ordenadas.some((c) => c.id === actual) ? null : actual));
+      })
+      .catch(() => {
+        // Se queda con las que ya tenía; un catálogo sin chips no es un error
+        // que valga la pena mostrarle al usuario.
+      });
+  }, [comunaId]);
+  useFocusEffect(recargarCategorias);
+
+  // Cada comuna puede tener su propia lista de categorías (el admin la arma
+  // comuna por comuna), así que al cambiar de comuna hay que pedirla de
+  // nuevo. El orden mostrado se descarta: es el de la lista anterior y
+  // conservarlo dejaría arriba categorías que esta comuna ni siquiera tiene.
+  const primeraCarga = useRef(true);
+  useEffect(() => {
+    if (primeraCarga.current) {
+      primeraCarga.current = false;
+      return;
+    }
+    ordenMostrado.current = null;
+    setCategoriaId(null);
+    recargarCategorias();
+  }, [comunaId, recargarCategorias]);
+
+  // Comunas: una sola vez al montar (las administra el admin y casi no
+  // cambian). Solo para llenar el selector del encabezado — cuál está
+  // elegida ya se decidió en la bienvenida.
+  useEffect(() => {
+    fetchComunas()
+      .then(setComunas)
+      .catch((err) => setError(getErrorMessage(err, 'Error desconocido.')));
   }, []);
 
   // Publicaciones: se cargan de nuevo cada vez (y solo) que cambia un
@@ -84,6 +148,7 @@ export default function DashboardScreen() {
       setError(null);
       try {
         const data = await fetchPublicaciones({ categoriaId, comunaId });
+        publicacionesRef.current = data;
         setPublicaciones(data);
       } catch (err) {
         setError(getErrorMessage(err, 'Error desconocido.'));
@@ -98,10 +163,21 @@ export default function DashboardScreen() {
     loadPublicaciones();
   }, [loadPublicaciones]);
 
+  // Abrir una publicación también cuenta como interés en su categoría. Se
+  // busca en una ref (no en el estado) para que este callback no cambie con
+  // cada carga y las tarjetas memoizadas no se vuelvan a dibujar.
   const handleOpenPublicacion = useCallback(
-    (id: string) => router.push({ pathname: '/(app)/publicacion/[id]', params: { id } }),
+    (id: string) => {
+      registrarUsoCategoria(publicacionesRef.current.find((p) => p.id === id)?.categoria_id);
+      router.push({ pathname: '/(app)/publicacion/[id]', params: { id } });
+    },
     [router],
   );
+
+  const handleSeleccionarCategoria = useCallback((id: string | null) => {
+    registrarUsoCategoria(id);
+    setCategoriaId(id);
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: PublicacionResumen }) => <PublicacionCard publicacion={item} onPress={handleOpenPublicacion} />,
@@ -110,67 +186,85 @@ export default function DashboardScreen() {
 
   const keyExtractor = useCallback((item: PublicacionResumen) => item.id, []);
 
+  // El solape solo tiene sentido si hay tarjetas; con la lista cargando,
+  // vacía o con error, el negro termina normal y no tapa esos mensajes.
+  const solapar = !loading && !error && publicaciones.length > 0;
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <FlatList
-        style={styles.list}
-        data={loading || error ? [] : publicaciones}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
-        onRefresh={() => loadPublicaciones({ isRefresh: true })}
-        refreshing={refreshing}
-        renderItem={renderItem}
-        // La lista rara vez pasa de 20-30 tarjetas en una comuna, pero estos
-        // ajustes evitan que React Native intente montar/medir de más de
-        // una vez — es lo que se nota como scroll "fluido" de verdad.
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
-        windowSize={7}
-        removeClippedSubviews
-        ItemSeparatorComponent={ItemSeparator}
-        ListHeaderComponent={
-          <View>
-            <View style={styles.blackHeader}>
-              <View style={styles.header}>
-                {/* Sin sesión el logo es el acceso a la cuenta: no hay barra
-                    inferior que lleve a "Perfil". Con sesión no hace falta,
-                    porque la barra ya está ahí. */}
-                {session ? (
-                  <Text style={styles.logo}>
-                    <Text style={styles.logoAccent}>Kh</Text>eep
-                  </Text>
-                ) : (
-                  <Pressable
-                    onPress={() => router.push('/(auth)/login')}
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel="Iniciar sesión o crear cuenta">
-                    <Text style={styles.logo}>
-                      <Text style={styles.logoAccent}>Kh</Text>eep
-                    </Text>
-                  </Pressable>
-                )}
-                <ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={handleSeleccionarComuna} />
-              </View>
+    <View style={styles.screen}>
+      {/* Encabezado fijo: logo, comuna, banner y categorías no se mueven.
+          Lo único que se desplaza es la lista de publicaciones, que pasa por
+          debajo de ellos. */}
+      <SafeAreaView
+        edges={['top']}
+        style={[
+          styles.encabezado,
+          { paddingBottom: ESPACIO_CATEGORIAS_TARJETA + (solapar ? SOLAPE_TARJETA : 0) },
+        ]}>
+        <View style={styles.header}>
+          {/* Sin sesión el logo es el acceso a la cuenta: no hay barra
+              inferior que lleve a "Perfil". Con sesión no hace falta,
+              porque la barra ya está ahí. */}
+          {session ? (
+            <BrandLogo />
+          ) : (
+            <Pressable
+              onPress={() => router.push('/(auth)/login')}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Iniciar sesión o crear cuenta">
+              <BrandLogo />
+            </Pressable>
+          )}
+          <ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={elegirComuna} />
+        </View>
 
-              <BannerCarousel banners={banners} />
-              <CategoryChips categorias={categorias} selectedId={categoriaId} onSelect={setCategoriaId} />
-            </View>
+        {/* La key cambia si cambia la lista: el carrusel parte de cero en vez
+            de quedar apuntando a un banner que ya no existe. */}
+        <BannerCarousel key={banners.map((b) => b.id).join(',')} banners={banners} />
+        <CategoryChips categorias={categorias} selectedId={categoriaId} onSelect={handleSeleccionarCategoria} />
+      </SafeAreaView>
 
-            {loading && <LoadingState />}
-            {error && <ErrorState message={error} onRetry={() => loadPublicaciones()} />}
-          </View>
-        }
-        ListEmptyComponent={
-          !loading && !error ? (
-            <EmptyState
-              title="No encontramos comercios"
-              message="Prueba con otra categoría o cambia de comuna."
-            />
-          ) : null
-        }
-      />
-    </SafeAreaView>
+      <View style={styles.zonaScroll}>
+        {loading && <LoadingState />}
+        {error && <ErrorState message={error} onRetry={() => loadPublicaciones()} />}
+
+        {!loading && !error && (
+          <FlatList
+            // El margen negativo sube la lista dentro de la franja negra: la
+            // primera tarjeta queda montada sobre el cambio de fondo y, al
+            // desplazarse, las tarjetas se recortan justo ahí, porque una
+            // lista no dibuja fuera de sus propios límites.
+            style={[styles.list, solapar && { marginTop: -SOLAPE_TARJETA }]}
+            data={publicaciones}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={[
+              styles.listContent,
+              // Sin sesión no hay barra de pestañas: la última tarjeta debe poder
+              // quedar por encima de los botones del sistema al terminar el scroll.
+              !session && { paddingBottom: Spacing.five + insets.bottom },
+            ]}
+            onRefresh={() => {
+              recargarBanners();
+              loadPublicaciones({ isRefresh: true });
+            }}
+            refreshing={refreshing}
+            renderItem={renderItem}
+            // La lista rara vez pasa de 20-30 tarjetas en una comuna, pero estos
+            // ajustes evitan que React Native intente montar/medir de más de
+            // una vez — es lo que se nota como scroll "fluido" de verdad.
+            initialNumToRender={6}
+            maxToRenderPerBatch={6}
+            windowSize={7}
+            removeClippedSubviews
+            ItemSeparatorComponent={ItemSeparator}
+            ListEmptyComponent={
+              <EmptyState title="No encontramos comercios" message="Prueba con otra categoría o cambia de comuna." />
+            }
+          />
+        )}
+      </View>
+    </View>
   );
 }
 
@@ -179,45 +273,34 @@ function ItemSeparator() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screen: {
     flex: 1,
     backgroundColor: Colors.background,
   },
-  list: {
-    flex: 1,
-    // Gris muy claro, no blanco puro: si fuera el mismo blanco que el panel
-    // del icono de cada tarjeta, la tarjeta se perdería contra el fondo.
-    backgroundColor: Colors.backgroundSoft,
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.five,
-  },
-  // Todo lo de arriba (logo, buscador, banner, categorías) va sobre negro;
-  // debajo de las categorías el fondo pasa a blanco, con las tarjetas
-  // flotando encima (pedido del cliente). El margen negativo hace que el
-  // negro llegue de borde a borde aunque `listContent` le ponga relleno
-  // horizontal a todo lo demás.
-  blackHeader: {
+  // Encabezado fijo, sobre negro y de borde a borde.
+  encabezado: {
     backgroundColor: Colors.background,
-    marginHorizontal: -Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
+    paddingHorizontal: Layout.catalogMargin,
   },
   header: {
     alignItems: 'center',
-    paddingTop: Spacing.five,
-    paddingBottom: Spacing.three,
-    gap: 4,
+    paddingTop: 28,
+    paddingBottom: 22,
   },
-  logo: {
-    fontFamily: Fonts.extraBold,
-    fontSize: 34,
-    color: Colors.text,
-    letterSpacing: -0.5,
+  // Única zona que se desplaza. El gris claro empieza donde termina el negro;
+  // la lista va transparente y corrida hacia arriba, para que las tarjetas se
+  // vean sobre el negro antes de recortarse.
+  zonaScroll: {
+    flex: 1,
+    backgroundColor: Colors.backgroundSoft,
   },
-  logoAccent: {
-    color: Colors.accent,
+  list: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  listContent: {
+    flexGrow: 1,
+    paddingHorizontal: Layout.catalogMargin,
+    paddingBottom: Spacing.five,
   },
 });

@@ -1,7 +1,7 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 export function LoadingState() {
   return (
@@ -39,11 +39,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   title: {
+    fontFamily: Fonts.semiBold,
     fontSize: 15,
-    fontWeight: '700',
     color: Colors.text,
   },
   message: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     color: Colors.textMuted,
     textAlign: 'center',

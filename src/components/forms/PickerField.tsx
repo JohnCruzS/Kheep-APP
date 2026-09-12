@@ -1,6 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 type Option = { id: string; label: string };
 
@@ -58,14 +58,17 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   value: {
+    fontFamily: Fonts.light,
     fontSize: 16,
     color: Colors.cardText,
   },
   placeholder: {
+    fontFamily: Fonts.light,
     fontSize: 16,
     color: Colors.placeholder,
   },
   chevron: {
+    fontFamily: Fonts.light,
     color: Colors.textMuted,
   },
   options: {
@@ -79,8 +82,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F1F1',
   },
   optionLabel: {
+    fontFamily: Fonts.medium,
     fontSize: 12.5,
-    fontWeight: '600',
     color: Colors.cardText,
   },
 });

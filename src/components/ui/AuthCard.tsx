@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 type AuthCardProps = PropsWithChildren<{
@@ -60,9 +61,7 @@ export function AuthCard({ eyebrow, children }: AuthCardProps) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
           <View style={[styles.header, { height: headerHeight - insets.top }]}>
-            <Text style={styles.logo}>
-              <Text style={styles.logoAccent}>Kh</Text>eep
-            </Text>
+            <BrandLogo height={38} />
             <Text style={styles.eyebrow}>{eyebrow}</Text>
           </View>
 
@@ -99,17 +98,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logo: {
-    fontFamily: Fonts.extraBold,
-    fontSize: 34,
-    lineHeight: 40,
-    color: Colors.text,
-  },
-  logoAccent: {
-    color: Colors.accent,
-  },
   eyebrow: {
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.light,
     fontSize: 14,
     lineHeight: 18,
     color: Colors.textMuted,

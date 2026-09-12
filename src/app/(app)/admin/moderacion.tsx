@@ -5,7 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { PublicacionPendiente, aprobarPublicacion, fetchPublicacionesPendientes, rechazarPublicacion } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -148,15 +148,15 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   backLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '600',
     width: 70,
   },
   topTitle: {
+    fontFamily: Fonts.semiBold,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '700',
   },
   content: {
     padding: Spacing.three,
@@ -188,16 +188,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   titulo: {
+    fontFamily: Fonts.semiBold,
     fontSize: 15.5,
-    fontWeight: '700',
     color: Colors.text,
   },
   subtitulo: {
+    fontFamily: Fonts.light,
     fontSize: 12,
     color: Colors.textMuted,
     marginTop: 2,
   },
   descripcion: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     lineHeight: 19,
     color: Colors.text,
@@ -208,6 +210,7 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two,
   },
   metaLabel: {
+    fontFamily: Fonts.light,
     fontSize: 11.5,
     color: Colors.textMuted,
   },
@@ -227,16 +230,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(217,8,4,0.14)',
   },
   rechazarLabel: {
+    fontFamily: Fonts.semiBold,
     color: Colors.danger,
-    fontWeight: '700',
     fontSize: 13.5,
   },
   aprobarButton: {
     backgroundColor: Colors.success,
   },
   aprobarLabel: {
+    fontFamily: Fonts.semiBold,
     color: '#FFFFFF',
-    fontWeight: '700',
     fontSize: 13.5,
   },
 });

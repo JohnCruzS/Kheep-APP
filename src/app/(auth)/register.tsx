@@ -106,13 +106,13 @@ export default function RegisterScreen() {
         hint="Mínimo 6 caracteres"
       />
 
-      {error ? <Text style={{ color: Colors.danger, marginTop: Spacing.three }}>{error}</Text> : null}
-      {info ? <Text style={{ color: Colors.cardText, marginTop: Spacing.three }}>{info}</Text> : null}
+      {error ? <Text style={{ fontFamily: Fonts.light, color: Colors.danger, marginTop: Spacing.three }}>{error}</Text> : null}
+      {info ? <Text style={{ fontFamily: Fonts.light, color: Colors.cardText, marginTop: Spacing.three }}>{info}</Text> : null}
 
       <Button label="Guardar" onPress={handleRegister} loading={loading} />
 
       <Pressable onPress={() => router.back()} style={{ marginTop: Spacing.four, alignItems: 'center' }}>
-        <Text style={{ fontFamily: Fonts.medium, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
+        <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
       </Pressable>
     </AuthCard>
   );

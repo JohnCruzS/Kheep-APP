@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { MetricaPublicacion, fetchMetricas } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -92,15 +92,15 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   backLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '600',
     width: 70,
   },
   topTitle: {
+    fontFamily: Fonts.semiBold,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '700',
   },
   content: {
     padding: Spacing.three,
@@ -116,20 +116,20 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.four,
   },
   totalLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: 11,
-    fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.textMuted,
     marginBottom: Spacing.two,
   },
   totalValor: {
+    fontFamily: Fonts.bold,
     fontSize: 34,
-    fontWeight: '800',
     color: Colors.success,
   },
   sectionLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: 11,
-    fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.textMuted,
     marginBottom: Spacing.two,
@@ -143,9 +143,9 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.surfaceBorder,
   },
   rank: {
+    fontFamily: Fonts.semiBold,
     width: 20,
     fontSize: 13,
-    fontWeight: '700',
     color: Colors.textMuted,
     textAlign: 'center',
   },
@@ -153,18 +153,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowTitulo: {
+    fontFamily: Fonts.medium,
     fontSize: 14.5,
-    fontWeight: '600',
     color: Colors.text,
   },
   rowSub: {
+    fontFamily: Fonts.light,
     fontSize: 11.5,
     color: Colors.textMuted,
     marginTop: 1,
   },
   rowClics: {
+    fontFamily: Fonts.bold,
     fontSize: 18,
-    fontWeight: '800',
     color: Colors.success,
   },
 });

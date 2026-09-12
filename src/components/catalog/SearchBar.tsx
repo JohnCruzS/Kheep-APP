@@ -1,6 +1,6 @@
 import { StyleSheet, TextInput, View } from 'react-native';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 type Props = {
   value: string;
@@ -33,6 +33,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   input: {
+    fontFamily: Fonts.light,
     height: 44,
     paddingHorizontal: Spacing.three,
     fontSize: 14,

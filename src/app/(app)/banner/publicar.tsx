@@ -1,12 +1,12 @@
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PickerField } from '@/components/forms/PickerField';
 import { Button } from '@/components/ui/Button';
-import { Colors, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import {
   Comuna,
   MiBanner,
@@ -116,6 +116,11 @@ export default function PublicarBannerScreen() {
       </View>
 
       <View style={styles.card}>
+        {/* Con la pantalla de borde a borde, Android ya no achica la ventana
+          al abrir el teclado (el `adjustResize` del manifiesto deja de
+          aplicar), así que el teclado tapaba los campos. Esto agrega abajo
+          el alto del teclado para que el formulario se corra solo. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {!loadingList && misBanners.length > 0 && (
             <View style={styles.misBannersSection}>
@@ -193,6 +198,7 @@ export default function PublicarBannerScreen() {
             </Text>
           )}
         </ScrollView>
+      </KeyboardAvoidingView>
       </View>
     </SafeAreaView>
   );
@@ -233,15 +239,15 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.two,
   },
   backLabel: {
+    fontFamily: Fonts.medium,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '600',
     width: 70,
   },
   topTitle: {
+    fontFamily: Fonts.semiBold,
     color: Colors.text,
     fontSize: 15,
-    fontWeight: '700',
   },
   card: {
     flex: 1,
@@ -255,8 +261,8 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.six,
   },
   sectionLabel: {
+    fontFamily: Fonts.semiBold,
     fontSize: 11,
-    fontWeight: '700',
     letterSpacing: 0.6,
     color: Colors.cardTextMuted,
     marginBottom: Spacing.two,
@@ -280,22 +286,25 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   miBannerComuna: {
+    fontFamily: Fonts.semiBold,
     fontSize: 14,
-    fontWeight: '700',
     color: Colors.cardText,
   },
   estadoLabel: {
+    fontFamily: Fonts.medium,
     fontSize: 12,
-    fontWeight: '600',
     marginTop: 2,
   },
   estadoPendiente: {
+    fontFamily: Fonts.light,
     color: Colors.warning,
   },
   estadoActivo: {
+    fontFamily: Fonts.light,
     color: Colors.success,
   },
   estadoVencido: {
+    fontFamily: Fonts.light,
     color: Colors.cardTextMuted,
   },
   imagePicker: {
@@ -315,14 +324,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   imagePlaceholderLabel: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     color: Colors.cardTextMuted,
   },
   diasLabel: {
+    fontFamily: Fonts.medium,
     marginTop: Spacing.four,
     marginBottom: Spacing.two,
     fontSize: 13,
-    fontWeight: '600',
     color: Colors.cardText,
   },
   diasRow: {
@@ -339,11 +349,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   diaChipLabel: {
+    fontFamily: Fonts.medium,
     fontSize: 12.5,
-    fontWeight: '600',
     color: Colors.cardText,
   },
   diaChipLabelActive: {
+    fontFamily: Fonts.light,
     color: '#FFFFFF',
   },
   precioBox: {
@@ -356,25 +367,29 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   precioLabel: {
+    fontFamily: Fonts.light,
     fontSize: 13,
     color: Colors.cardTextMuted,
   },
   precioValor: {
+    fontFamily: Fonts.bold,
     fontSize: 18,
-    fontWeight: '800',
     color: Colors.cardText,
   },
   errorText: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.three,
     fontSize: 13,
     color: Colors.danger,
   },
   successText: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.three,
     fontSize: 13,
     color: Colors.success,
   },
   disclaimer: {
+    fontFamily: Fonts.light,
     marginTop: Spacing.three,
     fontSize: 11.5,
     lineHeight: 16,

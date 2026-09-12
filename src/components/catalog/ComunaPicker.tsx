@@ -51,7 +51,6 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
     <>
       <Pressable onPress={() => setOpen(true)} hitSlop={8} style={styles.trigger}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.chevron}>﹀</Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
@@ -103,19 +102,16 @@ function Option({ label, active, onPress }: { label: string; active: boolean; on
 }
 
 const styles = StyleSheet.create({
+  // Como en la plantilla: solo el nombre de la comuna bajo el logo, sin
+  // flecha. Sigue siendo tocable (abre el buscador de comunas).
   trigger: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
   },
   label: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: '#B5B5B5',
-  },
-  chevron: {
-    fontSize: 12,
-    color: '#B5B5B5',
+    fontFamily: Fonts.light,
+    fontSize: 18,
+    lineHeight: 24,
+    color: '#8A8A8A',
   },
   backdrop: {
     flex: 1,
@@ -133,13 +129,14 @@ const styles = StyleSheet.create({
     height: '75%',
   },
   sheetTitle: {
+    fontFamily: Fonts.semiBold,
     fontSize: 13,
-    fontWeight: '700',
     letterSpacing: 0.4,
     color: Colors.textMuted,
     marginBottom: Spacing.three,
   },
   buscador: {
+    fontFamily: Fonts.light,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
@@ -159,18 +156,20 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.surfaceBorder,
   },
   optionLabel: {
+    fontFamily: Fonts.light,
     fontSize: 15,
     color: Colors.text,
   },
   optionLabelActive: {
+    fontFamily: Fonts.semiBold,
     color: Colors.accent,
-    fontWeight: '700',
   },
   check: {
+    fontFamily: Fonts.semiBold,
     color: Colors.accent,
-    fontWeight: '700',
   },
   sinResultados: {
+    fontFamily: Fonts.light,
     paddingVertical: Spacing.four,
     textAlign: 'center',
     color: Colors.textMuted,
