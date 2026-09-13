@@ -103,23 +103,23 @@ function AccountView({
 
       {/* Iconos de trazo en vez de emojis: cada teléfono dibuja los emojis a
           su manera (y a todo color), y acá conviven con el resto de la
-          interfaz, que es de un solo color. */}
+          interfaz, que es de un solo color.
+
+          Ya no está el acceso al panel de administración: el admin lo tiene
+          en su propia pestaña, así que acá solo repetía un camino. Y
+          "Publicar banner" es para los comerciantes —que no tienen panel—;
+          el admin lo hace desde Panel Admin → Banners. */}
       <View style={styles.actionRows}>
         <FilaAccion
           icono="create-outline"
           label="Editar perfil"
           onPress={() => router.push('/(app)/perfil/editar')}
         />
-        <FilaAccion
-          icono="megaphone-outline"
-          label="Publicar banner"
-          onPress={() => router.push('/(app)/banner/publicar')}
-        />
-        {profile.rol === 'admin' && (
+        {profile.rol !== 'admin' && (
           <FilaAccion
-            icono="shield-checkmark-outline"
-            label="Panel de administración"
-            onPress={() => router.push('/(app)/(tabs)/admin')}
+            icono="megaphone-outline"
+            label="Publicar banner"
+            onPress={() => router.push('/(app)/banner/publicar')}
           />
         )}
       </View>

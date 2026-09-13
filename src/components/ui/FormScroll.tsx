@@ -12,6 +12,8 @@ import {
   ViewStyle,
 } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { useAltoTeclado } from '@/hooks/useTeclado';
 
 /** Aire entre el campo que se está escribiendo y el borde del teclado. */
@@ -73,6 +75,7 @@ export function FormScroll({
   const campoEnfocado = useRef<TextInput | null>(null);
   const altoTeclado = useAltoTeclado();
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const acomodar = useCallback(() => {
     const campo = campoEnfocado.current;
@@ -123,7 +126,12 @@ export function FormScroll({
         <ScrollView
           ref={scrollRef}
           style={styles.flex}
-          contentContainerStyle={contentContainerStyle}
+          // El aire de abajo incluye la franja del sistema (botones o barra de
+          // gestos), que cambia de alto en cada teléfono: así el último botón
+          // del formulario nunca queda pegado a ella. Va en el contenido y no
+          // en el contenedor para no robarle espacio al formulario cuando el
+          // teclado está abierto (ahí esa franja queda tapada igual).
+          contentContainerStyle={[contentContainerStyle, { paddingBottom: insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           onScroll={alDesplazar}
           scrollEventThrottle={16}

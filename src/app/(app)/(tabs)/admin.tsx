@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { ComponentProps, useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/components/ui/BrandLogo';
@@ -47,7 +47,11 @@ export default function AdminScreen() {
         <Text style={styles.eyebrow}>Panel de administración</Text>
       </View>
 
-      <View style={styles.content}>
+      {/* Desplazable: la lista crece con cada sección nueva y en pantallas
+          más bajas las últimas quedaban fuera, sin forma de llegar a ellas.
+          El relleno de abajo deja el espacio de la barra de pestañas, así la
+          última fila nunca queda debajo de ella. */}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionLabel}>MODERACIÓN</Text>
         <AdminRow
           icon="shield-checkmark-outline"
@@ -82,13 +86,20 @@ export default function AdminScreen() {
           descripcion="Imagen, tamaño, posición y logos por fecha"
           onPress={() => router.push('/(app)/admin/logos')}
         />
+        <Text style={[styles.sectionLabel, styles.sectionLabelSeparada]}>BANNERS</Text>
+        <AdminRow
+          icon="add-circle-outline"
+          label="Publicar banner"
+          descripcion="Subir un banner nuevo y elegir sus días"
+          onPress={() => router.push('/(app)/banner/publicar')}
+        />
         <AdminRow
           icon="images-outline"
           label="Banners activos"
           descripcion="Los que están rotando hoy en el catálogo"
           onPress={() => router.push('/(app)/admin/banners')}
         />
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -148,8 +159,8 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   content: {
-    flex: 1,
     paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.six,
   },
   sectionLabel: {
     fontFamily: Fonts.semiBold,

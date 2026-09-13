@@ -34,7 +34,7 @@ export default function MetricasScreen() {
   const totalClics = metricas.reduce((sum, m) => sum + m.total_clics_whatsapp, 0);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.topBar}>

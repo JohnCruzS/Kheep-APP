@@ -209,7 +209,7 @@ export default function LogosAdminScreen() {
   const anchoVistaPrevia = vigente?.ancho_pct ?? ancho;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.topBar}>
