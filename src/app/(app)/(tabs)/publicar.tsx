@@ -1,12 +1,13 @@
 import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { PickerField } from '@/components/forms/PickerField';
 import { Button } from '@/components/ui/Button';
+import { FormScroll } from '@/components/ui/FormScroll';
 import { TextField } from '@/components/ui/TextField';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -198,13 +199,10 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
     }
   }
 
-  // Con la pantalla de borde a borde, Android ya no achica la ventana al abrir
-  // el teclado (el `adjustResize` del manifiesto deja de aplicar), así que el
-  // teclado tapaba los campos. `KeyboardAvoidingView` agrega abajo el alto del
-  // teclado para que el formulario se corra solo.
+  // `FormScroll` resuelve el teclado igual que en toda la app: reserva su
+  // alto y corre el formulario si el campo enfocado quedaría tapado.
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
+    <FormScroll contentContainerStyle={styles.formContent}>
       {!misPublicacionesLoading && misPublicaciones.length > 0 && (
         <View style={styles.misPublicacionesSection}>
           <Text style={styles.sectionLabel}>MIS PUBLICACIONES</Text>
@@ -330,8 +328,7 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
       ) : (
         <Button label="Guardar" variant="secondary" onPress={handleGuardar} />
       )}
-    </ScrollView>
-      </KeyboardAvoidingView>
+    </FormScroll>
   );
 }
 

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
 import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { useCampoVisible } from '@/components/ui/FormScroll';
 
 type TextFieldProps = TextInputProps & {
   label: string;
@@ -17,19 +18,36 @@ export function TextField({
   hint,
   secureTextEntry,
   style,
+  onFocus,
+  onBlur,
   ...inputProps
 }: TextFieldProps) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const isPasswordField = secureTextEntry === true;
 
+  // El formulario que contiene este campo necesita saber cuál tiene el foco
+  // para desplazarse si el teclado lo tapa (ver FormScroll). Fuera de un
+  // formulario no pasa nada: el contexto trae funciones vacías.
+  const inputRef = useRef<TextInput>(null);
+  const { registrarCampo, soltarCampo } = useCampoVisible();
+
   return (
     <View style={styles.container}>
       <View style={styles.inputRow}>
         <TextInput
+          ref={inputRef}
           placeholder={label}
           placeholderTextColor={Colors.placeholder}
           style={[styles.input, style]}
           secureTextEntry={isPasswordField && !isPasswordVisible}
+          onFocus={(e) => {
+            registrarCampo(inputRef.current);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            soltarCampo(inputRef.current);
+            onBlur?.(e);
+          }}
           {...inputProps}
         />
         {isPasswordField && (

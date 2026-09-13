@@ -1,12 +1,13 @@
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { Button } from '@/components/ui/Button';
+import { FormScroll } from '@/components/ui/FormScroll';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { Comuna, MiPerfil, actualizarPerfil, fetchComunas, fetchMiPerfil } from '@/lib/catalog';
@@ -134,13 +135,10 @@ function EditarPerfilForm({
     }
   }
 
-  // Con la pantalla de borde a borde, Android ya no achica la ventana al abrir
-  // el teclado (el `adjustResize` del manifiesto deja de aplicar), así que el
-  // teclado tapaba los campos. `KeyboardAvoidingView` agrega abajo el alto del
-  // teclado para que el formulario se corra solo.
+  // `FormScroll` resuelve el teclado igual que en toda la app: reserva su
+  // alto y corre el formulario si el campo enfocado quedaría tapado.
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <ScrollView contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
+    <FormScroll contentContainerStyle={styles.formContent}>
       <Pressable onPress={handlePickLogo} style={styles.avatarWrapper}>
         {logo ? (
           <Image source={{ uri: logo.uri }} style={styles.avatarImage} contentFit="cover" />
@@ -170,8 +168,7 @@ function EditarPerfilForm({
       ) : (
         <Button label="Guardar cambios" onPress={handleGuardar} />
       )}
-    </ScrollView>
-      </KeyboardAvoidingView>
+    </FormScroll>
   );
 }
 

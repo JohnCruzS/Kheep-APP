@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -15,6 +16,9 @@ import {
   ANCHO_LOGO_DEFECTO,
   EstadoLogo,
   LogoTematico,
+  MARGEN_LOGO_DEFECTO,
+  MARGEN_LOGO_MAX,
+  MARGEN_LOGO_MIN,
   actualizarAnchoLogo,
   actualizarLogoActivo,
   crearLogo,
@@ -23,8 +27,11 @@ import {
   estadoLogo,
   fetchAnchoGeneral,
   fetchLogosAdmin,
+  restablecerMedidasPorDefecto,
+  fetchMargenGeneral,
   formatearFecha,
   guardarAnchoGeneral,
+  guardarMargenGeneral,
   parseFecha,
 } from '@/lib/marca';
 import { supabase } from '@/lib/supabase';
@@ -75,6 +82,13 @@ export default function LogosAdminScreen() {
   const [ancho, setAncho] = useState(ANCHO_LOGO_DEFECTO);
   const [anchoGuardado, setAnchoGuardado] = useState(ANCHO_LOGO_DEFECTO);
   const [guardandoAncho, setGuardandoAncho] = useState(false);
+  // Posición del título (margen desde arriba de la pantalla). Mismo patrón
+  // que el ancho: "guardado" es lo que hoy ven los usuarios y "margen" lo
+  // que el admin está probando.
+  const [margen, setMargen] = useState(MARGEN_LOGO_DEFECTO);
+  const [margenGuardado, setMargenGuardado] = useState(MARGEN_LOGO_DEFECTO);
+  const [guardandoMargen, setGuardandoMargen] = useState(false);
+  const [restableciendo, setRestableciendo] = useState(false);
   const [ajustando, setAjustando] = useState<LogoTematico | null>(null);
 
   const load = useCallback(async () => {
@@ -82,10 +96,16 @@ export default function LogosAdminScreen() {
     setError(null);
     setFaltaMigracion(false);
     try {
-      const [lista, anchoActual] = await Promise.all([fetchLogosAdmin(), fetchAnchoGeneral()]);
+      const [lista, anchoActual, margenActual] = await Promise.all([
+        fetchLogosAdmin(),
+        fetchAnchoGeneral(),
+        fetchMargenGeneral(),
+      ]);
       setLogos(lista);
       setAncho(anchoActual);
       setAnchoGuardado(anchoActual);
+      setMargen(margenActual);
+      setMargenGuardado(margenActual);
     } catch (err) {
       if (esErrorMigracionFaltante(err)) setFaltaMigracion(true);
       else setError(getErrorMessage(err, 'Error desconocido.'));
@@ -120,6 +140,48 @@ export default function LogosAdminScreen() {
     } finally {
       setGuardandoAncho(false);
     }
+  }
+
+  async function handleGuardarMargen() {
+    setGuardandoMargen(true);
+    setError(null);
+    try {
+      await guardarMargenGeneral(margen);
+      setMargenGuardado(margen);
+    } catch (err) {
+      setError(getErrorMessage(err, 'No se pudo guardar la posición.'));
+    } finally {
+      setGuardandoMargen(false);
+    }
+  }
+
+  function handleRestablecer() {
+    Alert.alert(
+      'Volver a las medidas originales',
+      `El título vuelve a ${ANCHO_LOGO_DEFECTO} % de ancho y ${MARGEN_LOGO_DEFECTO} % de margen superior, que son las ` +
+        'medidas del diseño. El cambio lo ven todos los usuarios. Los logos por fecha y sus tamaños propios no se tocan.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Restablecer',
+          onPress: async () => {
+            setRestableciendo(true);
+            setError(null);
+            try {
+              await restablecerMedidasPorDefecto();
+              setAncho(ANCHO_LOGO_DEFECTO);
+              setAnchoGuardado(ANCHO_LOGO_DEFECTO);
+              setMargen(MARGEN_LOGO_DEFECTO);
+              setMargenGuardado(MARGEN_LOGO_DEFECTO);
+            } catch (err) {
+              setError(getErrorMessage(err, 'No se pudieron restablecer las medidas.'));
+            } finally {
+              setRestableciendo(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   function handleEliminar(logo: LogoTematico) {
@@ -174,6 +236,7 @@ export default function LogosAdminScreen() {
             key={vigente?.id ?? 'normal'}
             url={vigente?.imagen_url ?? null}
             anchoPct={anchoVistaPrevia}
+            margenPct={margen}
           />
           {vigente && vigente.ancho_pct !== null ? (
             <Text style={styles.previewNota}>
@@ -207,6 +270,51 @@ export default function LogosAdminScreen() {
           </View>
         )}
 
+        {!faltaMigracion && (
+          <View style={styles.tamanoBox}>
+            <Text style={styles.tamanoTitulo}>Posición del título</Text>
+            <Text style={styles.tamanoAyuda}>
+              Espacio desde arriba de la pantalla hasta el título, como porcentaje del alto de la pantalla (no del
+              ancho, como el tamaño). Es siempre general: no depende de qué logo esté vigente hoy.
+            </Text>
+            <ControlTamano valor={margen} onChange={setMargen} min={MARGEN_LOGO_MIN} max={MARGEN_LOGO_MAX} />
+            {margen !== margenGuardado ? (
+              <View style={styles.tamanoAcciones}>
+                <Button
+                  label={guardandoMargen ? 'Guardando…' : 'Guardar posición'}
+                  onPress={handleGuardarMargen}
+                  loading={guardandoMargen}
+                />
+                <Pressable onPress={() => setMargen(margenGuardado)} hitSlop={8}>
+                  <Text style={styles.deshacer}>Deshacer</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.tamanoEstado}>Esta es la posición que ven todos.</Text>
+            )}
+          </View>
+        )}
+
+        {/* Salida de emergencia: después de probar medidas, volver al diseño
+            original sin tener que recordar qué números eran. Solo aparece
+            cuando hay algo que restablecer. */}
+        {!faltaMigracion && (anchoGuardado !== ANCHO_LOGO_DEFECTO || margenGuardado !== MARGEN_LOGO_DEFECTO) && (
+          <Pressable
+            style={({ pressed }) => [styles.restablecerFila, pressed && styles.restablecerPresionada]}
+            onPress={handleRestablecer}
+            disabled={restableciendo}>
+            <Ionicons name="refresh-outline" size={17} color={Colors.text} />
+            <View style={styles.restablecerTexto}>
+              <Text style={styles.restablecerLabel}>
+                {restableciendo ? 'Restableciendo…' : 'Volver a las medidas originales'}
+              </Text>
+              <Text style={styles.restablecerHint}>
+                {ANCHO_LOGO_DEFECTO} % de ancho y {MARGEN_LOGO_DEFECTO} % de margen superior
+              </Text>
+            </View>
+          </Pressable>
+        )}
+
         <Text style={styles.ayuda}>
           Programa un logo para una fecha especial (Fiestas Patrias, Navidad, un aniversario…). Mientras esté vigente
           reemplaza al logo normal de Kheep en toda la app; al terminar su fecha, vuelve solo al normal. Cada logo puede
@@ -220,9 +328,9 @@ export default function LogosAdminScreen() {
           <View style={styles.aviso}>
             <Text style={styles.avisoTitulo}>Falta un paso en la base de datos</Text>
             <Text style={styles.avisoTexto}>
-              Para programar logos y ajustar el tamaño del título hay que ejecutar las migraciones
-              0015_logos_tematicos.sql y 0016_tamano_logo.sql en el editor SQL de Supabase. Mientras tanto, la app
-              sigue mostrando el logo normal en su tamaño de siempre.
+              Para programar logos y ajustar el tamaño y la posición del título hay que ejecutar las migraciones
+              0015_logos_tematicos.sql, 0016_tamano_logo.sql y 0019_margen_superior_logo.sql en el editor SQL de
+              Supabase. Mientras tanto, la app sigue mostrando el logo normal en su tamaño y posición de siempre.
             </Text>
           </View>
         )}
@@ -565,6 +673,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.6,
     color: Colors.textMuted,
+  },
+  restablecerFila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    marginTop: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surface,
+  },
+  restablecerPresionada: {
+    backgroundColor: Colors.backgroundAlt,
+  },
+  restablecerTexto: {
+    flex: 1,
+  },
+  restablecerLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+    color: Colors.text,
+  },
+  restablecerHint: {
+    fontFamily: Fonts.light,
+    fontSize: 11.5,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
   tamanoBox: {
     marginTop: Spacing.three,

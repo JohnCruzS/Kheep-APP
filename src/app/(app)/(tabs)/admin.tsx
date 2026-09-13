@@ -1,5 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { ComponentProps, useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,9 +9,15 @@ import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { fetchPublicacionesPendientes } from '@/lib/catalog';
 import { useSession } from '@/providers/SessionProvider';
 
+type NombreIcono = ComponentProps<typeof Ionicons>['name'];
+
 /**
- * Panel de Administración: vitrina (comunas/categorías), moderación de
+ * Panel de Administración: vitrina (comunas/categorías/marca), moderación de
  * publicaciones y métricas de WhatsApp.
+ *
+ * Los iconos son de trazo y de un solo color, no emojis: los emojis los
+ * dibuja cada teléfono con su propia paleta —se ven distintos en cada marca,
+ * a veces a todo color— y en un panel de trabajo eso se lee como desorden.
  */
 export default function AdminScreen() {
   const { profile } = useSession();
@@ -43,18 +50,44 @@ export default function AdminScreen() {
       <View style={styles.content}>
         <Text style={styles.sectionLabel}>MODERACIÓN</Text>
         <AdminRow
-          icon="🛡️"
+          icon="shield-checkmark-outline"
           label="Publicaciones pendientes"
+          descripcion="Aprobar o rechazar lo que publican los comercios"
           badge={pendientes && pendientes > 0 ? pendientes : undefined}
           onPress={() => router.push('/(app)/admin/moderacion')}
         />
-        <AdminRow icon="📊" label="Métricas de WhatsApp" onPress={() => router.push('/(app)/admin/metricas')} />
+        <AdminRow
+          icon="stats-chart-outline"
+          label="Métricas de WhatsApp"
+          descripcion="Cuántos contactos recibe cada publicación"
+          onPress={() => router.push('/(app)/admin/metricas')}
+        />
 
-        <Text style={[styles.sectionLabel, { marginTop: Spacing.five }]}>VITRINA</Text>
-        <AdminRow icon="📍" label="Comunas" onPress={() => router.push('/(app)/admin/comunas')} />
-        <AdminRow icon="🏷️" label="Categorías" onPress={() => router.push('/(app)/admin/categorias')} />
-        <AdminRow icon="🎨" label="Logo de la app" onPress={() => router.push('/(app)/admin/logos')} />
-        <AdminRow icon="🖼️" label="Banners activos" onPress={() => router.push('/(app)/admin/banners')} />
+        <Text style={[styles.sectionLabel, styles.sectionLabelSeparada]}>VITRINA</Text>
+        <AdminRow
+          icon="location-outline"
+          label="Comunas"
+          descripcion="Qué comunas se ven y el catálogo de cada una"
+          onPress={() => router.push('/(app)/admin/comunas')}
+        />
+        <AdminRow
+          icon="pricetags-outline"
+          label="Categorías"
+          descripcion="Lista general, orden y visibilidad"
+          onPress={() => router.push('/(app)/admin/categorias')}
+        />
+        <AdminRow
+          icon="color-palette-outline"
+          label="Título de la app"
+          descripcion="Imagen, tamaño, posición y logos por fecha"
+          onPress={() => router.push('/(app)/admin/logos')}
+        />
+        <AdminRow
+          icon="images-outline"
+          label="Banners activos"
+          descripcion="Los que están rotando hoy en el catálogo"
+          onPress={() => router.push('/(app)/admin/banners')}
+        />
       </View>
     </SafeAreaView>
   );
@@ -63,24 +96,37 @@ export default function AdminScreen() {
 function AdminRow({
   icon,
   label,
+  descripcion,
   badge,
   onPress,
 }: {
-  icon: string;
+  icon: NombreIcono;
   label: string;
+  descripcion: string;
   badge?: number;
   onPress: () => void;
 }) {
   return (
-    <Pressable style={styles.row} onPress={onPress}>
-      <Text style={styles.rowIcon}>{icon}</Text>
-      <Text style={styles.rowLabel}>{label}</Text>
+    <Pressable style={({ pressed }) => [styles.row, pressed && styles.rowPresionada]} onPress={onPress}>
+      <View style={styles.iconoCaja}>
+        <Ionicons name={icon} size={19} color={Colors.text} />
+      </View>
+
+      <View style={styles.rowTexto}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        {/* Una línea de qué hace cada sección: el panel creció y solo con el
+            título no siempre se acierta a la primera dónde entrar. */}
+        <Text style={styles.rowDescripcion} numberOfLines={1}>
+          {descripcion}
+        </Text>
+      </View>
+
       {badge !== undefined && (
         <View style={styles.badge}>
           <Text style={styles.badgeLabel}>{badge}</Text>
         </View>
       )}
-      <Text style={styles.rowArrow}>›</Text>
+      <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
     </Pressable>
   );
 }
@@ -112,6 +158,9 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginBottom: Spacing.two,
   },
+  sectionLabelSeparada: {
+    marginTop: Spacing.five,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -123,15 +172,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
   },
-  rowIcon: {
-    fontFamily: Fonts.light,
-    fontSize: 18,
+  rowPresionada: {
+    backgroundColor: Colors.backgroundAlt,
+  },
+  iconoCaja: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  rowTexto: {
+    flex: 1,
   },
   rowLabel: {
     fontFamily: Fonts.medium,
-    flex: 1,
     fontSize: 14.5,
     color: Colors.text,
+  },
+  rowDescripcion: {
+    fontFamily: Fonts.light,
+    fontSize: 11.5,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
   badge: {
     backgroundColor: Colors.accent,
@@ -146,10 +212,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: 11.5,
     color: '#FFFFFF',
-  },
-  rowArrow: {
-    fontFamily: Fonts.light,
-    fontSize: 18,
-    color: Colors.textMuted,
   },
 });

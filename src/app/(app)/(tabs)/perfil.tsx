@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { ComponentProps, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -100,22 +101,26 @@ function AccountView({
         </Text>
       )}
 
+      {/* Iconos de trazo en vez de emojis: cada teléfono dibuja los emojis a
+          su manera (y a todo color), y acá conviven con el resto de la
+          interfaz, que es de un solo color. */}
       <View style={styles.actionRows}>
-        <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/perfil/editar')}>
-          <Text style={styles.adminRowLabel}>✏️ Editar perfil</Text>
-          <Text style={styles.adminRowArrow}>›</Text>
-        </Pressable>
-
-        <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/banner/publicar')}>
-          <Text style={styles.adminRowLabel}>📣 Publicar banner</Text>
-          <Text style={styles.adminRowArrow}>›</Text>
-        </Pressable>
-
+        <FilaAccion
+          icono="create-outline"
+          label="Editar perfil"
+          onPress={() => router.push('/(app)/perfil/editar')}
+        />
+        <FilaAccion
+          icono="megaphone-outline"
+          label="Publicar banner"
+          onPress={() => router.push('/(app)/banner/publicar')}
+        />
         {profile.rol === 'admin' && (
-          <Pressable style={styles.adminRow} onPress={() => router.push('/(app)/(tabs)/admin')}>
-            <Text style={styles.adminRowLabel}>🛡️ Panel de moderación</Text>
-            <Text style={styles.adminRowArrow}>›</Text>
-          </Pressable>
+          <FilaAccion
+            icono="shield-checkmark-outline"
+            label="Panel de administración"
+            onPress={() => router.push('/(app)/(tabs)/admin')}
+          />
         )}
       </View>
 
@@ -128,6 +133,24 @@ function AccountView({
         }}
       />
     </View>
+  );
+}
+
+function FilaAccion({
+  icono,
+  label,
+  onPress,
+}: {
+  icono: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={({ pressed }) => [styles.adminRow, pressed && styles.adminRowPresionada]} onPress={onPress}>
+      <Ionicons name={icono} size={18} color={Colors.cardText} />
+      <Text style={styles.adminRowLabel}>{label}</Text>
+      <Ionicons name="chevron-forward" size={17} color={Colors.cardTextMuted} />
+    </Pressable>
   );
 }
 
@@ -244,21 +267,20 @@ const styles = StyleSheet.create({
   adminRow: {
     width: '100%',
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.three,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     backgroundColor: '#F5F5F5',
     borderRadius: 14,
   },
+  adminRowPresionada: {
+    backgroundColor: '#ECECEC',
+  },
   adminRowLabel: {
     fontFamily: Fonts.medium,
+    flex: 1,
     fontSize: 14,
     color: Colors.cardText,
-  },
-  adminRowArrow: {
-    fontFamily: Fonts.light,
-    fontSize: 18,
-    color: Colors.cardTextMuted,
   },
 });

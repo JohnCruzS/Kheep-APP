@@ -1,12 +1,27 @@
 import { Image } from 'expo-image';
 import { memo, useEffect, useRef, useState } from 'react';
-import { Dimensions, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Dimensions,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { Layout } from '@/constants/theme';
 import type { Banner } from '@/lib/catalog';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BANNER_WIDTH = SCREEN_WIDTH - Layout.catalogMargin * 2;
+/**
+ * Ancho estimado, solo para el primer dibujado. El de verdad se mide del
+ * contenedor real (ver `medirAncho`): calcularlo con `Dimensions` y márgenes
+ * redondeados deja un desfase de una fracción de píxel contra el ancho que
+ * termina teniendo el carrusel, y ese desfase se acumula banner a banner
+ * hasta que asoma una franja del siguiente por el borde.
+ */
+const BANNER_WIDTH_ESTIMADO = SCREEN_WIDTH - Layout.catalogMargin * 2;
 /** Cada cuánto avanza solo el carrusel. */
 const AUTOPLAY_MS = 3000;
 
@@ -25,6 +40,10 @@ const AUTOPLAY_MS = 3000;
  */
 function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
   const [arrastrando, setArrastrando] = useState(false);
+  // Ancho real del carrusel, medido del contenedor. Todo —el tamaño de cada
+  // banner, el avance automático y el salto del ciclo— usa este número, así
+  // que siempre calzan entre sí en cualquier pantalla.
+  const [ancho, setAncho] = useState(BANNER_WIDTH_ESTIMADO);
   const scrollRef = useRef<ScrollView>(null);
   const indexRef = useRef(0);
 
@@ -35,10 +54,10 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
   useEffect(() => {
     if (!enCiclo || arrastrando) return;
     const id = setInterval(() => {
-      scrollRef.current?.scrollTo({ x: (indexRef.current + 1) * BANNER_WIDTH, animated: true });
+      scrollRef.current?.scrollTo({ x: (indexRef.current + 1) * ancho, animated: true });
     }, AUTOPLAY_MS);
     return () => clearInterval(id);
-  }, [enCiclo, arrastrando]);
+  }, [enCiclo, arrastrando, ancho]);
 
   if (total === 0) return null;
 
@@ -46,7 +65,7 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
     const x = event.nativeEvent.contentOffset.x;
 
     // Llegó a la copia del primero: salto invisible al primero real.
-    if (enCiclo && x >= total * BANNER_WIDTH - 1) {
+    if (enCiclo && x >= total * ancho - 1) {
       scrollRef.current?.scrollTo({ x: 0, animated: false });
       indexRef.current = 0;
       return;
@@ -55,11 +74,25 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
     // La posición vive en una ref, no en el estado: se actualiza en cada
     // cuadro del desplazamiento y guardarla en el estado redibujaría el
     // carrusel entero decenas de veces por segundo sin que cambie nada.
-    indexRef.current = Math.round(x / BANNER_WIDTH);
+    indexRef.current = Math.round(x / ancho);
   };
 
+  function medirAncho(e: LayoutChangeEvent) {
+    const medido = Math.round(e.nativeEvent.layout.width);
+    if (medido > 0 && medido !== ancho) {
+      setAncho(medido);
+      // El carrusel puede estar parado en una posición calculada con el
+      // ancho viejo (al girar el teléfono, por ejemplo): se vuelve al primer
+      // banner para no quedar a mitad de camino entre dos.
+      indexRef.current = 0;
+      scrollRef.current?.scrollTo({ x: 0, animated: false });
+    }
+  }
+
   return (
-    <View style={styles.wrapper}>
+    // `overflow: hidden` es la red de seguridad: aunque una imagen viniera
+    // con un tamaño raro, nada puede dibujarse fuera del carrusel.
+    <View style={styles.wrapper} onLayout={medirAncho}>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -74,7 +107,7 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
         {slides.map((banner, i) => (
           <View
             key={i < total ? banner.id : `${banner.id}-copia`}
-            style={styles.slide}
+            style={[styles.slide, { width: ancho }]}
             // La copia del primero (solo existe para el ciclo continuo) no se
             // anuncia: el lector de pantalla contaría un banner de más.
             accessible={i < total}
@@ -93,9 +126,10 @@ export const BannerCarousel = memo(BannerCarouselComponent);
 const styles = StyleSheet.create({
   wrapper: {
     marginBottom: 22,
+    overflow: 'hidden',
+    borderRadius: 11,
   },
   slide: {
-    width: BANNER_WIDTH,
     height: 170,
     borderRadius: 11,
     overflow: 'hidden',

@@ -1,11 +1,12 @@
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PickerField } from '@/components/forms/PickerField';
 import { Button } from '@/components/ui/Button';
+import { FormScroll } from '@/components/ui/FormScroll';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import {
   Comuna,
@@ -116,12 +117,10 @@ export default function PublicarBannerScreen() {
       </View>
 
       <View style={styles.card}>
-        {/* Con la pantalla de borde a borde, Android ya no achica la ventana
-          al abrir el teclado (el `adjustResize` del manifiesto deja de
-          aplicar), así que el teclado tapaba los campos. Esto agrega abajo
-          el alto del teclado para que el formulario se corra solo. */}
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* `FormScroll` se encarga del teclado igual que en el resto de la app:
+          reserva su alto y corre el formulario si el campo enfocado quedaría
+          tapado. */}
+      <FormScroll contentContainerStyle={styles.content}>
           {!loadingList && misBanners.length > 0 && (
             <View style={styles.misBannersSection}>
               <Text style={styles.sectionLabel}>MIS BANNERS</Text>
@@ -197,8 +196,7 @@ export default function PublicarBannerScreen() {
               El cobro real todavía no está conectado — este botón simula el pago para que puedas probar la función.
             </Text>
           )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </FormScroll>
       </View>
     </SafeAreaView>
   );

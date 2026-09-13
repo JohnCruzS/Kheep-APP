@@ -22,22 +22,40 @@ export type LogoTematico = {
 /**
  * El tamaño del título se guarda como PORCENTAJE del ancho de la pantalla
  * (ver migración 0016): un valor en píxeles se vería enorme en un teléfono
- * angosto y diminuto en uno grande. 30 % es el tamaño del diseño original
- * (120 de 400 en la rejilla del cliente).
+ * angosto y diminuto en uno grande. 40 % es el tamaño del diseño original
+ * (400 de 1000 en la rejilla del cliente — ancho de la imagen, centrada).
  */
-export const ANCHO_LOGO_DEFECTO = 30;
+export const ANCHO_LOGO_DEFECTO = 40;
 export const ANCHO_LOGO_MIN = 15;
 export const ANCHO_LOGO_MAX = 70;
 
-/** Lo que hay que mostrar hoy como título: qué imagen y de qué tamaño. */
+/**
+ * Posición del título: espacio desde arriba de la pantalla hasta donde
+ * empieza la imagen, como PORCENTAJE DEL ALTO de la pantalla (no del ancho:
+ * es una medida vertical). 12 % es el margen superior del diseño original
+ * (120 de 1000 en la rejilla del cliente). Ver migración 0019.
+ *
+ * A diferencia del ancho, este valor es siempre general — no tiene sentido
+ * que cada logo temático tenga su propia posición, solo su propia forma.
+ */
+export const MARGEN_LOGO_DEFECTO = 12;
+export const MARGEN_LOGO_MIN = 0;
+export const MARGEN_LOGO_MAX = 30;
+
+/** Lo que hay que mostrar hoy como título: qué imagen, de qué tamaño y a qué distancia de arriba. */
 export type Marca = {
   /** Logo temático vigente, o null para el logo normal de la app. */
   url: string | null;
   anchoPct: number;
+  margenSuperiorPct: number;
 };
 
 export function limitarAncho(pct: number): number {
   return Math.min(ANCHO_LOGO_MAX, Math.max(ANCHO_LOGO_MIN, Math.round(pct)));
+}
+
+export function limitarMargen(pct: number): number {
+  return Math.min(MARGEN_LOGO_MAX, Math.max(MARGEN_LOGO_MIN, Math.round(pct)));
 }
 
 export type EstadoLogo = 'vigente' | 'programado' | 'vencido' | 'inactivo';
@@ -153,19 +171,43 @@ async function consultarAnchoGeneral(): Promise<number> {
   }
 }
 
-/** El logo temático manda sobre el tamaño general solo si definió el suyo. */
+/**
+ * El margen superior general que fijó el admin. Mismo criterio que el ancho:
+ * si falla la consulta (sin conexión, o falta la migración 0019 en un
+ * entorno que todavía no la aplicó) se usa el margen de siempre.
+ */
+async function consultarMargenGeneral(): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('configuracion_marca')
+      .select('logo_margen_superior_pct')
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return MARGEN_LOGO_DEFECTO;
+    return limitarMargen((data.logo_margen_superior_pct as number | null) ?? MARGEN_LOGO_DEFECTO);
+  } catch {
+    return MARGEN_LOGO_DEFECTO;
+  }
+}
+
+/** El logo temático manda sobre el tamaño general solo si definió el suyo; la posición siempre es la general. */
 async function consultarMarca(): Promise<Marca> {
-  const [general, logo] = await Promise.all([consultarAnchoGeneral(), consultarLogoVigente()]);
+  const [anchoGeneral, margenGeneral, logo] = await Promise.all([
+    consultarAnchoGeneral(),
+    consultarMargenGeneral(),
+    consultarLogoVigente(),
+  ]);
   return {
     url: logo?.url ?? null,
-    anchoPct: logo?.anchoPct != null ? limitarAncho(logo.anchoPct) : general,
+    anchoPct: logo?.anchoPct != null ? limitarAncho(logo.anchoPct) : anchoGeneral,
+    margenSuperiorPct: margenGeneral,
   };
 }
 
 // Se consulta una sola vez por sesión de la app y se comparte entre todas
 // las pantallas que muestran el logo; el admin fuerza una recarga al cambiar
 // algo, y los logos ya dibujados se actualizan solos.
-const MARCA_NORMAL: Marca = { url: null, anchoPct: ANCHO_LOGO_DEFECTO };
+const MARCA_NORMAL: Marca = { url: null, anchoPct: ANCHO_LOGO_DEFECTO, margenSuperiorPct: MARGEN_LOGO_DEFECTO };
 
 let cache: Marca | undefined;
 let pendiente: Promise<Marca> | null = null;
@@ -271,6 +313,57 @@ export async function guardarAnchoGeneral(anchoPct: number): Promise<void> {
   if (error) throw error;
   if (!data || data.length === 0) {
     throw new Error('No se pudo guardar el tamaño. Revisa que tu cuenta sea de administrador.');
+  }
+  invalidarMarca();
+}
+
+/** El margen superior general: la distancia desde arriba de la pantalla hasta el título. */
+export async function fetchMargenGeneral(): Promise<number> {
+  const { data, error } = await supabase
+    .from('configuracion_marca')
+    .select('logo_margen_superior_pct')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return limitarMargen((data?.logo_margen_superior_pct as number | null) ?? MARGEN_LOGO_DEFECTO);
+}
+
+/** Guarda el margen superior general. Mismo resguardo que `guardarAnchoGeneral`: se confirma pidiendo la fila de vuelta. */
+export async function guardarMargenGeneral(margenSuperiorPct: number): Promise<void> {
+  const { data, error } = await supabase
+    .from('configuracion_marca')
+    .update({ logo_margen_superior_pct: limitarMargen(margenSuperiorPct), updated_at: new Date().toISOString() })
+    .eq('id', true)
+    .select('logo_margen_superior_pct');
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('No se pudo guardar la posición. Revisa que tu cuenta sea de administrador.');
+  }
+  invalidarMarca();
+}
+
+/**
+ * Devuelve el título a las medidas originales del diseño: 40 % de ancho y
+ * 12 % de margen superior — las que el cliente midió en su plantilla (400 y
+ * 120 sobre una rejilla de 1000).
+ *
+ * Es una sola escritura y no dos seguidas a propósito: si la primera pasara y
+ * la segunda fallara, el título quedaría con una medida nueva y otra vieja,
+ * que es peor que no haber restablecido nada.
+ */
+export async function restablecerMedidasPorDefecto(): Promise<void> {
+  const { data, error } = await supabase
+    .from('configuracion_marca')
+    .update({
+      logo_ancho_pct: ANCHO_LOGO_DEFECTO,
+      logo_margen_superior_pct: MARGEN_LOGO_DEFECTO,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', true)
+    .select('logo_ancho_pct, logo_margen_superior_pct');
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('No se pudieron restablecer las medidas. Revisa que tu cuenta sea de administrador.');
   }
   invalidarMarca();
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
@@ -47,7 +47,12 @@ export function ComunaFieldPicker({
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
-        <Pressable style={styles.backdrop} onPress={handleClose}>
+        {/* El panel se ancla abajo, justo donde aparece el teclado. Con
+            `padding` el contenedor se encoge al alto libre y, como el panel
+            mide un porcentaje de ese contenedor, queda completo sobre el
+            teclado en vez de quedar tapado. */}
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <Pressable style={styles.backdrop} onPress={handleClose}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.sheetTitle}>{label}</Text>
 
@@ -84,7 +89,8 @@ export function ComunaFieldPicker({
               ListEmptyComponent={<Text style={styles.sinResultados}>No encontramos esa comuna.</Text>}
             />
           </Pressable>
-        </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

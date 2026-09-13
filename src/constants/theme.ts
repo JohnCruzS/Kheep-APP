@@ -64,9 +64,13 @@ export const Fonts = {
 } as const;
 
 /**
- * Distribución en la rejilla base 100 del cliente: la pantalla mide 400, el
- * contenido (banner y tarjetas) 340 — o sea 30 por lado — y el logo 120,
- * centrado entre 110 y 110.
+ * Distribución en la rejilla base 1000 del cliente: el ancho total de
+ * pantalla es 1000, el margen del catálogo (banner y tarjetas) deja 75 a
+ * cada lado (7,5%), y el título mide 400 de ancho (40%), centrado. El alto
+ * del título y su posición desde arriba son medidas verticales aparte —
+ * % del ALTO de la pantalla, no de este ancho — y viven en `src/lib/marca.ts`
+ * (`ANCHO_LOGO_DEFECTO` y `MARGEN_LOGO_DEFECTO`) porque además son
+ * administrables desde el panel admin, no fijas como estas.
  *
  * Se guardan como proporción del ancho real del teléfono, no como píxeles
  * fijos: así el reparto se mantiene igual en una pantalla chica y en una
@@ -75,8 +79,6 @@ export const Fonts = {
 const ANCHO_PANTALLA = Dimensions.get('window').width;
 
 export const Layout = {
-  /** 30 de 400 = 7,5% del ancho, a cada lado. */
+  /** 75 de 1000 = 7,5% del ancho, a cada lado. */
   catalogMargin: Math.round(ANCHO_PANTALLA * 0.075),
-  /** 120 de 400 = 30% del ancho. */
-  logoWidth: Math.round(ANCHO_PANTALLA * 0.3),
 } as const;

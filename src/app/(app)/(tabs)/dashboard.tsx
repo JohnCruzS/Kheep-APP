@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Dimensions, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BannerCarousel } from '@/components/catalog/BannerCarousel';
@@ -9,7 +9,7 @@ import { CategoryChips } from '@/components/catalog/CategoryChips';
 import { ComunaPicker } from '@/components/catalog/ComunaPicker';
 import { PublicacionCard } from '@/components/catalog/PublicacionCard';
 import { BrandLogo } from '@/components/ui/BrandLogo';
-import { invalidarMarca } from '@/lib/marca';
+import { invalidarMarca, useMarca } from '@/lib/marca';
 import { Colors, Layout, Spacing } from '@/constants/theme';
 import {
   Banner,
@@ -39,6 +39,19 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { session } = useSession();
   const insets = useSafeAreaInsets();
+  // El margen desde arriba hasta el título lo fija el admin (Panel Admin →
+  // Logo de la app), como % del ALTO de la pantalla — ver src/lib/marca.ts.
+  // No es % del ancho como el resto de `Layout`: es una medida vertical.
+  const { margenSuperiorPct } = useMarca();
+  // Se mide desde el borde FÍSICO de la pantalla, que es como lo midió el
+  // cliente en su plantilla. Por eso se descuenta la franja de la barra de
+  // estado: el encabezado ya vive dentro de un área segura que la reserva, y
+  // sin restarla el margen real quedaba ~2,7 puntos por encima del valor
+  // configurado (12 % pedido → 14,7 % dibujado en una pantalla de 2400).
+  const margenSuperior = Math.max(
+    0,
+    Math.round((Dimensions.get('window').height * margenSuperiorPct) / 100) - insets.top,
+  );
 
   // Datos "de vitrina": banners, categorías y comunas casi no cambian
   // sesión a sesión — se piden UNA vez al entrar, nunca de nuevo solo
@@ -201,7 +214,7 @@ export default function DashboardScreen() {
           styles.encabezado,
           { paddingBottom: ESPACIO_CATEGORIAS_TARJETA + (solapar ? SOLAPE_TARJETA : 0) },
         ]}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: margenSuperior }]}>
           {/* Sin sesión el logo es el acceso a la cuenta: no hay barra
               inferior que lleve a "Perfil". Con sesión no hace falta,
               porque la barra ya está ahí. */}
@@ -284,7 +297,8 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    paddingTop: 28,
+    // paddingTop viene del margen superior configurado por el admin (ver
+    // arriba); acá solo queda el espacio fijo de abajo, hacia el banner.
     paddingBottom: 22,
   },
   // Única zona que se desplaza. El gris claro empieza donde termina el negro;
