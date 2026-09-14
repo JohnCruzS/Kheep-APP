@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Fonts } from '@/constants/theme';
 import type { Categoria } from '@/lib/catalog';
@@ -10,12 +10,25 @@ type Props = {
   onSelect: (id: string | null) => void;
 };
 
+/** Alto de la fila. Es el del texto, y se usa también para el hueco que se
+ * deja mientras las categorías todavía no llegan. */
+const ALTO_FILA = 30;
+
 /**
  * Fila de categorías como texto plano (sin fondo de "chip"), en Poppins
  * Light como la plantilla: la seleccionada en rojo, el resto en blanco.
  * Arranca más adentro que las tarjetas (sangría de la plantilla).
  */
 function CategoryChipsComponent({ categorias, selectedId, onSelect }: Props) {
+  // Mientras se cargan las categorías no se dibuja nada, solo se reserva el
+  // alto de la fila. Antes se veía un "Todas" suelto y en rojo durante esos
+  // segundos —el único chip que no viene del servidor—, que parecía un error
+  // de la app. El hueco evita además que el catálogo dé un salto cuando la
+  // lista llega.
+  if (categorias.length === 0) {
+    return <View style={styles.cargando} />;
+  }
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.container}>
       {categorias.map((categoria) => (
@@ -43,6 +56,9 @@ function Tab({ label, active, onPress }: { label: string; active: boolean; onPre
 }
 
 const styles = StyleSheet.create({
+  cargando: {
+    height: ALTO_FILA,
+  },
   container: {
     gap: 24,
     // Sin sangría propia: el contenedor del catálogo ya aplica el margen
@@ -54,7 +70,7 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: Fonts.light,
     fontSize: 21,
-    lineHeight: 30,
+    lineHeight: ALTO_FILA,
     color: Colors.text,
   },
   labelActive: {

@@ -15,47 +15,82 @@ export type LogoTematico = {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   activo: boolean;
-  /** Ancho propio de este logo, en % de la pantalla. null = usa el general. */
-  ancho_pct: number | null;
 };
 
 /**
- * El tamaño del título se guarda como PORCENTAJE del ancho de la pantalla
- * (ver migración 0016): un valor en píxeles se vería enorme en un teléfono
- * angosto y diminuto en uno grande. 40 % es el tamaño del diseño original
- * (400 de 1000 en la rejilla del cliente — ancho de la imagen, centrada).
- */
-export const ANCHO_LOGO_DEFECTO = 40;
-export const ANCHO_LOGO_MIN = 15;
-export const ANCHO_LOGO_MAX = 70;
-
-/**
- * Posición del título: espacio desde arriba de la pantalla hasta donde
- * empieza la imagen, como PORCENTAJE DEL ALTO de la pantalla (no del ancho:
- * es una medida vertical). 12 % es el margen superior del diseño original
- * (120 de 1000 en la rejilla del cliente). Ver migración 0019.
+ * El título se coloca por coordenadas en la rejilla del cliente, donde el
+ * ANCHO de la pantalla vale 1000. Todas las medidas —incluidas las verticales—
+ * van en esa misma unidad, que es como está hecha su plantilla:
  *
- * A diferencia del ancho, este valor es siempre general — no tiene sentido
- * que cada logo temático tenga su propia posición, solo su propia forma.
+ *     120  desde arriba de la pantalla hasta el título
+ *     110  alto del título (sale solo: 400 de ancho ÷ la proporción de la
+ *          imagen, que es 483×143)
+ *     110  del título hasta el banner
+ *     ---
+ *     340  el perímetro: todo lo que hay de arriba al banner
+ *
+ * Que las medidas verticales usen el ancho como referencia no es un descuido:
+ * es lo que mantiene el bloque proporcionado. Si el alto se midiera contra el
+ * alto de la pantalla, en un teléfono alargado el título se estiraría y en uno
+ * ancho se aplastaría.
  */
-export const MARGEN_LOGO_DEFECTO = 12;
-export const MARGEN_LOGO_MIN = 0;
-export const MARGEN_LOGO_MAX = 30;
 
-/** Lo que hay que mostrar hoy como título: qué imagen, de qué tamaño y a qué distancia de arriba. */
+/** Alto del perímetro, en unidades (milésimas del ancho de pantalla). */
+export const PERIMETRO_ALTO = 340;
+/** Margen lateral del catálogo: el perímetro es tan ancho como el banner. */
+export const MARGEN_LATERAL = 75;
+
+/** Centro del título de izquierda a derecha. 500 = el centro de la pantalla. */
+export const CENTRO_X_DEFECTO = 500;
+/** Ancho del título: 400 de 1000, el de la plantilla. */
+export const ANCHO_DEFECTO = 400;
+/** Centro del título de arriba a abajo: 120 de margen + la mitad de sus 110 de alto. */
+export const CENTRO_Y_DEFECTO = 175;
+
+export const MEDIDA_MAX = 1000;
+/** Un logo más angosto que esto no se distingue. */
+export const ANCHO_MIN = 50;
+/** El centro no puede salirse del banner, que es el ancho del perímetro. */
+export const CENTRO_X_MIN = MARGEN_LATERAL;
+export const CENTRO_X_MAX = MEDIDA_MAX - MARGEN_LATERAL;
+
+/** Qué imagen es el título hoy y dónde va dentro del perímetro. */
 export type Marca = {
   /** Logo temático vigente, o null para el logo normal de la app. */
   url: string | null;
-  anchoPct: number;
-  margenSuperiorPct: number;
+  centroX: number;
+  ancho: number;
+  centroY: number;
 };
 
-export function limitarAncho(pct: number): number {
-  return Math.min(ANCHO_LOGO_MAX, Math.max(ANCHO_LOGO_MIN, Math.round(pct)));
+/** Las tres medidas juntas, como se guardan y como las edita el admin. */
+export type MedidasLogo = {
+  centroX: number;
+  ancho: number;
+  centroY: number;
+};
+
+export const MEDIDAS_POR_DEFECTO: MedidasLogo = {
+  centroX: CENTRO_X_DEFECTO,
+  ancho: ANCHO_DEFECTO,
+  centroY: CENTRO_Y_DEFECTO,
+};
+
+function limitar(valor: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(valor)));
 }
 
-export function limitarMargen(pct: number): number {
-  return Math.min(MARGEN_LOGO_MAX, Math.max(MARGEN_LOGO_MIN, Math.round(pct)));
+export function limitarCentroX(valor: number): number {
+  return limitar(valor, CENTRO_X_MIN, CENTRO_X_MAX);
+}
+
+/** El título no puede salirse del perímetro por arriba ni por abajo. */
+export function limitarCentroY(valor: number): number {
+  return limitar(valor, 0, PERIMETRO_ALTO);
+}
+
+export function limitarAncho(valor: number): number {
+  return limitar(valor, ANCHO_MIN, MEDIDA_MAX);
 }
 
 export type EstadoLogo = 'vigente' | 'programado' | 'vencido' | 'inactivo';
@@ -112,32 +147,8 @@ export function esErrorMigracionFaltante(err: unknown): boolean {
  * publicaciones pendientes. Cualquier fallo (incluida la tabla inexistente)
  * cae al logo normal: el logo nunca debe romper la pantalla.
  */
-async function consultarLogoVigente(): Promise<{ url: string; anchoPct: number | null } | null> {
+async function consultarLogoVigente(): Promise<string | null> {
   const hoy = hoyISO();
-  try {
-    const { data, error } = await supabase
-      .from('logos_tematicos')
-      .select('imagen_url, ancho_pct')
-      .eq('activo', true)
-      .or(`fecha_inicio.is.null,fecha_inicio.lte.${hoy}`)
-      .or(`fecha_fin.is.null,fecha_fin.gte.${hoy}`)
-      .order('fecha_inicio', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    // Mientras no se aplique la 0016 la columna del tamaño no existe y la
-    // consulta entera falla. En ese caso se vuelve a pedir solo la imagen: un
-    // logo programado no puede dejar de verse por un ajuste que todavía no
-    // está en la base.
-    if (error && esErrorMigracionFaltante(error)) return await consultarLogoVigenteSinAncho(hoy);
-    if (error || !data?.imagen_url) return null;
-    return { url: data.imagen_url as string, anchoPct: (data.ancho_pct as number | null) ?? null };
-  } catch {
-    return null;
-  }
-}
-
-async function consultarLogoVigenteSinAncho(hoy: string): Promise<{ url: string; anchoPct: null } | null> {
   try {
     const { data, error } = await supabase
       .from('logos_tematicos')
@@ -150,64 +161,45 @@ async function consultarLogoVigenteSinAncho(hoy: string): Promise<{ url: string;
       .limit(1)
       .maybeSingle();
     if (error || !data?.imagen_url) return null;
-    return { url: data.imagen_url as string, anchoPct: null };
+    return data.imagen_url as string;
   } catch {
     return null;
   }
 }
 
 /**
- * El tamaño general que fijó el admin. Si la consulta falla (sin conexión, o
- * falta la migración 0016) se usa el de siempre: el título nunca debe quedar
- * sin dibujar por un ajuste que no se pudo leer.
+ * Las medidas que fijó el admin. Si la consulta falla (sin conexión, o falta
+ * la migración 0020) se usan las del diseño: el título nunca debe quedar sin
+ * dibujar por un ajuste que no se pudo leer.
  */
-async function consultarAnchoGeneral(): Promise<number> {
-  try {
-    const { data, error } = await supabase.from('configuracion_marca').select('logo_ancho_pct').limit(1).maybeSingle();
-    if (error || !data) return ANCHO_LOGO_DEFECTO;
-    return limitarAncho((data.logo_ancho_pct as number | null) ?? ANCHO_LOGO_DEFECTO);
-  } catch {
-    return ANCHO_LOGO_DEFECTO;
-  }
-}
-
-/**
- * El margen superior general que fijó el admin. Mismo criterio que el ancho:
- * si falla la consulta (sin conexión, o falta la migración 0019 en un
- * entorno que todavía no la aplicó) se usa el margen de siempre.
- */
-async function consultarMargenGeneral(): Promise<number> {
+async function consultarMedidas(): Promise<MedidasLogo> {
   try {
     const { data, error } = await supabase
       .from('configuracion_marca')
-      .select('logo_margen_superior_pct')
+      .select('logo_centro_x, logo_ancho, logo_centro_y')
       .limit(1)
       .maybeSingle();
-    if (error || !data) return MARGEN_LOGO_DEFECTO;
-    return limitarMargen((data.logo_margen_superior_pct as number | null) ?? MARGEN_LOGO_DEFECTO);
+    if (error || !data) return MEDIDAS_POR_DEFECTO;
+    return {
+      centroX: limitarCentroX((data.logo_centro_x as number | null) ?? CENTRO_X_DEFECTO),
+      ancho: limitarAncho((data.logo_ancho as number | null) ?? ANCHO_DEFECTO),
+      centroY: limitarCentroY((data.logo_centro_y as number | null) ?? CENTRO_Y_DEFECTO),
+    };
   } catch {
-    return MARGEN_LOGO_DEFECTO;
+    return MEDIDAS_POR_DEFECTO;
   }
 }
 
-/** El logo temático manda sobre el tamaño general solo si definió el suyo; la posición siempre es la general. */
+/** Qué imagen toca hoy y dónde se coloca: las medidas son las mismas para el logo normal y para los temáticos. */
 async function consultarMarca(): Promise<Marca> {
-  const [anchoGeneral, margenGeneral, logo] = await Promise.all([
-    consultarAnchoGeneral(),
-    consultarMargenGeneral(),
-    consultarLogoVigente(),
-  ]);
-  return {
-    url: logo?.url ?? null,
-    anchoPct: logo?.anchoPct != null ? limitarAncho(logo.anchoPct) : anchoGeneral,
-    margenSuperiorPct: margenGeneral,
-  };
+  const [medidas, url] = await Promise.all([consultarMedidas(), consultarLogoVigente()]);
+  return { url, ...medidas };
 }
 
 // Se consulta una sola vez por sesión de la app y se comparte entre todas
 // las pantallas que muestran el logo; el admin fuerza una recarga al cambiar
 // algo, y los logos ya dibujados se actualizan solos.
-const MARCA_NORMAL: Marca = { url: null, anchoPct: ANCHO_LOGO_DEFECTO, margenSuperiorPct: MARGEN_LOGO_DEFECTO };
+const MARCA_NORMAL: Marca = { url: null, ...MEDIDAS_POR_DEFECTO };
 
 let cache: Marca | undefined;
 let pendiente: Promise<Marca> | null = null;
@@ -255,7 +247,7 @@ export function useMarca(): Marca {
 export async function fetchLogosAdmin(): Promise<LogoTematico[]> {
   const { data, error } = await supabase
     .from('logos_tematicos')
-    .select('id, nombre, imagen_url, fecha_inicio, fecha_fin, activo, ancho_pct')
+    .select('id, nombre, imagen_url, fecha_inicio, fecha_fin, activo')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data as LogoTematico[]) ?? [];
@@ -266,106 +258,62 @@ export async function crearLogo(input: {
   imagenUrl: string;
   fechaInicio: string | null;
   fechaFin: string | null;
-  /** null = este logo usa el tamaño general. */
-  anchoPct: number | null;
 }): Promise<void> {
   const { error } = await supabase.from('logos_tematicos').insert({
     nombre: input.nombre,
     imagen_url: input.imagenUrl,
     fecha_inicio: input.fechaInicio,
     fecha_fin: input.fechaFin,
-    ancho_pct: input.anchoPct === null ? null : limitarAncho(input.anchoPct),
   });
   if (error) throw error;
   invalidarMarca();
 }
 
-/** Tamaño propio de un logo ya creado. null = vuelve a usar el general. */
-export async function actualizarAnchoLogo(id: string, anchoPct: number | null): Promise<void> {
-  const { data, error } = await supabase
-    .from('logos_tematicos')
-    .update({ ancho_pct: anchoPct === null ? null : limitarAncho(anchoPct) })
-    .eq('id', id)
-    .select('id');
-  if (error) throw error;
-  if (!data || data.length === 0) throw new Error('No se pudo guardar el tamaño de este logo.');
-  invalidarMarca();
-}
-
-/** El tamaño general: el que ve todo el mundo mientras no haya logo temático. */
-export async function fetchAnchoGeneral(): Promise<number> {
-  const { data, error } = await supabase.from('configuracion_marca').select('logo_ancho_pct').limit(1).maybeSingle();
-  if (error) throw error;
-  return limitarAncho((data?.logo_ancho_pct as number | null) ?? ANCHO_LOGO_DEFECTO);
-}
-
-/**
- * Guarda el tamaño general. Se confirma pidiendo la fila de vuelta: con RLS,
- * un UPDATE que no alcanza ninguna fila (por ejemplo, si la cuenta dejó de
- * ser admin) también "tiene éxito", y el ajuste se perdería en silencio.
- */
-export async function guardarAnchoGeneral(anchoPct: number): Promise<void> {
+/** Las medidas actuales del título, para editarlas en el panel. */
+export async function fetchMedidasLogo(): Promise<MedidasLogo> {
   const { data, error } = await supabase
     .from('configuracion_marca')
-    .update({ logo_ancho_pct: limitarAncho(anchoPct), updated_at: new Date().toISOString() })
-    .eq('id', true)
-    .select('logo_ancho_pct');
-  if (error) throw error;
-  if (!data || data.length === 0) {
-    throw new Error('No se pudo guardar el tamaño. Revisa que tu cuenta sea de administrador.');
-  }
-  invalidarMarca();
-}
-
-/** El margen superior general: la distancia desde arriba de la pantalla hasta el título. */
-export async function fetchMargenGeneral(): Promise<number> {
-  const { data, error } = await supabase
-    .from('configuracion_marca')
-    .select('logo_margen_superior_pct')
+    .select('logo_centro_x, logo_ancho, logo_centro_y')
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  return limitarMargen((data?.logo_margen_superior_pct as number | null) ?? MARGEN_LOGO_DEFECTO);
-}
-
-/** Guarda el margen superior general. Mismo resguardo que `guardarAnchoGeneral`: se confirma pidiendo la fila de vuelta. */
-export async function guardarMargenGeneral(margenSuperiorPct: number): Promise<void> {
-  const { data, error } = await supabase
-    .from('configuracion_marca')
-    .update({ logo_margen_superior_pct: limitarMargen(margenSuperiorPct), updated_at: new Date().toISOString() })
-    .eq('id', true)
-    .select('logo_margen_superior_pct');
-  if (error) throw error;
-  if (!data || data.length === 0) {
-    throw new Error('No se pudo guardar la posición. Revisa que tu cuenta sea de administrador.');
-  }
-  invalidarMarca();
+  return {
+    centroX: limitarCentroX((data?.logo_centro_x as number | null) ?? CENTRO_X_DEFECTO),
+    ancho: limitarAncho((data?.logo_ancho as number | null) ?? ANCHO_DEFECTO),
+    centroY: limitarCentroY((data?.logo_centro_y as number | null) ?? CENTRO_Y_DEFECTO),
+  };
 }
 
 /**
- * Devuelve el título a las medidas originales del diseño: 40 % de ancho y
- * 12 % de margen superior — las que el cliente midió en su plantilla (400 y
- * 120 sobre una rejilla de 1000).
+ * Guarda las tres medidas de una vez. Van juntas a propósito: si se guardaran
+ * por separado y una fallara, el título quedaría a medio camino entre la
+ * posición vieja y la nueva.
  *
- * Es una sola escritura y no dos seguidas a propósito: si la primera pasara y
- * la segunda fallara, el título quedaría con una medida nueva y otra vieja,
- * que es peor que no haber restablecido nada.
+ * Se confirma pidiendo la fila de vuelta: con RLS, un UPDATE que no alcanza
+ * ninguna fila (por ejemplo, si la cuenta dejó de ser admin) también "tiene
+ * éxito", y el cambio se perdería en silencio.
  */
-export async function restablecerMedidasPorDefecto(): Promise<void> {
+export async function guardarMedidasLogo(medidas: MedidasLogo): Promise<void> {
   const { data, error } = await supabase
     .from('configuracion_marca')
     .update({
-      logo_ancho_pct: ANCHO_LOGO_DEFECTO,
-      logo_margen_superior_pct: MARGEN_LOGO_DEFECTO,
+      logo_centro_x: limitarCentroX(medidas.centroX),
+      logo_ancho: limitarAncho(medidas.ancho),
+      logo_centro_y: limitarCentroY(medidas.centroY),
       updated_at: new Date().toISOString(),
     })
     .eq('id', true)
-    .select('logo_ancho_pct, logo_margen_superior_pct');
+    .select('logo_centro_x');
   if (error) throw error;
   if (!data || data.length === 0) {
-    throw new Error('No se pudieron restablecer las medidas. Revisa que tu cuenta sea de administrador.');
+    throw new Error('No se pudieron guardar las medidas. Revisa que tu cuenta sea de administrador.');
   }
   invalidarMarca();
+}
+
+/** Devuelve el título a las medidas del diseño. */
+export async function restablecerMedidasPorDefecto(): Promise<void> {
+  await guardarMedidasLogo(MEDIDAS_POR_DEFECTO);
 }
 
 export async function actualizarLogoActivo(id: string, activo: boolean): Promise<void> {

@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -21,6 +22,13 @@ type Fila = { id: string | null; label: string };
  * lento para abrir y ni siquiera se podía hacer scroll.
  */
 function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
+  // El nombre escala con el ancho de la pantalla, en la misma rejilla que el
+  // título (45 de 1000), para que el bloque completo se vea igual de
+  // proporcionado en un teléfono chico y en una tablet. Los topes evitan los
+  // dos extremos: ilegible en pantallas muy angostas, enorme en muy anchas.
+  const { width } = useWindowDimensions();
+  const tamanoNombre = Math.min(26, Math.max(14, Math.round((width * 45) / 1000)));
+
   const [open, setOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const label = comunas.find((c) => c.id === selectedId)?.nombre ?? 'Todas las comunas';
@@ -50,7 +58,12 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
   return (
     <>
       <Pressable onPress={() => setOpen(true)} hitSlop={8} style={styles.trigger}>
-        <Text style={styles.label}>{label}</Text>
+        {/* Una sola línea: partido en dos, el nombre se metía en el banner.
+            Si no cabe entero se recorta con puntos suspensivos, que es más
+            limpio que empujar el resto del catálogo hacia abajo. */}
+        <Text style={[styles.label, { fontSize: tamanoNombre, lineHeight: Math.round(tamanoNombre * 1.3) }]} numberOfLines={1}>
+          {label}
+        </Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
@@ -112,6 +125,9 @@ const styles = StyleSheet.create({
   // flecha. Sigue siendo tocable (abre el buscador de comunas).
   trigger: {
     alignItems: 'center',
+    // El nombre puede ser más ancho que el título (p. ej. "Todas las
+    // comunas"), pero no más que el contenido del catálogo.
+    maxWidth: '85%',
   },
   label: {
     fontFamily: Fonts.light,

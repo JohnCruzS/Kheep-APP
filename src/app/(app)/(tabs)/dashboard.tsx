@@ -8,8 +8,8 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/Catal
 import { CategoryChips } from '@/components/catalog/CategoryChips';
 import { ComunaPicker } from '@/components/catalog/ComunaPicker';
 import { PublicacionCard } from '@/components/catalog/PublicacionCard';
-import { BrandLogo } from '@/components/ui/BrandLogo';
-import { invalidarMarca, useMarca } from '@/lib/marca';
+import { TituloPosicionado } from '@/components/ui/BrandLogo';
+import { PERIMETRO_ALTO, invalidarMarca, useMarca } from '@/lib/marca';
 import { Colors, Layout, Spacing } from '@/constants/theme';
 import {
   Banner,
@@ -39,19 +39,19 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { session } = useSession();
   const insets = useSafeAreaInsets();
-  // El margen desde arriba hasta el título lo fija el admin (Panel Admin →
-  // Logo de la app), como % del ALTO de la pantalla — ver src/lib/marca.ts.
-  // No es % del ancho como el resto de `Layout`: es una medida vertical.
-  const { margenSuperiorPct } = useMarca();
-  // Se mide desde el borde FÍSICO de la pantalla, que es como lo midió el
-  // cliente en su plantilla. Por eso se descuenta la franja de la barra de
-  // estado: el encabezado ya vive dentro de un área segura que la reserva, y
-  // sin restarla el margen real quedaba ~2,7 puntos por encima del valor
-  // configurado (12 % pedido → 14,7 % dibujado en una pantalla de 2400).
-  const margenSuperior = Math.max(
-    0,
-    Math.round((Dimensions.get('window').height * margenSuperiorPct) / 100) - insets.top,
-  );
+  // El título se coloca dentro de un perímetro con tres medidas que fija el
+  // admin (Panel Admin → Título de la app): centro horizontal, ancho y centro
+  // vertical. Ver src/lib/marca.ts.
+  //
+  // El perímetro va del borde FÍSICO de arriba —como lo midió el cliente en
+  // su plantilla— hasta donde empieza el banner: 340 de 1000 del alto. Su
+  // ancho es el del banner, para que el título se alinee con él.
+  const { url: urlTitulo, centroX, ancho: anchoTitulo, centroY } = useMarca();
+  // Una unidad de la rejilla del cliente = el ancho de la pantalla entre 1000.
+  // Las medidas verticales usan la misma unidad que las horizontales, que es
+  // lo que mantiene el bloque proporcionado en cualquier teléfono.
+  const unidad = Dimensions.get('window').width / 1000;
+  const altoPerimetro = Math.round(PERIMETRO_ALTO * unidad);
 
   // Datos "de vitrina": banners, categorías y comunas casi no cambian
   // sesión a sesión — se piden UNA vez al entrar, nunca de nuevo solo
@@ -214,22 +214,30 @@ export default function DashboardScreen() {
           styles.encabezado,
           { paddingBottom: ESPACIO_CATEGORIAS_TARJETA + (solapar ? SOLAPE_TARJETA : 0) },
         ]}>
-        <View style={[styles.header, { paddingTop: margenSuperior }]}>
-          {/* Sin sesión el logo es el acceso a la cuenta: no hay barra
-              inferior que lleve a "Perfil". Con sesión no hace falta,
-              porque la barra ya está ahí. */}
-          {session ? (
-            <BrandLogo />
-          ) : (
+        {/* El perímetro del título. Su alto se descuenta del espacio que ya
+            ocupa la barra de estado, porque el `SafeAreaView` la reserva
+            aparte y si no el título quedaría más abajo de lo configurado.
+
+            Sin sesión el título es además el acceso a la cuenta: no hay barra
+            inferior que lleve a "Perfil". Con sesión no hace falta, porque la
+            barra ya está ahí. */}
+        <View style={[styles.perimetroTitulo, { height: Math.max(0, altoPerimetro - insets.top) }]}>
+          <TituloPosicionado
+            unidad={unidad}
+            altoPerimetro={PERIMETRO_ALTO}
+            recorteArriba={insets.top}
+            medidas={{ centroX, ancho: anchoTitulo, centroY }}
+            url={urlTitulo}
+            debajo={<ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={elegirComuna} />}
+          />
+          {!session && (
             <Pressable
+              style={StyleSheet.absoluteFill}
               onPress={() => router.push('/(auth)/login')}
-              hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="Iniciar sesión o crear cuenta">
-              <BrandLogo />
-            </Pressable>
+              accessibilityLabel="Iniciar sesión o crear cuenta"
+            />
           )}
-          <ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={elegirComuna} />
         </View>
 
         {/* La key cambia si cambia la lista: el carrusel parte de cero en vez
@@ -295,11 +303,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     paddingHorizontal: Layout.catalogMargin,
   },
-  header: {
-    alignItems: 'center',
-    // paddingTop viene del margen superior configurado por el admin (ver
-    // arriba); acá solo queda el espacio fijo de abajo, hacia el banner.
-    paddingBottom: 22,
+  perimetroTitulo: {
+    // El rectángulo donde el admin coloca el título: todo el ancho de la
+    // pantalla y el alto del perímetro. El contenido va posicionado dentro
+    // (ver TituloPosicionado), no apilado. Los márgenes laterales del
+    // catálogo se anulan acá porque las medidas del título se cuentan desde
+    // el borde de la pantalla, no desde el borde del contenido.
+    alignSelf: 'stretch',
+    marginHorizontal: -Layout.catalogMargin,
+    // Red de seguridad: aunque llegara una medida imposible desde la base, el
+    // título no puede dibujarse fuera de su perímetro ni pisar el banner.
+    overflow: 'hidden',
   },
   // Única zona que se desplaza. El gris claro empieza donde termina el negro;
   // la lista va transparente y corrida hacia arriba, para que las tarjetas se

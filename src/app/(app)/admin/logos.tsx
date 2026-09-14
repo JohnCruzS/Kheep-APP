@@ -2,37 +2,47 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
-import { BrandLogoPreview } from '@/components/ui/BrandLogo';
 import { Button } from '@/components/ui/Button';
-import { ControlTamano } from '@/components/ui/ControlTamano';
+import { ControlMedida } from '@/components/ui/ControlMedida';
+import { Guias, VistaPreviaTitulo } from '@/components/ui/VistaPreviaTitulo';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import {
-  ANCHO_LOGO_DEFECTO,
+  ANCHO_MIN,
+  CENTRO_X_MAX,
+  CENTRO_X_MIN,
+  PERIMETRO_ALTO,
   EstadoLogo,
   LogoTematico,
-  MARGEN_LOGO_DEFECTO,
-  MARGEN_LOGO_MAX,
-  MARGEN_LOGO_MIN,
-  actualizarAnchoLogo,
+  MEDIDAS_POR_DEFECTO,
+  MedidasLogo,
   actualizarLogoActivo,
   crearLogo,
   eliminarLogo,
   esErrorMigracionFaltante,
   estadoLogo,
-  fetchAnchoGeneral,
   fetchLogosAdmin,
-  restablecerMedidasPorDefecto,
-  fetchMargenGeneral,
+  fetchMedidasLogo,
   formatearFecha,
-  guardarAnchoGeneral,
-  guardarMargenGeneral,
+  guardarMedidasLogo,
   parseFecha,
+  restablecerMedidasPorDefecto,
 } from '@/lib/marca';
 import { supabase } from '@/lib/supabase';
 
@@ -43,18 +53,6 @@ const ETIQUETA_ESTADO: Record<EstadoLogo, string> = {
   inactivo: 'Desactivado',
 };
 
-/**
- * El logo que la app está mostrando hoy, con el mismo criterio de desempate
- * que usa `src/lib/marca.ts`: entre los vigentes gana el de fecha de inicio
- * más reciente, y los sin fecha quedan al final. Si no hay ninguno, la app
- * está mostrando el logo normal.
- */
-function logoDeHoy(logos: LogoTematico[]): LogoTematico | null {
-  const vigentes = logos.filter((l) => estadoLogo(l) === 'vigente');
-  if (vigentes.length === 0) return null;
-  return [...vigentes].sort((a, b) => (b.fecha_inicio ?? '').localeCompare(a.fecha_inicio ?? ''))[0];
-}
-
 function rangoFechas(logo: LogoTematico): string {
   const { fecha_inicio: ini, fecha_fin: fin } = logo;
   if (ini && fin) return `Del ${formatearFecha(ini)} al ${formatearFecha(fin)}`;
@@ -64,9 +62,33 @@ function rangoFechas(logo: LogoTematico): string {
 }
 
 /**
- * Logos temáticos "estilo Google Doodle": el admin sube una imagen y le pone
- * fechas; mientras esté vigente reemplaza al logo normal en toda la app, y
- * al terminar vuelve solo al normal. Ver migración 0015 y src/lib/marca.ts.
+ * El logo que la app está mostrando hoy, con el mismo criterio de desempate
+ * que usa `src/lib/marca.ts`: entre los vigentes gana el de fecha de inicio
+ * más reciente, y los sin fecha quedan al final.
+ */
+function logoDeHoy(logos: LogoTematico[]): LogoTematico | null {
+  const vigentes = logos.filter((l) => estadoLogo(l) === 'vigente');
+  if (vigentes.length === 0) return null;
+  return [...vigentes].sort((a, b) => (b.fecha_inicio ?? '').localeCompare(a.fecha_inicio ?? ''))[0];
+}
+
+const mismasMedidas = (a: MedidasLogo, b: MedidasLogo) =>
+  a.centroX === b.centroX && a.ancho === b.ancho && a.centroY === b.centroY;
+
+/**
+ * Título de la app: qué imagen es, dónde va y de qué tamaño.
+ *
+ * El título se coloca dentro de un perímetro —tan ancho como el banner y tan
+ * alto como el espacio que va de arriba de la pantalla al banner— con tres
+ * medidas en la rejilla de 1000 del cliente:
+ *
+ *   Centro  de izquierda a derecha (0 izquierda, 500 centrado, 1000 derecha)
+ *   Ancho   el tamaño de la imagen, que escala entera y sin deformarse
+ *   Alto    de arriba a abajo dentro del perímetro
+ *
+ * Arriba se ve una maqueta de la pantalla con esas medidas aplicadas: los
+ * tres números solo se entienden mirando el resultado, no leyéndolos. Cada
+ * medida tiene además un interruptor que enciende su guía en la maqueta.
  */
 export default function LogosAdminScreen() {
   const router = useRouter();
@@ -75,37 +97,24 @@ export default function LogosAdminScreen() {
   const [error, setError] = useState<string | null>(null);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [creando, setCreando] = useState(false);
-  // Tamaño general del título. `guardado` es lo que hoy ven los usuarios y
-  // `ancho` lo que el admin está probando: mientras difieran se muestra el
-  // botón de guardar, porque el cambio afecta a todo el mundo y no debe
-  // aplicarse solo por tocar un botón de más o menos.
-  const [ancho, setAncho] = useState(ANCHO_LOGO_DEFECTO);
-  const [anchoGuardado, setAnchoGuardado] = useState(ANCHO_LOGO_DEFECTO);
-  const [guardandoAncho, setGuardandoAncho] = useState(false);
-  // Posición del título (margen desde arriba de la pantalla). Mismo patrón
-  // que el ancho: "guardado" es lo que hoy ven los usuarios y "margen" lo
-  // que el admin está probando.
-  const [margen, setMargen] = useState(MARGEN_LOGO_DEFECTO);
-  const [margenGuardado, setMargenGuardado] = useState(MARGEN_LOGO_DEFECTO);
-  const [guardandoMargen, setGuardandoMargen] = useState(false);
-  const [restableciendo, setRestableciendo] = useState(false);
-  const [ajustando, setAjustando] = useState<LogoTematico | null>(null);
+
+  // `guardadas` es lo que hoy ven los usuarios y `medidas` lo que el admin
+  // está probando: mientras difieran aparece el botón de guardar, porque el
+  // cambio afecta a todo el mundo y no debe aplicarse por tocar un "+".
+  const [medidas, setMedidas] = useState<MedidasLogo>(MEDIDAS_POR_DEFECTO);
+  const [guardadas, setGuardadas] = useState<MedidasLogo>(MEDIDAS_POR_DEFECTO);
+  const [guardando, setGuardando] = useState(false);
+  const [guias, setGuias] = useState<Guias>({ centroX: false, ancho: false, centroY: false });
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setFaltaMigracion(false);
     try {
-      const [lista, anchoActual, margenActual] = await Promise.all([
-        fetchLogosAdmin(),
-        fetchAnchoGeneral(),
-        fetchMargenGeneral(),
-      ]);
+      const [lista, actuales] = await Promise.all([fetchLogosAdmin(), fetchMedidasLogo()]);
       setLogos(lista);
-      setAncho(anchoActual);
-      setAnchoGuardado(anchoActual);
-      setMargen(margenActual);
-      setMargenGuardado(margenActual);
+      setMedidas(actuales);
+      setGuardadas(actuales);
     } catch (err) {
       if (esErrorMigracionFaltante(err)) setFaltaMigracion(true);
       else setError(getErrorMessage(err, 'Error desconocido.'));
@@ -118,6 +127,45 @@ export default function LogosAdminScreen() {
     load();
   }, [load]);
 
+  async function handleGuardar() {
+    setGuardando(true);
+    setError(null);
+    try {
+      await guardarMedidasLogo(medidas);
+      setGuardadas(medidas);
+    } catch (err) {
+      setError(getErrorMessage(err, 'No se pudieron guardar las medidas.'));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  function handleRestablecer() {
+    Alert.alert(
+      'Volver a las medidas originales',
+      'El título vuelve a la posición y el tamaño del diseño. El cambio lo ven todos los usuarios; los logos por fecha no se tocan.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Restablecer',
+          onPress: async () => {
+            setGuardando(true);
+            setError(null);
+            try {
+              await restablecerMedidasPorDefecto();
+              setMedidas(MEDIDAS_POR_DEFECTO);
+              setGuardadas(MEDIDAS_POR_DEFECTO);
+            } catch (err) {
+              setError(getErrorMessage(err, 'No se pudieron restablecer las medidas.'));
+            } finally {
+              setGuardando(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   async function handleToggle(logo: LogoTematico) {
     const nuevo = !logo.activo;
     setLogos((list) => list.map((l) => (l.id === logo.id ? { ...l, activo: nuevo } : l)));
@@ -127,61 +175,6 @@ export default function LogosAdminScreen() {
       setLogos((list) => list.map((l) => (l.id === logo.id ? { ...l, activo: logo.activo } : l)));
       setError(getErrorMessage(err, 'No se pudo actualizar el logo.'));
     }
-  }
-
-  async function handleGuardarAncho() {
-    setGuardandoAncho(true);
-    setError(null);
-    try {
-      await guardarAnchoGeneral(ancho);
-      setAnchoGuardado(ancho);
-    } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo guardar el tamaño.'));
-    } finally {
-      setGuardandoAncho(false);
-    }
-  }
-
-  async function handleGuardarMargen() {
-    setGuardandoMargen(true);
-    setError(null);
-    try {
-      await guardarMargenGeneral(margen);
-      setMargenGuardado(margen);
-    } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo guardar la posición.'));
-    } finally {
-      setGuardandoMargen(false);
-    }
-  }
-
-  function handleRestablecer() {
-    Alert.alert(
-      'Volver a las medidas originales',
-      `El título vuelve a ${ANCHO_LOGO_DEFECTO} % de ancho y ${MARGEN_LOGO_DEFECTO} % de margen superior, que son las ` +
-        'medidas del diseño. El cambio lo ven todos los usuarios. Los logos por fecha y sus tamaños propios no se tocan.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Restablecer',
-          onPress: async () => {
-            setRestableciendo(true);
-            setError(null);
-            try {
-              await restablecerMedidasPorDefecto();
-              setAncho(ANCHO_LOGO_DEFECTO);
-              setAnchoGuardado(ANCHO_LOGO_DEFECTO);
-              setMargen(MARGEN_LOGO_DEFECTO);
-              setMargenGuardado(MARGEN_LOGO_DEFECTO);
-            } catch (err) {
-              setError(getErrorMessage(err, 'No se pudieron restablecer las medidas.'));
-            } finally {
-              setRestableciendo(false);
-            }
-          },
-        },
-      ],
-    );
   }
 
   function handleEliminar(logo: LogoTematico) {
@@ -202,11 +195,9 @@ export default function LogosAdminScreen() {
     ]);
   }
 
-  // Lo que se ve hoy: el logo temático vigente si lo hay, con su tamaño
-  // propio; si no, el logo normal con el tamaño general que se está
-  // ajustando, para ver el cambio en el momento.
   const vigente = logoDeHoy(logos);
-  const anchoVistaPrevia = vigente?.ancho_pct ?? ancho;
+  const hayCambios = !mismasMedidas(medidas, guardadas);
+  const enDefecto = mismasMedidas(guardadas, MEDIDAS_POR_DEFECTO);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -216,7 +207,7 @@ export default function LogosAdminScreen() {
         <Pressable onPress={() => router.back()} hitSlop={12}>
           <Text style={styles.backLabel}>‹ Volver</Text>
         </Pressable>
-        <Text style={styles.topTitle}>Logo de la app</Text>
+        <Text style={styles.topTitle}>Título de la app</Text>
         {faltaMigracion ? (
           <View style={{ width: 70 }} />
         ) : (
@@ -226,100 +217,19 @@ export default function LogosAdminScreen() {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* La vista previa usa el tamaño que se está probando, y el recuadro
-            tiene el ancho real de la pantalla: así se ve tal cual va a quedar
-            el título en el catálogo, sin tener que salir a comprobarlo. */}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.previewBox}>
-          <Text style={styles.previewLabel}>ASÍ SE VE HOY</Text>
-          <BrandLogoPreview
+          <VistaPreviaTitulo
             key={vigente?.id ?? 'normal'}
+            medidas={medidas}
             url={vigente?.imagen_url ?? null}
-            anchoPct={anchoVistaPrevia}
-            margenPct={margen}
+            guias={guias}
+            comuna="Valdivia"
           />
-          {vigente && vigente.ancho_pct !== null ? (
-            <Text style={styles.previewNota}>
-              “{vigente.nombre}” está vigente con su tamaño propio ({vigente.ancho_pct} %).
-            </Text>
-          ) : null}
+          <Text style={styles.previewNota}>
+            {vigente ? `Hoy se ve “${vigente.nombre}”` : 'Así se ve hoy en el catálogo'}
+          </Text>
         </View>
-
-        {!faltaMigracion && (
-          <View style={styles.tamanoBox}>
-            <Text style={styles.tamanoTitulo}>Tamaño del título</Text>
-            <Text style={styles.tamanoAyuda}>
-              Se mide como porcentaje del ancho de la pantalla, así se ve igual de grande en cualquier teléfono. Al
-              guardar, el cambio lo ven todos los usuarios.
-            </Text>
-            <ControlTamano valor={ancho} onChange={setAncho} />
-            {ancho !== anchoGuardado ? (
-              <View style={styles.tamanoAcciones}>
-                <Button
-                  label={guardandoAncho ? 'Guardando…' : 'Guardar tamaño'}
-                  onPress={handleGuardarAncho}
-                  loading={guardandoAncho}
-                />
-                <Pressable onPress={() => setAncho(anchoGuardado)} hitSlop={8}>
-                  <Text style={styles.deshacer}>Deshacer</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Text style={styles.tamanoEstado}>Este es el tamaño que ven todos.</Text>
-            )}
-          </View>
-        )}
-
-        {!faltaMigracion && (
-          <View style={styles.tamanoBox}>
-            <Text style={styles.tamanoTitulo}>Posición del título</Text>
-            <Text style={styles.tamanoAyuda}>
-              Espacio desde arriba de la pantalla hasta el título, como porcentaje del alto de la pantalla (no del
-              ancho, como el tamaño). Es siempre general: no depende de qué logo esté vigente hoy.
-            </Text>
-            <ControlTamano valor={margen} onChange={setMargen} min={MARGEN_LOGO_MIN} max={MARGEN_LOGO_MAX} />
-            {margen !== margenGuardado ? (
-              <View style={styles.tamanoAcciones}>
-                <Button
-                  label={guardandoMargen ? 'Guardando…' : 'Guardar posición'}
-                  onPress={handleGuardarMargen}
-                  loading={guardandoMargen}
-                />
-                <Pressable onPress={() => setMargen(margenGuardado)} hitSlop={8}>
-                  <Text style={styles.deshacer}>Deshacer</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Text style={styles.tamanoEstado}>Esta es la posición que ven todos.</Text>
-            )}
-          </View>
-        )}
-
-        {/* Salida de emergencia: después de probar medidas, volver al diseño
-            original sin tener que recordar qué números eran. Solo aparece
-            cuando hay algo que restablecer. */}
-        {!faltaMigracion && (anchoGuardado !== ANCHO_LOGO_DEFECTO || margenGuardado !== MARGEN_LOGO_DEFECTO) && (
-          <Pressable
-            style={({ pressed }) => [styles.restablecerFila, pressed && styles.restablecerPresionada]}
-            onPress={handleRestablecer}
-            disabled={restableciendo}>
-            <Ionicons name="refresh-outline" size={17} color={Colors.text} />
-            <View style={styles.restablecerTexto}>
-              <Text style={styles.restablecerLabel}>
-                {restableciendo ? 'Restableciendo…' : 'Volver a las medidas originales'}
-              </Text>
-              <Text style={styles.restablecerHint}>
-                {ANCHO_LOGO_DEFECTO} % de ancho y {MARGEN_LOGO_DEFECTO} % de margen superior
-              </Text>
-            </View>
-          </Pressable>
-        )}
-
-        <Text style={styles.ayuda}>
-          Programa un logo para una fecha especial (Fiestas Patrias, Navidad, un aniversario…). Mientras esté vigente
-          reemplaza al logo normal de Kheep en toda la app; al terminar su fecha, vuelve solo al normal. Cada logo puede
-          además llevar su propio tamaño, porque no todas las imágenes tienen la misma forma.
-        </Text>
 
         {loading && <LoadingState />}
         {error && <ErrorState message={error} onRetry={load} />}
@@ -328,12 +238,87 @@ export default function LogosAdminScreen() {
           <View style={styles.aviso}>
             <Text style={styles.avisoTitulo}>Falta un paso en la base de datos</Text>
             <Text style={styles.avisoTexto}>
-              Para programar logos y ajustar el tamaño y la posición del título hay que ejecutar las migraciones
-              0015_logos_tematicos.sql, 0016_tamano_logo.sql y 0019_margen_superior_logo.sql en el editor SQL de
-              Supabase. Mientras tanto, la app sigue mostrando el logo normal en su tamaño y posición de siempre.
+              Para colocar el título y programar logos por fecha hay que ejecutar en el editor SQL de Supabase las
+              migraciones 0015_logos_tematicos.sql y 0020_logo_por_coordenadas.sql. Mientras tanto, la app muestra el
+              logo normal en su posición de siempre.
             </Text>
           </View>
         )}
+
+        {!faltaMigracion && (
+          <View style={styles.medidas}>
+            <ControlMedida
+              etiqueta="Centro"
+              valor={medidas.centroX}
+              onChange={(centroX) => setMedidas((m) => ({ ...m, centroX }))}
+              guia={guias.centroX}
+              onGuia={(centroX) => setGuias((g) => ({ ...g, centroX }))}
+              min={CENTRO_X_MIN}
+              max={CENTRO_X_MAX}
+            />
+            <ControlMedida
+              etiqueta="Ancho"
+              valor={medidas.ancho}
+              onChange={(ancho) => setMedidas((m) => ({ ...m, ancho }))}
+              guia={guias.ancho}
+              onGuia={(ancho) => setGuias((g) => ({ ...g, ancho }))}
+              min={ANCHO_MIN}
+            />
+            {/* El alto se mueve dentro del perímetro (340), no de los 1000
+                de la pantalla: fuera de ahí el título se metería en el
+                banner. El control muestra su tope real. */}
+            <ControlMedida
+              etiqueta="Alto"
+              valor={medidas.centroY}
+              onChange={(centroY) => setMedidas((m) => ({ ...m, centroY }))}
+              guia={guias.centroY}
+              onGuia={(centroY) => setGuias((g) => ({ ...g, centroY }))}
+              max={PERIMETRO_ALTO}
+              referencia={PERIMETRO_ALTO}
+            />
+
+            <View style={styles.acciones}>
+              {hayCambios ? (
+                <>
+                  <Button
+                    label={guardando ? 'Guardando…' : 'Guardar'}
+                    onPress={handleGuardar}
+                    loading={guardando}
+                  />
+                  <Pressable onPress={() => setMedidas(guardadas)} hitSlop={8}>
+                    <Text style={styles.deshacer}>Deshacer</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Text style={styles.estadoMedidas}>Así lo ven todos los usuarios.</Text>
+              )}
+            </View>
+
+            {/* Siempre visible: es la salida de emergencia después de probar
+                medidas, y tener que adivinar si aparece o no la hace inútil.
+                Cuando ya está en el original queda apagado, para que se vea
+                que no hay nada que deshacer. */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.restablecerFila,
+                pressed && styles.restablecerPresionada,
+                enDefecto && styles.restablecerApagada,
+              ]}
+              onPress={handleRestablecer}
+              disabled={guardando || enDefecto}>
+              <Ionicons name="refresh-outline" size={17} color={enDefecto ? Colors.textMuted : Colors.text} />
+              <Text style={[styles.restablecerLabel, enDefecto && styles.restablecerLabelApagado]}>
+                {enDefecto ? 'Está en las medidas originales' : 'Volver a las medidas originales'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        <Text style={styles.ayuda}>
+          Programa un logo para una fecha especial (Fiestas Patrias, Navidad, un aniversario…). Mientras esté vigente
+          reemplaza al logo normal en toda la app; al terminar su fecha, vuelve solo al normal. Todos se colocan con las
+          medidas de arriba.
+        </Text>
 
         {!loading && !error && !faltaMigracion && logos.length === 0 && (
           <Text style={styles.vacio}>Todavía no hay logos programados. Crea el primero con “+ Nuevo”.</Text>
@@ -354,11 +339,6 @@ export default function LogosAdminScreen() {
                 <Text style={[styles.estado, estado === 'vigente' && styles.estadoVigente]}>
                   {ETIQUETA_ESTADO[estado]}
                 </Text>
-                <Pressable onPress={() => setAjustando(logo)} hitSlop={8}>
-                  <Text style={styles.tamanoLink}>
-                    Tamaño: {logo.ancho_pct === null ? `${anchoGuardado} % (general)` : `${logo.ancho_pct} %`}
-                  </Text>
-                </Pressable>
               </View>
               <View style={styles.rowActions}>
                 <Switch
@@ -376,29 +356,17 @@ export default function LogosAdminScreen() {
         })}
       </ScrollView>
 
-      <NuevoLogoModal visible={creando} onClose={() => setCreando(false)} onSaved={load} anchoGeneral={anchoGuardado} />
-      <TamanoLogoModal logo={ajustando} anchoGeneral={anchoGuardado} onClose={() => setAjustando(null)} onSaved={load} />
+      <NuevoLogoModal visible={creando} onClose={() => setCreando(false)} onSaved={load} />
     </SafeAreaView>
   );
 }
 
-function NuevoLogoModal({
-  visible,
-  onClose,
-  onSaved,
-  anchoGeneral,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSaved: () => void;
-  anchoGeneral: number;
-}) {
+/** Subir un logo nuevo y ponerle fechas. El tamaño y la posición son los del título, comunes a todos. */
+function NuevoLogoModal({ visible, onClose, onSaved }: { visible: boolean; onClose: () => void; onSaved: () => void }) {
   const [imagen, setImagen] = useState<PickedImage | null>(null);
   const [nombre, setNombre] = useState('');
   const [inicio, setInicio] = useState('');
   const [fin, setFin] = useState('');
-  const [tamanoPropio, setTamanoPropio] = useState(false);
-  const [ancho, setAncho] = useState(anchoGeneral);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -408,11 +376,9 @@ function NuevoLogoModal({
       setNombre('');
       setInicio('');
       setFin('');
-      setTamanoPropio(false);
-      setAncho(anchoGeneral);
       setError(null);
     }
-  }, [visible, anchoGeneral]);
+  }, [visible]);
 
   async function handleElegir() {
     try {
@@ -438,13 +404,7 @@ function NuevoLogoModal({
     try {
       const { data: auth } = await supabase.auth.getUser();
       const url = await uploadCompressedImage('banners', auth.user!.id, imagen, 'logo-tematico');
-      await crearLogo({
-        nombre: nombre.trim(),
-        imagenUrl: url,
-        fechaInicio: fi,
-        fechaFin: ff,
-        anchoPct: tamanoPropio ? ancho : null,
-      });
+      await crearLogo({ nombre: nombre.trim(), imagenUrl: url, fechaInicio: fi, fechaFin: ff });
       onSaved();
       onClose();
     } catch (err) {
@@ -461,158 +421,53 @@ function NuevoLogoModal({
             quedan tapados y no se ve lo que se escribe. */}
         <KeyboardAvoidingView behavior="padding">
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.sheetTitle}>Nuevo logo</Text>
+            <Text style={styles.sheetTitle}>Nuevo logo</Text>
 
-          <Pressable onPress={handleElegir} style={styles.imagenBox}>
-            {imagen ? (
-              <Image source={{ uri: imagen.uri }} style={styles.imagenPreview} contentFit="contain" />
-            ) : (
-              <Text style={styles.imagenHint}>{'Toca para elegir la imagen\n(ideal: PNG con fondo transparente)'}</Text>
-            )}
-          </Pressable>
-
-          <TextInput
-            placeholder="Nombre (ej: Fiestas Patrias)"
-            placeholderTextColor={Colors.placeholder}
-            value={nombre}
-            onChangeText={setNombre}
-            style={styles.input}
-          />
-          <View style={styles.fechasRow}>
-            <TextInput
-              placeholder="Desde DD/MM/AAAA"
-              placeholderTextColor={Colors.placeholder}
-              value={inicio}
-              onChangeText={setInicio}
-              keyboardType="numbers-and-punctuation"
-              style={[styles.input, styles.inputFecha]}
-            />
-            <TextInput
-              placeholder="Hasta DD/MM/AAAA"
-              placeholderTextColor={Colors.placeholder}
-              value={fin}
-              onChangeText={setFin}
-              keyboardType="numbers-and-punctuation"
-              style={[styles.input, styles.inputFecha]}
-            />
-          </View>
-          <Text style={styles.fechasHint}>Deja las fechas vacías para que quede siempre.</Text>
-
-          <View style={styles.switchRow}>
-            <View style={styles.switchTexto}>
-              <Text style={styles.switchLabel}>Tamaño propio</Text>
-              <Text style={styles.switchHint}>Apagado usa el tamaño general ({anchoGeneral} %).</Text>
-            </View>
-            <Switch
-              value={tamanoPropio}
-              onValueChange={setTamanoPropio}
-              trackColor={{ false: Colors.inputBorder, true: Colors.accent }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-          {tamanoPropio && (
-            <View style={styles.modalTamano}>
-              <ControlTamano valor={ancho} onChange={setAncho} />
+            <Pressable onPress={handleElegir} style={styles.imagenBox}>
               {imagen ? (
-                <View style={styles.modalPreview}>
-                  <BrandLogoPreview url={imagen.uri} anchoPct={ancho} />
-                </View>
-              ) : null}
-            </View>
-          )}
+                <Image source={{ uri: imagen.uri }} style={styles.imagenPreview} contentFit="contain" />
+              ) : (
+                <Text style={styles.imagenHint}>
+                  {'Toca para elegir la imagen\n(ideal: PNG con fondo transparente)'}
+                </Text>
+              )}
+            </Pressable>
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Button label={saving ? 'Guardando…' : 'Guardar'} onPress={handleGuardar} loading={saving} />
-          <Pressable onPress={onClose} style={styles.cancelRow}>
-            <Text style={styles.cancelLabel}>Cancelar</Text>
-          </Pressable>
-        </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
-    </Modal>
-  );
-}
-
-/**
- * Ajustar el tamaño de un logo que ya existe. Se hace en su propio panel y no
- * en la fila de la lista para poder mostrar la vista previa a tamaño real
- * mientras se cambia: el logo es lo primero que se ve de la app y a ojo, en
- * una miniatura de 84 px, no se acierta.
- */
-function TamanoLogoModal({
-  logo,
-  anchoGeneral,
-  onClose,
-  onSaved,
-}: {
-  logo: LogoTematico | null;
-  anchoGeneral: number;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [propio, setPropio] = useState(false);
-  const [ancho, setAncho] = useState(anchoGeneral);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (logo) {
-      setPropio(logo.ancho_pct !== null);
-      setAncho(logo.ancho_pct ?? anchoGeneral);
-      setError(null);
-    }
-  }, [logo, anchoGeneral]);
-
-  async function handleGuardar() {
-    if (!logo) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await actualizarAnchoLogo(logo.id, propio ? ancho : null);
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo guardar el tamaño.'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal visible={logo !== null} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.sheetTitle}>Tamaño de “{logo?.nombre}”</Text>
-
-          <View style={styles.modalPreview}>
-            {logo ? <BrandLogoPreview url={logo.imagen_url} anchoPct={propio ? ancho : anchoGeneral} /> : null}
-          </View>
-
-          <View style={styles.switchRow}>
-            <View style={styles.switchTexto}>
-              <Text style={styles.switchLabel}>Tamaño propio</Text>
-              <Text style={styles.switchHint}>Apagado usa el tamaño general ({anchoGeneral} %).</Text>
-            </View>
-            <Switch
-              value={propio}
-              onValueChange={setPropio}
-              trackColor={{ false: Colors.inputBorder, true: Colors.accent }}
-              thumbColor="#FFFFFF"
+            <TextInput
+              placeholder="Nombre (ej: Fiestas Patrias)"
+              placeholderTextColor={Colors.placeholder}
+              value={nombre}
+              onChangeText={setNombre}
+              style={styles.input}
             />
-          </View>
+            <View style={styles.fechasRow}>
+              <TextInput
+                placeholder="Desde DD/MM/AAAA"
+                placeholderTextColor={Colors.placeholder}
+                value={inicio}
+                onChangeText={setInicio}
+                keyboardType="numbers-and-punctuation"
+                style={[styles.input, styles.inputFecha]}
+              />
+              <TextInput
+                placeholder="Hasta DD/MM/AAAA"
+                placeholderTextColor={Colors.placeholder}
+                value={fin}
+                onChangeText={setFin}
+                keyboardType="numbers-and-punctuation"
+                style={[styles.input, styles.inputFecha]}
+              />
+            </View>
+            <Text style={styles.fechasHint}>Deja las fechas vacías para que quede siempre.</Text>
 
-          <View style={styles.modalTamano}>
-            <ControlTamano valor={propio ? ancho : anchoGeneral} onChange={setAncho} deshabilitado={!propio} />
-          </View>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Button label={saving ? 'Guardando…' : 'Guardar'} onPress={handleGuardar} loading={saving} />
-          <Pressable onPress={onClose} style={styles.cancelRow}>
-            <Text style={styles.cancelLabel}>Cancelar</Text>
+            <Button label={saving ? 'Guardando…' : 'Guardar'} onPress={handleGuardar} loading={saving} />
+            <Pressable onPress={onClose} style={styles.cancelRow}>
+              <Text style={styles.cancelLabel}>Cancelar</Text>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Pressable>
     </Modal>
   );
@@ -655,30 +510,38 @@ const styles = StyleSheet.create({
   previewBox: {
     alignItems: 'center',
     gap: Spacing.two,
-    paddingVertical: Spacing.four,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    paddingVertical: Spacing.three,
   },
   previewNota: {
     fontFamily: Fonts.light,
     fontSize: 12,
-    lineHeight: 17,
     color: Colors.textMuted,
     textAlign: 'center',
-    paddingHorizontal: Spacing.three,
   },
-  previewLabel: {
+  medidas: {
+    marginTop: Spacing.two,
+  },
+  acciones: {
+    marginTop: Spacing.five,
+    gap: Spacing.two,
+    alignItems: 'center',
+  },
+  estadoMedidas: {
+    fontFamily: Fonts.light,
+    fontSize: 12.5,
+    color: Colors.textMuted,
+  },
+  deshacer: {
     fontFamily: Fonts.medium,
-    fontSize: 11,
-    letterSpacing: 0.6,
+    fontSize: 13,
     color: Colors.textMuted,
   },
   restablecerFila: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    marginTop: Spacing.three,
+    justifyContent: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.four,
     padding: Spacing.three,
     borderRadius: 14,
     borderWidth: 1,
@@ -688,96 +551,20 @@ const styles = StyleSheet.create({
   restablecerPresionada: {
     backgroundColor: Colors.backgroundAlt,
   },
-  restablecerTexto: {
-    flex: 1,
+  restablecerApagada: {
+    opacity: 0.5,
+  },
+  restablecerLabelApagado: {
+    color: Colors.textMuted,
   },
   restablecerLabel: {
     fontFamily: Fonts.medium,
     fontSize: 14,
     color: Colors.text,
   },
-  restablecerHint: {
-    fontFamily: Fonts.light,
-    fontSize: 11.5,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  tamanoBox: {
-    marginTop: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
-    gap: Spacing.two,
-  },
-  tamanoTitulo: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  tamanoAyuda: {
-    fontFamily: Fonts.light,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.textMuted,
-  },
-  tamanoAcciones: {
-    gap: Spacing.two,
-    alignItems: 'center',
-  },
-  tamanoEstado: {
-    fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
-  deshacer: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  tamanoLink: {
-    fontFamily: Fonts.medium,
-    fontSize: 11.5,
-    color: Colors.accent,
-    marginTop: 4,
-  },
-  modalTamano: {
-    marginBottom: Spacing.three,
-    gap: Spacing.three,
-  },
-  modalPreview: {
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: 12,
-    backgroundColor: Colors.background,
-    marginBottom: Spacing.three,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.three,
-    marginBottom: Spacing.three,
-  },
-  switchTexto: {
-    flex: 1,
-  },
-  switchLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.cardText,
-  },
-  switchHint: {
-    fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.cardTextMuted,
-    marginTop: 2,
-  },
   ayuda: {
     fontFamily: Fonts.light,
-    marginTop: Spacing.three,
+    marginTop: Spacing.six,
     marginBottom: Spacing.three,
     fontSize: 13,
     lineHeight: 19,
@@ -915,27 +702,26 @@ const styles = StyleSheet.create({
   inputFecha: {
     flex: 1,
     fontSize: 14,
-    marginBottom: Spacing.one,
   },
   fechasHint: {
     fontFamily: Fonts.light,
     fontSize: 12,
     color: Colors.cardTextMuted,
-    marginBottom: Spacing.two,
+    marginBottom: Spacing.three,
   },
   errorText: {
     fontFamily: Fonts.light,
+    marginBottom: Spacing.three,
     fontSize: 13,
     color: Colors.danger,
-    marginBottom: Spacing.two,
   },
   cancelRow: {
-    marginTop: Spacing.two,
     alignItems: 'center',
+    paddingTop: Spacing.three,
   },
   cancelLabel: {
     fontFamily: Fonts.medium,
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.cardTextMuted,
   },
 });
