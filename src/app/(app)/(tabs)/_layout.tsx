@@ -72,16 +72,23 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="admin"
         options={{
-          title: 'Panel Admin',
+          // Para el admin, la segunda pestaña son las comunas: es donde
+          // administra el catálogo de cada una (categorías y perfiles).
+          title: 'Comunas',
           href: isAdmin ? undefined : null,
-          tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="location" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
         name="perfil"
         options={{
-          title: 'Perfil',
-          tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" color={color} size={size} />,
+          // La tercera pestaña cambia de papel según quién entra: para el
+          // admin es el panel general (título, aprobar, banners, métricas) y
+          // para un comerciante, su perfil. Ver (tabs)/perfil.tsx.
+          title: isAdmin ? 'Admin' : 'Perfil',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name={isAdmin ? 'shield-checkmark' : 'person-circle'} color={color} size={size} />
+          ),
         }}
         listeners={{
           // Sin sesión, "Perfil" no llega a abrirse: se cancela el cambio de

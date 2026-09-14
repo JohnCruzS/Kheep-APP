@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   PerfilEnCategoria,
@@ -34,7 +35,8 @@ export default function PerfilesDeCategoriaScreen() {
   const { id: comunaId, categoriaId } = useLocalSearchParams<{ id: string; categoriaId: string }>();
 
   const [perfiles, setPerfiles] = useState<PerfilEnCategoria[]>([]);
-  const [titulo, setTitulo] = useState('');
+  const [comunaNombre, setComunaNombre] = useState('');
+  const [tituloCategoria, setTituloCategoria] = useState('Categoría');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,9 +50,8 @@ export default function PerfilesDeCategoriaScreen() {
         fetchCategoriasAdmin(),
       ]);
       setPerfiles(lista);
-      const comuna = comunas.find((c) => c.id === comunaId)?.nombre ?? '';
-      const categoria = categorias.find((c) => c.id === categoriaId)?.nombre ?? 'Categoría';
-      setTitulo(comuna ? `${categoria} · ${comuna}` : categoria);
+      setComunaNombre(comunas.find((c) => c.id === comunaId)?.nombre ?? 'Comuna');
+      setTituloCategoria(categorias.find((c) => c.id === categoriaId)?.nombre ?? 'Categoría');
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
@@ -123,17 +124,12 @@ export default function PerfilesDeCategoriaScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle} numberOfLines={1}>
-          {titulo}
-        </Text>
-        <View style={{ width: 78 }} />
-      </View>
+      {/* Mismo encabezado que el resto del panel: el título de la app con la
+          comuna debajo, para no perder de vista dónde se está. */}
+      <EncabezadoMarca subtitulo={comunaNombre} onVolver={() => router.back()} />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Text style={styles.tituloSeccion}>{tituloCategoria}</Text>
         <Text style={styles.ayuda}>
           Perfiles con publicaciones en esta categoría y comuna. El interruptor los oculta del catálogo —junto con todas
           sus publicaciones, en cualquier comuna— y se puede revertir; “Eliminar” no.
@@ -194,6 +190,13 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  tituloSeccion: {
+    fontFamily: Fonts.light,
+    fontSize: 21,
+    color: Colors.accent,
+    textAlign: 'center',
+    marginBottom: Spacing.two,
   },
   topBar: {
     flexDirection: 'row',

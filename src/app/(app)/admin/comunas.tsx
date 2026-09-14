@@ -3,31 +3,34 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { ComunaAdmin, actualizarComunaActiva, fetchComunasAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 
 /**
- * Comunas es una lista FIJA — a diferencia de Categorías, acá un admin solo
- * activa/desactiva, nunca crea ni borra (pedido explícito del cliente).
- * Se agrupa por región con un desplegable, puramente para orden visual.
+ * Regiones y comunas del catálogo.
+ *
+ * Las regiones son solo el cajón que agrupa: no se ocultan ni se editan, se
+ * abren para llegar a sus comunas. Lo que se administra es cada comuna — si se
+ * ve o no en la app— y, entrando en ella, su catálogo de categorías.
+ *
+ * Las filas van juntas y sin adornos, en una sola tarjeta por región: con 346
+ * comunas, una tarjeta por cada una obligaba a desplazarse eternamente.
  */
 export default function ComunasAdminScreen() {
   const router = useRouter();
-
   const [comunas, setComunas] = useState<ComunaAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [openRegion, setOpenRegion] = useState<string | null>(null);
+  const [regionAbierta, setRegionAbierta] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchComunasAdmin();
-      setComunas(data);
-      setOpenRegion((current) => current ?? data[0]?.region ?? null);
+      setComunas(await fetchComunasAdmin());
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
@@ -39,23 +42,23 @@ export default function ComunasAdminScreen() {
     load();
   }, [load]);
 
-  const grupos = useMemo(() => {
-    const map = new Map<string, ComunaAdmin[]>();
+  const regiones = useMemo(() => {
+    const porRegion = new Map<string, ComunaAdmin[]>();
     for (const comuna of comunas) {
-      const lista = map.get(comuna.region) ?? [];
-      lista.push(comuna);
-      map.set(comuna.region, lista);
+      const region = comuna.region ?? 'Sin región';
+      const lista = porRegion.get(region);
+      if (lista) lista.push(comuna);
+      else porRegion.set(region, [comuna]);
     }
-    return Array.from(map.entries());
+    return [...porRegion.entries()];
   }, [comunas]);
 
   async function handleToggle(comuna: ComunaAdmin) {
-    const nuevoValor = !comuna.activa;
-    setComunas((list) => list.map((c) => (c.id === comuna.id ? { ...c, activa: nuevoValor } : c)));
+    const nuevo = !comuna.activa;
+    setComunas((list) => list.map((c) => (c.id === comuna.id ? { ...c, activa: nuevo } : c)));
     try {
-      await actualizarComunaActiva(comuna.id, nuevoValor);
+      await actualizarComunaActiva(comuna.id, nuevo);
     } catch (err) {
-      // revierte si falla
       setComunas((list) => list.map((c) => (c.id === comuna.id ? { ...c, activa: comuna.activa } : c)));
       setError(getErrorMessage(err, 'No se pudo actualizar la comuna.'));
     }
@@ -65,65 +68,50 @@ export default function ComunasAdminScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>Comunas</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      <EncabezadoMarca subtitulo="Chile" onVolver={() => router.back()} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
-      {!loading && !error && comunas.length === 0 && (
-        <EmptyState title="No hay comunas" message="Todavía no se ha cargado ninguna comuna." />
-      )}
 
-      {!loading && !error && comunas.length > 0 && (
-        <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.intro}>
-            El interruptor muestra u oculta la comuna en el selector. Toca el nombre para entrar a su catálogo:
-            qué categorías tiene, en qué orden, y los perfiles que publican en cada una.
-          </Text>
-
-          {grupos.map(([region, lista]) => {
-            const isOpen = openRegion === region;
-            const activas = lista.filter((c) => c.activa).length;
+      {!loading && !error && (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {regiones.map(([region, lista]) => {
+            const abierta = regionAbierta === region;
+            const visibles = lista.filter((c) => c.activa).length;
             return (
-              <View key={region} style={styles.regionBlock}>
-                <Pressable style={styles.regionHeader} onPress={() => setOpenRegion(isOpen ? null : region)}>
-                  <View>
-                    <Text style={styles.regionTitle}>{region}</Text>
-                    <Text style={styles.regionSubtitle}>
-                      {activas} de {lista.length} visibles
-                    </Text>
-                  </View>
-                  <Text style={styles.chevron}>{isOpen ? '︿' : '﹀'}</Text>
+              <View key={region} style={styles.tarjeta}>
+                <Pressable
+                  style={styles.cabecera}
+                  onPress={() => setRegionAbierta(abierta ? null : region)}
+                  accessibilityRole="button">
+                  <Text style={styles.region} numberOfLines={1}>
+                    {region.replace(/^Regi[oó]n (de |del |de la )?/i, '')}
+                  </Text>
+                  <Text style={styles.contador}>{`${visibles}/${lista.length}`}</Text>
+                  <Text style={[styles.flecha, abierta && styles.flechaAbierta]}>▼</Text>
                 </Pressable>
 
-                {isOpen && (
-                  <View style={styles.comunaList}>
-                    {lista.map((comuna) => (
-                      <View key={comuna.id} style={styles.comunaRow}>
-                        {/* El nombre entra al catálogo de esa comuna
-                            (categorías y perfiles); el interruptor solo
-                            decide si aparece en el selector de comunas. */}
-                        <Pressable
-                          style={styles.comunaNombreZona}
-                          onPress={() => router.push({ pathname: '/(app)/admin/comuna/[id]', params: { id: comuna.id } })}>
-                          <Text style={styles.comunaNombre}>{comuna.nombre}</Text>
-                          <Text style={styles.comunaArrow}>›</Text>
-                        </Pressable>
-                        <Switch
-                          value={comuna.activa}
-                          onValueChange={() => handleToggle(comuna)}
-                          trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                          thumbColor="#FFFFFF"
-                        />
-                      </View>
-                    ))}
-                  </View>
-                )}
+                {abierta &&
+                  lista.map((comuna) => (
+                    <View key={comuna.id} style={styles.filaComuna}>
+                      {/* El nombre entra a las categorías de esa comuna; el
+                          interruptor solo decide si se ve en la app. */}
+                      <Pressable
+                        style={styles.zonaNombre}
+                        onPress={() => router.push({ pathname: '/(app)/admin/comuna/[id]', params: { id: comuna.id } })}
+                        accessibilityRole="button">
+                        <Text style={[styles.comuna, !comuna.activa && styles.comunaOculta]} numberOfLines={1}>
+                          {comuna.nombre}
+                        </Text>
+                      </Pressable>
+                      <Switch
+                        value={comuna.activa}
+                        onValueChange={() => handleToggle(comuna)}
+                        trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
+                        thumbColor="#FFFFFF"
+                      />
+                    </View>
+                  ))}
               </View>
             );
           })}
@@ -138,94 +126,62 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
-  },
-  backLabel: {
-    fontFamily: Fonts.medium,
-    color: Colors.text,
-    fontSize: 15,
-    width: 70,
-  },
-  topTitle: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.text,
-    fontSize: 15,
-  },
   content: {
-    padding: Spacing.three,
+    paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.six,
   },
-  intro: {
-    fontFamily: Fonts.light,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.textMuted,
-    marginBottom: Spacing.four,
-  },
-  regionBlock: {
+  tarjeta: {
     backgroundColor: Colors.surface,
-    borderRadius: 16,
-    marginBottom: Spacing.three,
-    overflow: 'hidden',
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    marginBottom: Spacing.two,
+    overflow: 'hidden',
   },
-  regionHeader: {
+  cabecera: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: Spacing.three,
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
   },
-  regionTitle: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 15,
-    color: Colors.text,
-  },
-  regionSubtitle: {
+  region: {
     fontFamily: Fonts.light,
-    fontSize: 11.5,
-    color: Colors.textMuted,
-    marginTop: 2,
+    flex: 1,
+    fontSize: 21,
+    color: Colors.accent,
   },
-  chevron: {
+  contador: {
     fontFamily: Fonts.light,
     fontSize: 12,
     color: Colors.textMuted,
   },
-  comunaList: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.surfaceBorder,
-  },
-  comunaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two + 4,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.04)',
-  },
-  comunaNombreZona: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 2,
-    marginRight: Spacing.three,
-  },
-  comunaArrow: {
-    fontFamily: Fonts.light,
-    fontSize: 18,
-    color: Colors.textMuted,
-  },
-  comunaNombre: {
+  flecha: {
     fontFamily: Fonts.light,
     fontSize: 14,
+    color: Colors.accent,
+  },
+  flechaAbierta: {
+    transform: [{ rotate: '180deg' }],
+  },
+  filaComuna: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: Spacing.five,
+    paddingRight: Spacing.four,
+    paddingVertical: Spacing.two,
+  },
+  zonaNombre: {
+    flex: 1,
+    paddingVertical: Spacing.one,
+  },
+  comuna: {
+    fontFamily: Fonts.light,
+    fontSize: 19,
     color: Colors.text,
+  },
+  comunaOculta: {
+    color: Colors.textMuted,
+    opacity: 0.55,
   },
 });

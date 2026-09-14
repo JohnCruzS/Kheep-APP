@@ -1,64 +1,65 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
-import { Button } from '@/components/ui/Button';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { ListaArrastrable } from '@/components/ui/ListaArrastrable';
+import { EditorCategoria } from '@/components/admin/EditorCategoria';
+import { MenuAcciones } from '@/components/admin/MenuAcciones';
+import { SelectorComuna } from '@/components/admin/SelectorComuna';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
-  CategoriaAdmin,
   CategoriaDeComuna,
+  Comuna,
   actualizarVisibilidadCategoriaComuna,
-  agregarCategoriaAComuna,
-  crearCategoriaEnComuna,
-  fetchCategoriasAdmin,
+  agregarCategoriaATodasLasComunas,
+  eliminarCategoria,
   fetchComunas,
   fetchConfigCategoriasComuna,
   guardarOrdenCategoriasComuna,
+  moverCategoriaDeComuna,
   quitarCategoriaDeComuna,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 
+/** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
+const ALTO_FILA = 62;
+
 /**
- * El catálogo de UNA comuna: qué categorías muestra, en qué orden, cuáles
- * están ocultas y cuáles se quitaron. Cada comuna es independiente — lo que
- * se cambia acá no toca a las demás (ver migración 0017).
+ * El catálogo de UNA comuna: qué categorías muestra, en qué orden y con qué
+ * acciones. Cada comuna es independiente — lo que se cambia acá no toca a las
+ * demás (ver migración 0017).
  *
- * Ocultar y quitar son cosas distintas a propósito: ocultar la saca del
- * catálogo pero la deja acá para volver a encenderla con un toque; quitarla
- * la borra de esta comuna y sus publicaciones de acá pasan a "Otro".
+ * El orden se cambia arrastrando por el asa de la izquierda. Tocar el nombre
+ * entra a los perfiles que publican en esa categoría, y el botón de la derecha
+ * abre el resto de acciones: editar, ocultar, mover, agregar a todas y
+ * eliminar.
  */
 export default function CategoriasDeComunaScreen() {
   const router = useRouter();
   const { id: comunaId } = useLocalSearchParams<{ id: string }>();
 
   const [nombreComuna, setNombreComuna] = useState('');
+  const [comunas, setComunas] = useState<Comuna[]>([]);
   const [categorias, setCategorias] = useState<CategoriaDeComuna[]>([]);
-  const [personalizada, setPersonalizada] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [agregando, setAgregando] = useState(false);
+
+  const [editando, setEditando] = useState<CategoriaDeComuna | null>(null);
+  const [creando, setCreando] = useState(false);
+  const [moviendo, setMoviendo] = useState<CategoriaDeComuna | null>(null);
+  const [acciones, setAcciones] = useState<CategoriaDeComuna | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [config, comunas] = await Promise.all([fetchConfigCategoriasComuna(comunaId), fetchComunas()]);
+      const [config, lista] = await Promise.all([fetchConfigCategoriasComuna(comunaId), fetchComunas()]);
       setCategorias(config.categorias);
-      setPersonalizada(config.personalizada);
-      setNombreComuna(comunas.find((c) => c.id === comunaId)?.nombre ?? 'Comuna');
+      setComunas(lista);
+      setNombreComuna(lista.find((c) => c.id === comunaId)?.nombre ?? 'Comuna');
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
@@ -70,260 +71,223 @@ export default function CategoriasDeComunaScreen() {
     load();
   }, [load]);
 
+  async function conError(accion: () => Promise<void>, mensaje: string) {
+    try {
+      await accion();
+      await load();
+    } catch (err) {
+      setError(getErrorMessage(err, mensaje));
+    }
+  }
+
   async function handleToggle(categoria: CategoriaDeComuna) {
     const nuevo = !categoria.visible;
     setCategorias((list) => list.map((c) => (c.id === categoria.id ? { ...c, visible: nuevo } : c)));
     try {
       await actualizarVisibilidadCategoriaComuna(comunaId, categoria.id, nuevo);
-      // La primera vez que se toca algo, la comuna deja de seguir a la lista
-      // global: hay que recargar para reflejar que ya es independiente.
-      if (!personalizada) load();
     } catch (err) {
       setCategorias((list) => list.map((c) => (c.id === categoria.id ? { ...c, visible: categoria.visible } : c)));
       setError(getErrorMessage(err, 'No se pudo actualizar la categoría.'));
     }
   }
 
-  function handleQuitar(categoria: CategoriaDeComuna) {
-    Alert.alert(
-      'Quitar de esta comuna',
-      `“${categoria.nombre}” dejará de existir en ${nombreComuna} y sus publicaciones de esta comuna pasarán a “Otro”. ` +
-        'En las demás comunas sigue igual. Si solo quieres que no se vea por un tiempo, usa el interruptor.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Quitar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await quitarCategoriaDeComuna(comunaId, categoria.id);
-              load();
-            } catch (err) {
-              setError(getErrorMessage(err, 'No se pudo quitar la categoría.'));
-            }
-          },
-        },
-      ],
-    );
-  }
-
-  async function handleMover(indice: number, direccion: -1 | 1) {
-    const destino = indice + direccion;
-    if (destino < 0 || destino >= categorias.length) return;
-
-    const reordenadas = [...categorias];
-    [reordenadas[indice], reordenadas[destino]] = [reordenadas[destino], reordenadas[indice]];
-    setCategorias(reordenadas);
+  async function handleReordenar(nuevas: CategoriaDeComuna[]) {
+    const anterior = categorias;
+    setCategorias(nuevas);
     try {
       await guardarOrdenCategoriasComuna(
         comunaId,
-        reordenadas.map((c) => c.id),
+        nuevas.map((c) => c.id),
       );
-      if (!personalizada) load();
     } catch (err) {
-      setCategorias(categorias);
+      setCategorias(anterior);
       setError(getErrorMessage(err, 'No se pudo guardar el orden.'));
     }
   }
+
+  /**
+   * Eliminar es lo único que no se deshace, así que va en dos pasos: primero
+   * de dónde se elimina y después la confirmación, diciendo con todas sus
+   * letras qué pasa con las publicaciones.
+   */
+  function handleEliminar(categoria: CategoriaDeComuna) {
+    Alert.alert(`Eliminar “${categoria.nombre}”`, '¿De dónde quieres eliminarla?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: `Solo de ${nombreComuna}`,
+        onPress: () =>
+          Alert.alert(
+            `Eliminar de ${nombreComuna}`,
+            `“${categoria.nombre}” dejará de existir en ${nombreComuna} y las publicaciones que tenga acá pasarán a “Otro”. ` +
+              'En las demás comunas sigue igual. Esto no se puede deshacer.',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'Eliminar',
+                style: 'destructive',
+                onPress: () =>
+                  conError(
+                    () => quitarCategoriaDeComuna(comunaId, categoria.id),
+                    'No se pudo eliminar la categoría de esta comuna.',
+                  ),
+              },
+            ],
+          ),
+      },
+      {
+        text: 'De todas las comunas',
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert(
+            'Eliminar de toda la app',
+            `“${categoria.nombre}” se borra del país entero y no queda rastro de ella en ninguna comuna. ` +
+              'Todas sus publicaciones, estén donde estén, pasarán a “Otro”. Esto no se puede deshacer.',
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              {
+                text: 'Eliminar de todas',
+                style: 'destructive',
+                onPress: () => conError(() => eliminarCategoria(categoria.id), 'No se pudo eliminar la categoría.'),
+              },
+            ],
+          ),
+      },
+    ]);
+  }
+
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle} numberOfLines={1}>
-          {nombreComuna}
-        </Text>
-        <Pressable onPress={() => setAgregando(true)} hitSlop={12}>
-          <Text style={styles.addLabel}>+ Agregar</Text>
-        </Pressable>
-      </View>
+      <EncabezadoMarca subtitulo={nombreComuna} onVolver={() => router.back()} />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.tarjeta}>
+          <Text style={styles.tituloSeccion}>Categorías</Text>
+
+          {loading && <LoadingState />}
+          {error && <ErrorState message={error} onRetry={load} />}
+
+          {!loading && !error && categorias.length === 0 && (
+            <Text style={styles.vacio}>Esta comuna no muestra ninguna categoría. Agrega una con “Nueva”.</Text>
+          )}
+
+          {!loading && !error && (
+            <ListaArrastrable
+              datos={categorias}
+              altoFila={ALTO_FILA}
+              claveDe={(categoria) => categoria.id}
+              onReordenar={handleReordenar}>
+              {(categoria, _indice, arrastrando, propsAsa) => (
+                <View style={[styles.fila, arrastrando && styles.filaArrastrando]}>
+                  {/* El asa: se mantiene apretada y se arrastra para cambiar el
+                      orden. Va aparte del resto de la fila para que un
+                      deslizamiento normal siga moviendo la pantalla. */}
+                  <View {...propsAsa} style={styles.asa} accessibilityLabel={`Mover ${categoria.nombre}`}>
+                    <Text style={styles.asaIcono}>≡</Text>
+                  </View>
+
+                  <Pressable
+                    style={styles.zonaNombre}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(app)/admin/comuna/[id]/[categoriaId]',
+                        params: { id: comunaId, categoriaId: categoria.id },
+                      })
+                    }>
+                    <Text style={[styles.nombre, !categoria.visible && styles.nombreOculto]} numberOfLines={1}>
+                      {categoria.icono ? `${categoria.icono}  ` : ''}
+                      {categoria.nombre}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable onPress={() => setAcciones(categoria)} hitSlop={10} style={styles.masBoton}>
+                    <Text style={styles.mas}>⋯</Text>
+                  </Pressable>
+
+                  <Switch
+                    value={categoria.visible}
+                    onValueChange={() => handleToggle(categoria)}
+                    trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+              )}
+            </ListaArrastrable>
+          )}
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [styles.nueva, pressed && styles.nuevaPresionada]}
+          onPress={() => setCreando(true)}>
+          <Text style={styles.nuevaLabel}>Nueva</Text>
+        </Pressable>
+
         <Text style={styles.ayuda}>
-          {personalizada
-            ? `Esta comuna tiene su propio catálogo. El interruptor muestra u oculta la categoría solo acá; “Quitar” la saca de ${nombreComuna}. Toca el nombre para ver los perfiles que publican en ella.`
-            : `${nombreComuna} todavía muestra el catálogo general. Apenas cambies algo acá, pasa a tener el suyo propio y deja de seguir al general.`}
+          Mantén apretado el ≡ para cambiar el orden. Toca el nombre para ver quién publica en esa categoría, y ⋯ para
+          editarla, moverla o eliminarla.
         </Text>
-
-        {loading && <LoadingState />}
-        {error && <ErrorState message={error} onRetry={load} />}
-
-        {!loading && !error && categorias.length === 0 && (
-          <Text style={styles.vacio}>
-            Esta comuna no muestra ninguna categoría. Agrega una con “+ Agregar” para que su catálogo tenga contenido.
-          </Text>
-        )}
-
-        {categorias.map((categoria, indice) => (
-          <View key={categoria.id} style={styles.row}>
-            <Text style={styles.icono}>{categoria.icono ?? '🏷️'}</Text>
-
-            <Pressable
-              style={styles.rowInfo}
-              onPress={() =>
-                router.push({
-                  pathname: '/(app)/admin/comuna/[id]/[categoriaId]',
-                  params: { id: comunaId, categoriaId: categoria.id },
-                })
-              }>
-              <Text style={styles.nombre} numberOfLines={1}>
-                {categoria.nombre}
-              </Text>
-              <Text style={styles.subtexto}>{categoria.visible ? 'Se muestra' : 'Oculta'} · ver perfiles ›</Text>
-            </Pressable>
-
-            <View style={styles.ordenBotones}>
-              <Pressable onPress={() => handleMover(indice, -1)} hitSlop={6} style={styles.ordenBoton}>
-                <Text style={styles.ordenLabel}>▲</Text>
-              </Pressable>
-              <Pressable onPress={() => handleMover(indice, 1)} hitSlop={6} style={styles.ordenBoton}>
-                <Text style={styles.ordenLabel}>▼</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.rowActions}>
-              <Switch
-                value={categoria.visible}
-                onValueChange={() => handleToggle(categoria)}
-                trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                thumbColor="#FFFFFF"
-              />
-              <Pressable onPress={() => handleQuitar(categoria)} hitSlop={8}>
-                <Text style={styles.quitar}>Quitar</Text>
-              </Pressable>
-            </View>
-          </View>
-        ))}
       </ScrollView>
 
-      <AgregarCategoriaModal
-        visible={agregando}
+      {/* Panel propio en vez de un `Alert`: en Android los diálogos solo
+          dibujan tres botones y acá hacen falta cinco. */}
+      <MenuAcciones
+        visible={acciones !== null}
+        titulo={acciones?.nombre ?? ''}
+        onClose={() => setAcciones(null)}
+        acciones={
+          acciones
+            ? [
+                { label: 'Editar nombre e icono', onPress: () => setEditando(acciones) },
+                {
+                  label: acciones.visible ? 'Ocultar en esta comuna' : 'Mostrar en esta comuna',
+                  onPress: () => handleToggle(acciones),
+                },
+                { label: 'Mover a otra comuna', onPress: () => setMoviendo(acciones) },
+                {
+                  label: 'Agregar a todas las comunas',
+                  onPress: () =>
+                    conError(
+                      () => agregarCategoriaATodasLasComunas(acciones.id),
+                      'No se pudo agregar la categoría a todas las comunas.',
+                    ),
+                },
+                { label: 'Eliminar…', peligrosa: true, onPress: () => handleEliminar(acciones) },
+              ]
+            : []
+        }
+      />
+
+      <EditorCategoria
+        categoria={editando}
+        crear={creando}
         comunaId={comunaId}
         nombreComuna={nombreComuna}
-        yaPresentes={categorias.map((c) => c.id)}
-        onClose={() => setAgregando(false)}
+        onClose={() => {
+          setEditando(null);
+          setCreando(false);
+        }}
         onSaved={load}
       />
+
+      <SelectorComuna
+        visible={moviendo !== null}
+        titulo={moviendo ? `Mover “${moviendo.nombre}” a…` : ''}
+        comunas={comunas.filter((c) => c.id !== comunaId)}
+        onClose={() => setMoviendo(null)}
+        onElegir={(destino) => {
+          const categoria = moviendo;
+          setMoviendo(null);
+          if (categoria) {
+            conError(
+              () => moverCategoriaDeComuna(categoria.id, comunaId, destino),
+              'No se pudo mover la categoría.',
+            );
+          }
+        }}
+      />
     </SafeAreaView>
-  );
-}
-
-/**
- * Agregar una categoría a esta comuna: o una que ya existe en la app, o una
- * nueva que nace existiendo solo acá (las demás comunas no la ven hasta que
- * el admin se la agregue).
- */
-function AgregarCategoriaModal({
-  visible,
-  comunaId,
-  nombreComuna,
-  yaPresentes,
-  onClose,
-  onSaved,
-}: {
-  visible: boolean;
-  comunaId: string;
-  nombreComuna: string;
-  yaPresentes: string[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [disponibles, setDisponibles] = useState<CategoriaAdmin[]>([]);
-  const [nombre, setNombre] = useState('');
-  const [icono, setIcono] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!visible) return;
-    setNombre('');
-    setIcono('');
-    setError(null);
-    fetchCategoriasAdmin()
-      .then((todas) => setDisponibles(todas.filter((c) => !yaPresentes.includes(c.id))))
-      .catch(() => setDisponibles([]));
-  }, [visible, yaPresentes]);
-
-  async function conGuardado(accion: () => Promise<void>) {
-    setSaving(true);
-    setError(null);
-    try {
-      await accion();
-      onSaved();
-      onClose();
-    } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo agregar la categoría.'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleCrear() {
-    if (nombre.trim().length === 0) return setError('Ponle un nombre a la categoría.');
-    conGuardado(() =>
-      crearCategoriaEnComuna(comunaId, { nombre: nombre.trim(), icono: icono.trim() || null }),
-    );
-  }
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <KeyboardAvoidingView behavior="padding">
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.sheetTitle}>Agregar a {nombreComuna}</Text>
-
-            <Text style={styles.sheetSeccion}>NUEVA, SOLO PARA ESTA COMUNA</Text>
-            <View style={styles.nuevaFila}>
-              <TextInput
-                placeholder="Emoji"
-                placeholderTextColor={Colors.placeholder}
-                value={icono}
-                onChangeText={setIcono}
-                style={[styles.input, styles.inputIcono]}
-                maxLength={4}
-              />
-              <TextInput
-                placeholder="Nombre (ej: Pesca)"
-                placeholderTextColor={Colors.placeholder}
-                value={nombre}
-                onChangeText={setNombre}
-                style={[styles.input, styles.inputNombre]}
-              />
-            </View>
-            <Button label={saving ? 'Guardando…' : 'Crear y agregar'} onPress={handleCrear} loading={saving} />
-
-            {disponibles.length > 0 && (
-              <>
-                <Text style={[styles.sheetSeccion, { marginTop: Spacing.four }]}>O UNA QUE YA EXISTE</Text>
-                <ScrollView style={styles.listaExistentes} keyboardShouldPersistTaps="handled">
-                  {disponibles.map((categoria) => (
-                    <Pressable
-                      key={categoria.id}
-                      style={styles.existenteFila}
-                      onPress={() => conGuardado(() => agregarCategoriaAComuna(comunaId, categoria.id))}>
-                      <Text style={styles.existenteLabel}>
-                        {categoria.icono ?? '🏷️'}  {categoria.nombre}
-                      </Text>
-                      <Text style={styles.existenteAgregar}>Agregar</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </>
-            )}
-
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-            <Pressable onPress={onClose} style={styles.cancelRow}>
-              <Text style={styles.cancelLabel}>Cancelar</Text>
-            </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Pressable>
-    </Modal>
   );
 }
 
@@ -332,43 +296,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
-  },
-  backLabel: {
-    fontFamily: Fonts.medium,
-    color: Colors.text,
-    fontSize: 15,
-    width: 78,
-  },
-  topTitle: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.text,
-    fontSize: 15,
-    flex: 1,
-    textAlign: 'center',
-  },
-  addLabel: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.accent,
-    fontSize: 14,
-    width: 78,
-    textAlign: 'right',
-  },
   content: {
-    padding: Spacing.three,
+    paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.six,
   },
-  ayuda: {
+  tarjeta: {
+    backgroundColor: Colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.two,
+    minHeight: 260,
+  },
+  tituloSeccion: {
     fontFamily: Fonts.light,
+    fontSize: 21,
+    color: Colors.accent,
+    textAlign: 'center',
     marginBottom: Spacing.three,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.textMuted,
   },
   vacio: {
     fontFamily: Fonts.light,
@@ -378,134 +325,70 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.four,
   },
-  row: {
+  fila: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: Spacing.three,
-    marginBottom: Spacing.two,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    paddingHorizontal: Spacing.two,
+    borderRadius: 12,
+    height: ALTO_FILA - 8,
   },
-  icono: {
+  filaArrastrando: {
+    backgroundColor: Colors.backgroundAlt,
+  },
+  asa: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  asaIcono: {
+    fontFamily: Fonts.light,
     fontSize: 20,
+    color: Colors.textMuted,
   },
-  rowInfo: {
+  zonaNombre: {
     flex: 1,
+    justifyContent: 'center',
   },
   nombre: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
+    fontFamily: Fonts.light,
+    fontSize: 19,
     color: Colors.text,
   },
-  subtexto: {
-    fontFamily: Fonts.light,
-    fontSize: 11.5,
+  nombreOculto: {
     color: Colors.textMuted,
-    marginTop: 2,
+    opacity: 0.55,
   },
-  ordenBotones: {
-    gap: 2,
+  masBoton: {
+    paddingHorizontal: Spacing.two,
   },
-  ordenBoton: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  ordenLabel: {
+  mas: {
     fontFamily: Fonts.medium,
-    fontSize: 13,
+    fontSize: 20,
     color: Colors.textMuted,
   },
-  rowActions: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  quitar: {
-    fontFamily: Fonts.medium,
-    fontSize: 12,
-    color: Colors.danger,
-  },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: Colors.card,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    padding: Spacing.four,
-    paddingBottom: Spacing.six,
-  },
-  sheetTitle: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 17,
-    color: Colors.cardText,
-    marginBottom: Spacing.three,
-  },
-  sheetSeccion: {
-    fontFamily: Fonts.medium,
-    fontSize: 11,
-    letterSpacing: 0.6,
-    color: Colors.cardTextMuted,
-    marginBottom: Spacing.two,
-  },
-  nuevaFila: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-  },
-  input: {
-    fontFamily: Fonts.light,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-    color: Colors.cardText,
-    marginBottom: Spacing.three,
-  },
-  inputIcono: {
-    width: 70,
-    textAlign: 'center',
-  },
-  inputNombre: {
-    flex: 1,
-  },
-  listaExistentes: {
-    maxHeight: 210,
-  },
-  existenteFila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  nueva: {
+    marginTop: Spacing.three,
     paddingVertical: Spacing.three,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
   },
-  existenteLabel: {
+  nuevaPresionada: {
+    backgroundColor: Colors.backgroundAlt,
+  },
+  nuevaLabel: {
     fontFamily: Fonts.light,
-    fontSize: 15,
-    color: Colors.cardText,
-  },
-  existenteAgregar: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
+    fontSize: 21,
     color: Colors.accent,
   },
-  errorText: {
+  ayuda: {
     fontFamily: Fonts.light,
-    marginTop: Spacing.three,
-    fontSize: 13,
-    color: Colors.danger,
-  },
-  cancelRow: {
-    alignItems: 'center',
-    paddingTop: Spacing.three,
-  },
-  cancelLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.cardTextMuted,
+    marginTop: Spacing.four,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: Colors.textMuted,
+    textAlign: 'center',
   },
 });

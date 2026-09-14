@@ -975,6 +975,49 @@ export async function agregarCategoriaAComuna(comunaId: string, categoriaId: str
 }
 
 /**
+ * Pone la categoría en TODAS las comunas.
+ *
+ * No siembra 346 filas: se enciende en la lista general —que es la que siguen
+ * las comunas sin configurar— y se agrega una por una solo a las que ya tienen
+ * catálogo propio, que son las únicas que no miran esa lista general.
+ */
+export async function agregarCategoriaATodasLasComunas(categoriaId: string): Promise<void> {
+  const { error: errorGlobal } = await supabase
+    .from('categorias')
+    .update({ activa: true })
+    .eq('id', categoriaId);
+  if (errorGlobal) throw errorGlobal;
+
+  const { data: personalizadas, error } = await supabase
+    .from('comunas')
+    .select('id')
+    .eq('categorias_personalizadas', true);
+  if (error) throw error;
+
+  for (const comuna of personalizadas ?? []) {
+    await agregarCategoriaAComuna(comuna.id as string, categoriaId);
+  }
+}
+
+/**
+ * Traslada la categoría de una comuna a otra: aparece en la de destino y deja
+ * de estar en la de origen.
+ *
+ * Primero se agrega y después se quita. Al revés, si fallara el segundo paso
+ * la categoría no quedaría en ninguna de las dos; así, en el peor caso queda
+ * en ambas, que se arregla con un toque.
+ */
+export async function moverCategoriaDeComuna(
+  categoriaId: string,
+  comunaOrigen: string,
+  comunaDestino: string,
+): Promise<void> {
+  if (comunaOrigen === comunaDestino) return;
+  await agregarCategoriaAComuna(comunaDestino, categoriaId);
+  await quitarCategoriaDeComuna(comunaOrigen, categoriaId);
+}
+
+/**
  * Crea una categoría que existe SOLO en esta comuna.
  *
  * Se crea en la lista global apagada (`activa: false`) y se enciende
@@ -1006,7 +1049,32 @@ export async function crearCategoriaEnComuna(
   await agregarCategoriaAComuna(comunaId, creada.id as string);
 }
 
-/** Guarda el orden de las categorías de esta comuna (▲ ▼ del panel). */
+/**
+ * Crea una categoría para TODAS las comunas: nace encendida en la lista
+ * general y se agrega a las comunas que ya tienen catálogo propio.
+ */
+export async function crearCategoriaEnTodasLasComunas(input: {
+  nombre: string;
+  icono: string | null;
+}): Promise<void> {
+  const { data: maxOrden } = await supabase
+    .from('categorias')
+    .select('orden')
+    .order('orden', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: creada, error } = await supabase
+    .from('categorias')
+    .insert({ nombre: input.nombre, icono: input.icono, orden: (maxOrden?.orden ?? 0) + 1, activa: true })
+    .select('id')
+    .single();
+  if (error) throw error;
+
+  await agregarCategoriaATodasLasComunas(creada.id as string);
+}
+
+/** Guarda el orden de las categorías de esta comuna (arrastrando en el panel). */
 export async function guardarOrdenCategoriasComuna(comunaId: string, idsEnOrden: string[]): Promise<void> {
   await personalizarComuna(comunaId);
   const resultados = await Promise.all(

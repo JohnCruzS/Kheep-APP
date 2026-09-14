@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { BannerAdmin, eliminarBanner, fetchBannersActivosAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
@@ -73,13 +74,15 @@ export default function BannersAdminScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>Banners activos</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      {/* Publicar y ver los activos son la misma pantalla: son las dos caras
+          de lo mismo y separarlas obligaba a salir y volver a entrar. */}
+      <EncabezadoMarca subtitulo="Banners" onVolver={() => router.back()} />
+
+      <Pressable
+        style={({ pressed }) => [styles.publicar, pressed && styles.publicarPresionado]}
+        onPress={() => router.push('/(app)/banner/publicar')}>
+        <Text style={styles.publicarLabel}>Publicar banner</Text>
+      </Pressable>
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
@@ -130,6 +133,24 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  publicar: {
+    marginHorizontal: Spacing.three,
+    marginBottom: Spacing.three,
+    paddingVertical: Spacing.four,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+  },
+  publicarPresionado: {
+    backgroundColor: Colors.backgroundAlt,
+  },
+  publicarLabel: {
+    fontFamily: Fonts.light,
+    fontSize: 21,
+    color: Colors.accent,
   },
   topBar: {
     flexDirection: 'row',
