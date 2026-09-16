@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
@@ -16,13 +17,18 @@ export function SelectorComuna({
   comunas,
   onElegir,
   onClose,
+  conTodas = false,
 }: {
   visible: boolean;
   titulo: string;
   comunas: Comuna[];
-  onElegir: (comunaId: string) => void;
+  /** null = "Todas las comunas", solo si `conTodas` está activo. */
+  onElegir: (comunaId: string | null) => void;
   onClose: () => void;
+  /** Ofrece "Todas las comunas" arriba del todo. */
+  conTodas?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const [busqueda, setBusqueda] = useState('');
 
   const filtradas = useMemo(() => {
@@ -40,7 +46,12 @@ export function SelectorComuna({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={cerrar}>
       <KeyboardAvoidingView style={styles.flex} behavior="padding">
         <Pressable style={styles.backdrop} onPress={cerrar}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          {/* El relleno de abajo reserva la franja del sistema (los tres
+              botones o la barra de gestos): sin ella, "Cancelar" quedaba
+              justo debajo y no se podía tocar. */}
+          <Pressable
+            style={[styles.sheet, { paddingBottom: insets.bottom }]}
+            onPress={(e) => e.stopPropagation()}>
             <Text style={styles.titulo} numberOfLines={2}>
               {titulo}
             </Text>
@@ -53,6 +64,20 @@ export function SelectorComuna({
               style={styles.buscador}
               autoCorrect={false}
             />
+
+            {/* "Todas" va fija encima de la lista y no dentro de ella: como
+                primera fila de la lista se perdía al desplazarse entre las 346
+                comunas, y es justo la opción que el admin busca. */}
+            {conTodas && (
+              <Pressable
+                style={({ pressed }) => [styles.todas, pressed && styles.todasPresionada]}
+                onPress={() => {
+                  setBusqueda('');
+                  onElegir(null);
+                }}>
+                <Text style={styles.todasLabel}>Todas las comunas</Text>
+              </Pressable>
+            )}
 
             <FlatList
               data={filtradas}
@@ -127,6 +152,22 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.light,
     fontSize: 17,
     color: Colors.text,
+  },
+  todas: {
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    borderRadius: 12,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+    marginBottom: Spacing.two,
+  },
+  todasPresionada: {
+    backgroundColor: Colors.surface,
+  },
+  todasLabel: {
+    fontFamily: Fonts.light,
+    fontSize: 17,
+    color: Colors.accent,
   },
   vacio: {
     fontFamily: Fonts.light,

@@ -87,12 +87,13 @@ export default function DashboardScreen() {
     // usuarios sin que tengan que cerrar y abrir la app, y el que vence hoy
     // desaparece solo.
     invalidarMarca();
-    fetchBanners()
+    fetchBanners(comunaId)
       .then(setBanners)
       .catch(() => {
         // Si falla, se queda con los que ya tenía: no vale la pena un error visible.
       });
-  }, []);
+    // Depende de la comuna: los banners de una comuna solo salen en la suya.
+  }, [comunaId]);
   useFocusEffect(recargarBanners);
 
   // Categorías: igual que los banners, se vuelven a pedir cada vez que se
@@ -142,7 +143,8 @@ export default function DashboardScreen() {
     ordenMostrado.current = null;
     setCategoriaId(null);
     recargarCategorias();
-  }, [comunaId, recargarCategorias]);
+    recargarBanners();
+  }, [comunaId, recargarCategorias, recargarBanners]);
 
   // Comunas: una sola vez al montar (las administra el admin y casi no
   // cambian). Solo para llenar el selector del encabezado — cuál está

@@ -1,10 +1,10 @@
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PickerField } from '@/components/forms/PickerField';
+import { SelectorComuna } from '@/components/admin/SelectorComuna';
 import { Button } from '@/components/ui/Button';
 import { FormScroll } from '@/components/ui/FormScroll';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -23,6 +23,8 @@ import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
 
 const OPCIONES_DIAS = [3, 7, 15, 30];
+/** Tope de la duración a medida: un año. Más que eso es un error de tecleo. */
+const DIAS_MAX = 365;
 
 export default function PublicarBannerScreen() {
   const router = useRouter();
@@ -34,9 +36,19 @@ export default function PublicarBannerScreen() {
   const [loadingList, setLoadingList] = useState(true);
 
   const [imagen, setImagen] = useState<PickedImage | null>(null);
-  const [comunaId, setComunaId] = useState<string | null>(null);
+  // Tres estados distintos, y hacen falta los tres: `undefined` es que
+  // todavía no ha elegido, `null` es "todas las comunas" y un id es una
+  // comuna concreta. Con solo `null` no se podía saber si había elegido todas
+  // o si no había tocado el campo, y al elegir "todas" el botón seguía
+  // mostrando el texto de ayuda como si no se hubiera hecho nada.
+  const [comunaId, setComunaId] = useState<string | null | undefined>(undefined);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dias, setDias] = useState(7);
+  // La duración a medida se escribe aparte: mientras el campo está vacío o a
+  // medio escribir no se puede calcular el precio, y `dias` tiene que seguir
+  // teniendo un número válido.
+  const [diasLibres, setDiasLibres] = useState('');
+  const [aMedida, setAMedida] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -77,11 +89,25 @@ export default function PublicarBannerScreen() {
       return;
     }
 
+    // Un comerciante paga por aparecer en SU comuna: sin elegirla, el banner
+    // saldría en todo el país. El admin sí puede dejarlo en "todas".
+    if (!esAdmin && !comunaId) {
+      // Para un comerciante, ni "sin elegir" ni "todas" son válidos: paga por
+      // aparecer en su comuna.
+      setError('Elige la comuna donde quieres que se muestre.');
+      return;
+    }
+
+    if (dias < 1 || dias > DIAS_MAX) {
+      setError(`La duración tiene que estar entre 1 y ${DIAS_MAX} días.`);
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
       const imagenUrl = await uploadCompressedImage('banners', auth.user!.id, imagen, `banner-${Date.now()}`);
-      const bannerId = await crearBanner({ imagenUrl, comunaId, dias });
+      const bannerId = await crearBanner({ imagenUrl, comunaId: comunaId ?? null, dias, pagado: esAdmin });
 
       if (!esAdmin) {
         await pagarBanner(bannerId);
@@ -91,7 +117,7 @@ export default function PublicarBannerScreen() {
       }
 
       setImagen(null);
-      setComunaId(null);
+      setComunaId(undefined);
       setDias(7);
       cargar();
     } catch (err) {
@@ -101,7 +127,12 @@ export default function PublicarBannerScreen() {
     }
   }
 
-  const comunaNombre = comunas.find((c) => c.id === comunaId)?.nombre ?? '';
+  const comunaElegida =
+    comunaId === undefined
+      ? ''
+      : comunaId === null
+        ? 'Todas las comunas'
+        : (comunas.find((c) => c.id === comunaId)?.nombre ?? '');
   const precio = dias * PRECIO_BANNER_POR_DIA;
 
   return (
@@ -148,29 +179,72 @@ export default function PublicarBannerScreen() {
             )}
           </Pressable>
 
-          <PickerField
-            label="Comuna donde se muestra (opcional)"
-            value={comunaNombre}
-            open={pickerOpen}
-            onToggle={() => setPickerOpen((p) => !p)}
-            options={comunas.map((c) => ({ id: c.id, label: c.nombre }))}
-            onSelect={(id) => {
-              setComunaId(id);
-              setPickerOpen(false);
-            }}
-          />
+          {/* Un botón que abre el buscador, en vez de la fila de fichas: con
+              las ~346 comunas del país había que deslizar a ciegas hasta
+              encontrar la propia. */}
+          <Text style={styles.campoLabel}>¿Dónde se muestra?</Text>
+          <Pressable
+            style={({ pressed }) => [styles.selectorComuna, pressed && styles.selectorPresionado]}
+            onPress={() => setPickerOpen(true)}>
+            <Text style={[styles.selectorValor, !comunaElegida && styles.selectorPlaceholder]}>
+              {comunaElegida || (esAdmin ? 'Elige una comuna o todas' : 'Elige tu comuna')}
+            </Text>
+            <Text style={styles.selectorFlecha}>▾</Text>
+          </Pressable>
 
           <Text style={styles.diasLabel}>¿Cuántos días quieres que dure?</Text>
           <View style={styles.diasRow}>
-            {OPCIONES_DIAS.map((opcion) => (
-              <Pressable
-                key={opcion}
-                onPress={() => setDias(opcion)}
-                style={[styles.diaChip, dias === opcion && styles.diaChipActive]}>
-                <Text style={[styles.diaChipLabel, dias === opcion && styles.diaChipLabelActive]}>{opcion} días</Text>
-              </Pressable>
-            ))}
+            {OPCIONES_DIAS.map((opcion) => {
+              const elegida = !aMedida && dias === opcion;
+              return (
+                <Pressable
+                  key={opcion}
+                  onPress={() => {
+                    setAMedida(false);
+                    setDias(opcion);
+                  }}
+                  style={[styles.diaChip, elegida && styles.diaChipActive]}>
+                  <Text style={[styles.diaChipLabel, elegida && styles.diaChipLabelActive]}>{opcion} días</Text>
+                </Pressable>
+              );
+            })}
+
+            <Pressable
+              onPress={() => {
+                setAMedida(true);
+                // Vacío, no con el valor anterior: quien elige "Otra" va a
+                // escribir su número, y arrastrar el viejo hacía que quedara
+                // pegado delante (7 + 45 = "745").
+                setDiasLibres('');
+              }}
+              style={[styles.diaChip, aMedida && styles.diaChipActive]}>
+              <Text style={[styles.diaChipLabel, aMedida && styles.diaChipLabelActive]}>Otra</Text>
+            </Pressable>
           </View>
+
+          {aMedida && (
+            <View style={styles.aMedidaFila}>
+              <TextInput
+                value={diasLibres}
+                onChangeText={(texto) => {
+                  const soloNumeros = texto.replace(/[^0-9]/g, '').slice(0, 3);
+                  const numero = Number(soloNumeros);
+                  // Pasarse del tope recorta el número en el propio campo, en
+                  // vez de aceptarlo a medias: así lo que se ve escrito es
+                  // siempre lo que se va a cobrar.
+                  const limitado = numero > DIAS_MAX ? String(DIAS_MAX) : soloNumeros;
+                  setDiasLibres(limitado);
+                  if (Number(limitado) >= 1) setDias(Number(limitado));
+                }}
+                keyboardType="number-pad"
+                placeholder="Días"
+                placeholderTextColor={Colors.placeholder}
+                style={styles.aMedidaInput}
+                autoFocus
+              />
+              <Text style={styles.aMedidaHint}>días (1 a {DIAS_MAX})</Text>
+            </View>
+          )}
 
           {!esAdmin && (
             <View style={styles.precioBox}>
@@ -197,6 +271,20 @@ export default function PublicarBannerScreen() {
             </Text>
           )}
       </FormScroll>
+
+      {/* Solo el admin puede poner un banner en todo el país: un comerciante
+          paga por aparecer en su comuna. */}
+      <SelectorComuna
+        visible={pickerOpen}
+        titulo="¿Dónde se muestra el banner?"
+        comunas={comunas}
+        conTodas={esAdmin}
+        onClose={() => setPickerOpen(false)}
+        onElegir={(id) => {
+          setComunaId(id);
+          setPickerOpen(false);
+        }}
+      />
       </View>
     </SafeAreaView>
   );
@@ -326,6 +414,62 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.cardTextMuted,
   },
+  campoLabel: {
+    fontFamily: Fonts.light,
+    fontSize: 13,
+    color: Colors.cardTextMuted,
+    marginTop: Spacing.four,
+    marginBottom: Spacing.two,
+  },
+  selectorComuna: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 14,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+  },
+  selectorPresionado: {
+    backgroundColor: '#F2F2F2',
+  },
+  selectorValor: {
+    fontFamily: Fonts.light,
+    flex: 1,
+    fontSize: 16,
+    color: Colors.cardText,
+  },
+  selectorPlaceholder: {
+    color: Colors.placeholder,
+  },
+  selectorFlecha: {
+    fontFamily: Fonts.light,
+    fontSize: 16,
+    color: Colors.cardTextMuted,
+  },
+  aMedidaFila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    marginTop: Spacing.three,
+  },
+  aMedidaInput: {
+    fontFamily: Fonts.light,
+    width: 96,
+    textAlign: 'center',
+    fontSize: 18,
+    color: Colors.cardText,
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 12,
+    paddingVertical: Spacing.two,
+  },
+  aMedidaHint: {
+    fontFamily: Fonts.light,
+    fontSize: 13,
+    color: Colors.cardTextMuted,
+  },
   diasLabel: {
     fontFamily: Fonts.medium,
     marginTop: Spacing.four,
@@ -335,6 +479,9 @@ const styles = StyleSheet.create({
   },
   diasRow: {
     flexDirection: 'row',
+    // Envuelve: con la opción "Otra" son cinco fichas y en una pantalla
+    // angosta la última quedaba fuera, sin forma de llegar a ella.
+    flexWrap: 'wrap',
     gap: Spacing.two,
   },
   diaChip: {

@@ -279,7 +279,9 @@ export default function CategoriasDeComunaScreen() {
         onElegir={(destino) => {
           const categoria = moviendo;
           setMoviendo(null);
-          if (categoria) {
+          // Acá siempre se elige una comuna concreta: el selector no ofrece
+          // "todas" en este caso (para eso está la acción de agregarla a todas).
+          if (categoria && destino) {
             conError(
               () => moverCategoriaDeComuna(categoria.id, comunaId, destino),
               'No se pudo mover la categoría.',

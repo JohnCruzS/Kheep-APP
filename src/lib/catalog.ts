@@ -62,12 +62,33 @@ export type MiPublicacion = {
   productos: { id: string }[];
 };
 
-export async function fetchBanners(): Promise<Banner[]> {
-  const { data, error } = await supabase
+/**
+ * Los banners que se muestran hoy en el carrusel del catálogo.
+ *
+ * Los filtros van explícitos y no se delegan a las reglas de la base: a un
+ * admin, esas reglas le devuelven TODOS los banners —también los vencidos y
+ * los impagos— y terminaba viendo en su catálogo cosas que ningún usuario ve.
+ * Es el mismo cuidado que ya se tiene con las publicaciones pendientes.
+ *
+ * Un banner con comuna es de esa comuna: quien paga por aparecer en Valdivia
+ * no debe salir en todo Chile. Los que no tienen comuna salen en todas.
+ */
+export async function fetchBanners(comunaId?: string | null): Promise<Banner[]> {
+  const ahora = new Date().toISOString();
+  let request = supabase
     .from('banners')
     .select('id, imagen_url, orden')
+    .eq('activo', true)
+    .eq('pagado', true)
+    .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
+    .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}`)
     .order('orden', { ascending: true });
 
+  if (comunaId) {
+    request = request.or(`comuna_id.is.null,comuna_id.eq.${comunaId}`);
+  }
+
+  const { data, error } = await request;
   if (error) throw error;
   return data ?? [];
 }
@@ -707,6 +728,12 @@ export async function crearBanner(input: {
   imagenUrl: string;
   comunaId: string | null;
   dias: number;
+  /**
+   * El banner nace ya pagado. Es para los banners del propio admin: no pasan
+   * por el cobro, y sin esto quedaban sin pagar y por lo tanto invisibles en
+   * el catálogo, aunque el panel dijera que estaban activos.
+   */
+  pagado?: boolean;
 }): Promise<string> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('Debes iniciar sesión.');
@@ -718,6 +745,7 @@ export async function crearBanner(input: {
       imagen_url: input.imagenUrl,
       comuna_id: input.comunaId,
       dias: input.dias,
+      pagado: input.pagado ?? false,
     })
     .select('id')
     .single();

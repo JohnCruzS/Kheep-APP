@@ -48,19 +48,32 @@ export function registrarUsoCategoria(id: string | null | undefined): void {
 }
 
 /**
- * Adelanta las categorías con al menos MIN_USOS usos, de más a menos usada.
- * El resto queda en el orden que definió el admin (y los empates también se
- * resuelven por ese orden).
+ * Pone primera la categoría que más usa este usuario y deja TODAS las demás
+ * en el orden que definió el admin para esa comuna.
+ *
+ * Se adelanta una sola, no varias: el orden por comuna es una decisión del
+ * admin y adelantar cada categoría con unos cuantos toques lo deshacía casi
+ * entero, de modo que el catálogo ya no se parecía a lo que él había dejado.
+ * Con una basta para el atajo —la que el usuario abre siempre queda a mano— y
+ * el resto sigue contando la historia que el admin quiso contar.
+ *
+ * Hace falta superar MIN_USOS: sin ese mínimo, un solo toque de curiosidad ya
+ * cambiaría la primera categoría del catálogo.
  */
 export function ordenarPorUso<T extends Categoria>(categorias: T[], uso: UsoCategorias): T[] {
-  return categorias
-    .map((categoria, posicion) => ({ categoria, posicion, usos: uso[categoria.id] ?? 0 }))
-    .sort((a, b) => {
-      const aFavorita = a.usos >= MIN_USOS;
-      const bFavorita = b.usos >= MIN_USOS;
-      if (aFavorita !== bFavorita) return aFavorita ? -1 : 1;
-      if (aFavorita && a.usos !== b.usos) return b.usos - a.usos;
-      return a.posicion - b.posicion;
-    })
-    .map((x) => x.categoria);
+  let favorita: T | null = null;
+  let masUsos = MIN_USOS - 1;
+
+  for (const categoria of categorias) {
+    const usos = uso[categoria.id] ?? 0;
+    // Estrictamente mayor: ante un empate gana la que el admin puso antes,
+    // que es la que ya viene primera en la lista.
+    if (usos > masUsos) {
+      masUsos = usos;
+      favorita = categoria;
+    }
+  }
+
+  if (!favorita) return categorias;
+  return [favorita, ...categorias.filter((c) => c.id !== favorita!.id)];
 }
