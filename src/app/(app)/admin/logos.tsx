@@ -383,7 +383,7 @@ function NuevoLogoModal({ visible, onClose, onSaved }: { visible: boolean; onClo
   async function handleElegir() {
     try {
       // PNG y sin recorte: un logo necesita su fondo transparente y su forma original.
-      const img = await pickAndCompressImage({ recortar: false, formato: 'png' });
+      const img = await pickAndCompressImage({ recortar: false, formato: 'png', uso: 'titulo' });
       if (img) setImagen(img);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));

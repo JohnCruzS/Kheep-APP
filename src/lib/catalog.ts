@@ -665,6 +665,224 @@ export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
   return (data as unknown as BannerAdmin[]) ?? [];
 }
 
+// ============================================================================
+// Limpieza de imágenes sin usar
+// ============================================================================
+
+/** Un archivo del almacenamiento al que ya no apunta ninguna fila. */
+export type ImagenHuerfana = {
+  bucket: BucketImagen;
+  /** Ruta dentro del bucket: {usuario}/{archivo}. */
+  ruta: string;
+  nombre: string;
+  bytes: number;
+  creada: string | null;
+};
+
+export type BucketImagen = 'logos' | 'productos' | 'banners';
+
+/**
+ * Margen antes de considerar huérfano un archivo recién subido.
+ *
+ * El flujo es: se sube la imagen y DESPUÉS se crea la fila que la referencia.
+ * Entre ambos pasos hay unos segundos en que el archivo existe y todavía no lo
+ * apunta nadie; sin este margen, una limpieza que cayera justo ahí borraría una
+ * imagen en pleno uso. Dos días cubren eso de sobra, y también al comerciante
+ * que deja un formulario a medias y lo retoma al día siguiente.
+ */
+const HORAS_DE_GRACIA = 48;
+
+/**
+ * Los archivos de los logos temáticos viven en el bucket de banners, junto con
+ * los banners de verdad. Se reconocen por el prefijo que les pone la app al
+ * subirlos, y quedan SIEMPRE fuera de la limpieza: un logo vencido se reutiliza
+ * al año siguiente, y es además al que la app vuelve cuando caduca el de
+ * encima. Borrarlo rompería esa cadena.
+ */
+const PREFIJO_LOGO_TEMATICO = 'logo-tematico';
+
+/** Nombre del archivo dentro de una URL pública nuestra, o null si es externa. */
+function archivoDeUrl(url: string | null): string | null {
+  if (!url) return null;
+  const i = url.indexOf('/storage/v1/object/public/');
+  if (i === -1) return null;
+  return url.slice(url.lastIndexOf('/') + 1);
+}
+
+/**
+ * Busca imágenes que ya no usa nadie: están en el almacenamiento pero ninguna
+ * fila las referencia.
+ *
+ * NO borra nada: devuelve la lista para que el admin vea qué se iría antes de
+ * decidir. Borrar archivos no se deshace, así que el barrido propone y la
+ * persona dispone.
+ */
+export async function buscarImagenesHuerfanas(): Promise<ImagenHuerfana[]> {
+  // Todo lo que alguien referencia hoy, de todas las tablas que guardan
+  // imágenes. Si algún día se agrega otra tabla con imágenes, HAY QUE
+  // sumarla acá: lo que no esté en esta lista se considerará basura.
+  const referencias = await Promise.all([
+    supabase.from('profiles').select('logo_url'),
+    supabase.from('publicaciones').select('logo_url'),
+    supabase.from('productos').select('imagen_url'),
+    supabase.from('banners').select('imagen_url'),
+    supabase.from('logos_tematicos').select('imagen_url'),
+  ]);
+
+  const enUso = new Set<string>();
+  for (const { data } of referencias) {
+    for (const fila of (data as Record<string, string | null>[] | null) ?? []) {
+      const archivo = archivoDeUrl(fila.logo_url ?? fila.imagen_url ?? null);
+      if (archivo) enUso.add(archivo);
+    }
+  }
+
+  const limite = Date.now() - HORAS_DE_GRACIA * 60 * 60 * 1000;
+  const huerfanas: ImagenHuerfana[] = [];
+
+  for (const bucket of ['logos', 'productos', 'banners'] as BucketImagen[]) {
+    // El almacenamiento guarda una carpeta por usuario, así que hay que entrar
+    // en cada una: el listado de la raíz solo devuelve carpetas.
+    const { data: carpetas } = await supabase.storage.from(bucket).list('', { limit: 1000 });
+    for (const carpeta of carpetas ?? []) {
+      if (carpeta.id !== null) continue;
+      const { data: archivos } = await supabase.storage.from(bucket).list(carpeta.name, { limit: 1000 });
+
+      for (const archivo of archivos ?? []) {
+        if (archivo.id === null) continue;
+        if (enUso.has(archivo.name)) continue;
+        if (archivo.name.startsWith(PREFIJO_LOGO_TEMATICO)) continue;
+
+        const creada = archivo.created_at ?? null;
+        if (creada && new Date(creada).getTime() > limite) continue;
+
+        huerfanas.push({
+          bucket,
+          ruta: `${carpeta.name}/${archivo.name}`,
+          nombre: archivo.name,
+          bytes: (archivo.metadata as { size?: number } | null)?.size ?? 0,
+          creada,
+        });
+      }
+    }
+  }
+
+  return huerfanas;
+}
+
+/** Borra las imágenes indicadas. No se puede deshacer. */
+export async function eliminarImagenesHuerfanas(imagenes: ImagenHuerfana[]): Promise<number> {
+  let borradas = 0;
+  for (const bucket of ['logos', 'productos', 'banners'] as BucketImagen[]) {
+    const rutas = imagenes.filter((i) => i.bucket === bucket).map((i) => i.ruta);
+    if (rutas.length === 0) continue;
+    const { error } = await supabase.storage.from(bucket).remove(rutas);
+    if (error) throw error;
+    borradas += rutas.length;
+  }
+  return borradas;
+}
+
+// ----------------------------------------------------------------------------
+// Retención: contenido viejo que ya no sirve
+// ----------------------------------------------------------------------------
+
+/** Meses que se conserva lo vencido antes de poder purgarlo. */
+export const MESES_DE_RETENCION = 6;
+
+export type Purgables = {
+  /** Clics de más de 90 días, que pasarían a ser totales por día. */
+  clics: number;
+  bannersVencidos: number;
+  publicacionesBorradas: number;
+};
+
+/**
+ * Cuánto hay hoy en condiciones de purgarse. No borra nada: la app lo muestra
+ * para que el admin decida viendo los números.
+ */
+export async function contarPurgables(): Promise<Purgables> {
+  const { data, error } = await supabase.rpc('contar_purgables', { p_meses: MESES_DE_RETENCION });
+  if (error) throw error;
+  const fila = (Array.isArray(data) ? data[0] : data) as
+    | { clics_a_comprimir: number; banners_vencidos: number; publicaciones_borradas: number }
+    | undefined;
+  return {
+    clics: Number(fila?.clics_a_comprimir ?? 0),
+    bannersVencidos: Number(fila?.banners_vencidos ?? 0),
+    publicacionesBorradas: Number(fila?.publicaciones_borradas ?? 0),
+  };
+}
+
+/**
+ * Resume los clics viejos en totales por día y borra el detalle. Las métricas
+ * siguen mostrando lo mismo; lo que desaparece es el peso muerto.
+ */
+export async function comprimirClicsAntiguos(): Promise<number> {
+  const { data, error } = await supabase.rpc('comprimir_clics_antiguos', { p_dias: 90 });
+  if (error) throw error;
+  return Number(data ?? 0);
+}
+
+/**
+ * Borra los banners que vencieron hace más de medio año, con su imagen.
+ *
+ * Medio año y no un mes: un comerciante que renueva su campaña en temporada
+ * quiere su mismo diseño, y recuperarlo es imposible una vez borrado.
+ */
+export async function purgarBannersVencidos(): Promise<number> {
+  const corte = new Date();
+  corte.setMonth(corte.getMonth() - MESES_DE_RETENCION);
+
+  const { data, error } = await supabase
+    .from('banners')
+    .delete()
+    .lt('fecha_fin', corte.toISOString())
+    .not('fecha_fin', 'is', null)
+    .select('id, imagen_url');
+  if (error) throw error;
+
+  for (const banner of data ?? []) {
+    await borrarImagenDeStorage('banners', (banner.imagen_url as string | null) ?? null);
+  }
+  return data?.length ?? 0;
+}
+
+/**
+ * Borra de verdad las publicaciones que se dieron de baja hace más de medio
+ * año, con su logo y las fotos de sus productos.
+ *
+ * Las fotos se buscan ANTES de borrar la publicación: los productos se van en
+ * cascada con ella, y después ya no habría forma de saber qué archivos eran.
+ */
+export async function purgarPublicacionesBorradas(): Promise<number> {
+  const corte = new Date();
+  corte.setMonth(corte.getMonth() - MESES_DE_RETENCION);
+
+  const { data: viejas, error: errorBuscar } = await supabase
+    .from('publicaciones')
+    .select('id, logo_url, productos(imagen_url)')
+    .not('deleted_at', 'is', null)
+    .lt('deleted_at', corte.toISOString());
+  if (errorBuscar) throw errorBuscar;
+  if (!viejas || viejas.length === 0) return 0;
+
+  const { error: errorBorrar } = await supabase
+    .from('publicaciones')
+    .delete()
+    .in('id', viejas.map((p) => p.id as string));
+  if (errorBorrar) throw errorBorrar;
+
+  type Vieja = { logo_url: string | null; productos: { imagen_url: string | null }[] | null };
+  for (const publicacion of viejas as unknown as Vieja[]) {
+    await borrarImagenDeStorage('logos', publicacion.logo_url);
+    for (const producto of publicacion.productos ?? []) {
+      await borrarImagenDeStorage('productos', producto.imagen_url);
+    }
+  }
+  return viejas.length;
+}
+
 /**
  * Borra del almacenamiento la imagen a la que apunta una URL pública nuestra.
  * Es "mejor esfuerzo": si falla, no se interrumpe nada — la fila ya se borró

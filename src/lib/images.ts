@@ -10,8 +10,33 @@ import { supabase } from '@/lib/supabase';
  * ese es el límite del servidor que no se puede saltar; esto es lo que hace
  * que casi nunca se llegue a rozarlo, comprimiendo desde el origen.
  */
-const MAX_DIMENSION = 1280; // ancho/alto máximo en píxeles
 const JPEG_QUALITY = 0.7; // 0-1, calidad de compresión
+
+/**
+ * Ancho máximo al que se guarda cada imagen, según dónde se va a ver.
+ *
+ * Antes había un único límite de 1280 px para todo, y un logo de comercio
+ * —que se muestra en un círculo de unos 90 px— se subía y se descargaba a
+ * 1280 px y 123 KB. Multiplicado por cada tarjeta del catálogo, eso es la
+ * mayor parte de los datos que gasta un usuario al abrir la app, y de la
+ * cuota de transferencia que se paga.
+ *
+ * Los valores son con holgura: el doble o más de lo que mide el hueco en el
+ * teléfono más ancho que se vende, para que la imagen se vea nítida también
+ * en pantallas de mucha densidad y al abrirla a tamaño completo.
+ */
+const ANCHO_MAXIMO = {
+  /** Círculo de ~90 px en el catálogo, ~120 px en el perfil. */
+  logo: 400,
+  /** Foto del producto: ~300 px en la tarjeta, pantalla completa en el detalle. */
+  producto: 900,
+  /** Ocupa el ancho del catálogo, de borde a borde. */
+  banner: 1280,
+  /** El título de la app: como mucho, el 70 % del ancho de la pantalla. */
+  titulo: 1280,
+} as const;
+
+export type UsoImagen = keyof typeof ANCHO_MAXIMO;
 
 export type PickedImage = {
   uri: string;
@@ -28,6 +53,11 @@ type OpcionesImagen = {
    * y un logo con fondo transparente quedaría con un recuadro de color.
    */
   formato?: 'jpeg' | 'png';
+  /**
+   * Dónde se va a mostrar, que es lo que decide su tamaño. Por defecto
+   * 'producto', que es el uso más exigente de los normales.
+   */
+  uso?: UsoImagen;
 };
 
 /**
@@ -38,9 +68,13 @@ type OpcionesImagen = {
 export async function pickAndCompressImage(
   opciones: [number, number] | OpcionesImagen = [1, 1],
 ): Promise<PickedImage | null> {
-  const { aspect = [1, 1], recortar = true, formato = 'jpeg' } = Array.isArray(opciones)
-    ? { aspect: opciones }
-    : opciones;
+  const {
+    aspect = [1, 1],
+    recortar = true,
+    formato = 'jpeg',
+    uso = 'producto',
+  } = Array.isArray(opciones) ? { aspect: opciones } : opciones;
+  const anchoMaximo = ANCHO_MAXIMO[uso];
 
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
@@ -63,7 +97,7 @@ export async function pickAndCompressImage(
   const png = formato === 'png';
   // Solo se achica si es más grande que el máximo: agrandar una imagen chica
   // no gana nitidez y solo la hace pesar más.
-  const acciones = original.width > MAX_DIMENSION ? [{ resize: { width: MAX_DIMENSION } }] : [];
+  const acciones = original.width > anchoMaximo ? [{ resize: { width: anchoMaximo } }] : [];
   const manipulated = await ImageManipulator.manipulateAsync(original.uri, acciones, {
     compress: png ? 1 : JPEG_QUALITY,
     format: png ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,

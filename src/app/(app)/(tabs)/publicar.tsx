@@ -110,7 +110,7 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
 
   async function handlePickLogo() {
     try {
-      const image = await pickAndCompressImage();
+      const image = await pickAndCompressImage({ uso: 'logo' });
       if (image) setLogo(image);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
@@ -119,7 +119,7 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
 
   async function handlePickProductoImage() {
     try {
-      const image = await pickAndCompressImage();
+      const image = await pickAndCompressImage({ uso: 'producto' });
       if (image) setDraft((d) => ({ ...d, image }));
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));

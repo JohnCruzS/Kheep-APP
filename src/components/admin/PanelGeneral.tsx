@@ -49,6 +49,8 @@ export function PanelGeneral() {
         <Opcion label="Banners" onPress={() => router.push('/(app)/admin/banners')} />
         <Opcion label="Métricas" onPress={() => router.push('/(app)/admin/metricas')} />
 
+        <Opcion label="Limpieza" tenue onPress={() => router.push('/(app)/admin/limpieza')} />
+
         {/* La cuenta del propio admin: al pasar esta pestaña a ser el panel,
             "Editar perfil" y "Cerrar sesión" se quedaban sin ningún camino. */}
         <Opcion label="Mi cuenta" tenue onPress={() => router.push('/(app)/perfil/cuenta')} />

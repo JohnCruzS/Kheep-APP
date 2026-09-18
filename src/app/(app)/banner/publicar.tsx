@@ -73,7 +73,7 @@ export default function PublicarBannerScreen() {
 
   async function handlePickImagen() {
     try {
-      const image = await pickAndCompressImage([2, 1]);
+      const image = await pickAndCompressImage({ aspect: [2, 1], uso: 'banner' });
       if (image) setImagen(image);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));

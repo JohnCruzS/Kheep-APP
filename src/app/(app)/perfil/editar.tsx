@@ -97,7 +97,7 @@ function EditarPerfilForm({
 
   async function handlePickLogo() {
     try {
-      const image = await pickAndCompressImage();
+      const image = await pickAndCompressImage({ uso: 'logo' });
       if (image) setLogo(image);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
