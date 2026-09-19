@@ -13,12 +13,10 @@ import { isValidEmail } from '@/lib/validation';
 export default function ForgotPasswordScreen() {
   const [correo, setCorreo] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSend() {
     setError(null);
-    setInfo(null);
 
     if (!isValidEmail(correo)) {
       setError('Ingresa un correo electrónico válido.');
@@ -34,7 +32,10 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    setInfo('Si el correo existe, te enviamos un enlace para restablecer tu contraseña.');
+    // Sigue a la pantalla del código aunque el correo no exista: decir "esa
+    // cuenta no existe" le serviría a cualquiera para averiguar quién está
+    // registrado.
+    router.push({ pathname: '/(auth)/restablecer-contrasena', params: { correo: correo.trim() } });
   }
 
   return (
@@ -50,9 +51,12 @@ export default function ForgotPasswordScreen() {
       />
 
       {error ? <Text style={{ fontFamily: Fonts.light, color: Colors.danger, marginTop: Spacing.three }}>{error}</Text> : null}
-      {info ? <Text style={{ fontFamily: Fonts.light, color: Colors.cardText, marginTop: Spacing.three }}>{info}</Text> : null}
 
-      <Button label="Enviar enlace" onPress={handleSend} loading={loading} />
+      <Text style={{ fontFamily: Fonts.light, fontSize: 13, color: Colors.cardTextMuted, marginTop: Spacing.two }}>
+        Te enviaremos un código para crear una contraseña nueva.
+      </Text>
+
+      <Button label="Enviar código" onPress={handleSend} loading={loading} />
 
       <Pressable onPress={() => router.back()} style={{ marginTop: Spacing.four, alignItems: 'center' }}>
         <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: Colors.textMuted }}>Volver</Text>

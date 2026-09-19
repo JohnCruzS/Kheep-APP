@@ -3,9 +3,11 @@ import { Redirect, Stack } from 'expo-router';
 import { useSession } from '@/providers/SessionProvider';
 
 export default function AuthLayout() {
-  const { session } = useSession();
+  const { session, recuperando } = useSession();
 
-  if (session) {
+  // Durante la recuperación de contraseña ya hay sesión (la abre el código
+  // del correo), pero todavía falta guardar la contraseña nueva.
+  if (session && !recuperando) {
     return <Redirect href="/(app)/(tabs)/dashboard" />;
   }
 

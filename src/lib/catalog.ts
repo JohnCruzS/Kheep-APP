@@ -1411,3 +1411,85 @@ export async function eliminarPublicacionesDePerfil(perfilId: string): Promise<n
   if (error) throw error;
   return data?.length ?? 0;
 }
+
+// ----------------------------------------------------------------------------
+// Ficha de usuario (admin)
+// ----------------------------------------------------------------------------
+
+export type FichaUsuario = {
+  id: string;
+  nombre: string;
+  logo_url: string | null;
+  telefono_contacto: string | null;
+  rol: string;
+  /** 1 = sus publicaciones pasan por aprobación; 2 = publica directo. */
+  nivel: 1 | 2;
+  activo: boolean;
+  /**
+   * Viven en `auth.users`, fuera del alcance de la API; llegan por la función
+   * `admin_datos_de_cuenta` (0024). Nulos si esa migración falta.
+   */
+  email: string | null;
+  creado: string | null;
+  ultimoAcceso: string | null;
+};
+
+export async function fetchFichaUsuario(perfilId: string): Promise<FichaUsuario | null> {
+  const [perfil, cuenta] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, nombre, logo_url, telefono_contacto, rol, nivel, activo')
+      .eq('id', perfilId)
+      .maybeSingle(),
+    supabase.rpc('admin_datos_de_cuenta', { p_perfil: perfilId }),
+  ]);
+  if (perfil.error) throw perfil.error;
+  if (!perfil.data) return null;
+
+  // Sin la migración 0024 la ficha se muestra igual, solo sin el correo.
+  const fila = (Array.isArray(cuenta.data) ? cuenta.data[0] : null) as
+    | { email: string | null; creado: string | null; ultimo_acceso: string | null }
+    | undefined;
+  return {
+    ...(perfil.data as Omit<FichaUsuario, 'email' | 'creado' | 'ultimoAcceso'>),
+    email: fila?.email ?? null,
+    creado: fila?.creado ?? null,
+    ultimoAcceso: fila?.ultimo_acceso ?? null,
+  };
+}
+
+export type PublicacionDeUsuario = {
+  id: string;
+  titulo: string;
+  logo_url: string | null;
+  estado: 'pendiente' | 'aprobado' | 'rechazado';
+  created_at: string;
+  categoria: { nombre: string } | null;
+  comuna: { nombre: string } | null;
+};
+
+/** Todo lo que publicó, en cualquier comuna y estado. Lo dado de baja no. */
+export async function fetchPublicacionesDeUsuario(perfilId: string): Promise<PublicacionDeUsuario[]> {
+  const { data, error } = await supabase
+    .from('publicaciones')
+    .select('id, titulo, logo_url, estado, created_at, categoria:categorias(nombre), comuna:comunas(nombre)')
+    .eq('usuario_id', perfilId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data as unknown as PublicacionDeUsuario[]) ?? [];
+}
+
+/**
+ * Libre publicación = nivel 2: lo que publica sale directo, sin pasar por
+ * "Aprobar". Lo decide el trigger `fn_set_estado_publicacion` al crear cada
+ * publicación, así que el cambio vale para lo que publique de aquí en adelante;
+ * lo que ya espera aprobación se resuelve a mano.
+ */
+export async function actualizarNivelPerfil(perfilId: string, nivel: 1 | 2): Promise<void> {
+  const { data, error } = await supabase.from('profiles').update({ nivel }).eq('id', perfilId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('No se pudo cambiar el permiso. Revisa que tu cuenta sea de administrador.');
+  }
+}

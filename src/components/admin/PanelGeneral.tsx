@@ -1,11 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { fetchPublicacionesPendientes } from '@/lib/catalog';
+import { supabase } from '@/lib/supabase';
 
 /**
  * La pestaña de administración general: lo que no depende de una comuna
@@ -15,7 +16,8 @@ import { fetchPublicacionesPendientes } from '@/lib/catalog';
  *
  * Es una lista de tarjetas grandes con el nombre en rojo, sin iconos ni
  * descripciones: son cuatro destinos y el nombre basta, así se toca sin
- * apuntar.
+ * apuntar. Debajo, en gris, lo secundario: limpieza, la propia cuenta y
+ * cerrar sesión.
  */
 export function PanelGeneral() {
   const router = useRouter();
@@ -32,6 +34,20 @@ export function PanelGeneral() {
       };
     }, []),
   );
+
+  function confirmarCierre() {
+    Alert.alert('Cerrar sesión', '¿Quieres salir de la cuenta de administrador?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cerrar sesión',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.auth.signOut();
+          router.replace('/(app)/(tabs)/dashboard');
+        },
+      },
+    ]);
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -54,6 +70,10 @@ export function PanelGeneral() {
         {/* La cuenta del propio admin: al pasar esta pestaña a ser el panel,
             "Editar perfil" y "Cerrar sesión" se quedaban sin ningún camino. */}
         <Opcion label="Mi cuenta" tenue onPress={() => router.push('/(app)/perfil/cuenta')} />
+
+        {/* A la vista, no escondido dentro de "Mi cuenta": el admin comparte
+            teléfono o entra desde otro y tiene que poder salir sin buscar. */}
+        <Opcion label="Cerrar sesión" tenue onPress={confirmarCierre} />
       </ScrollView>
     </SafeAreaView>
   );

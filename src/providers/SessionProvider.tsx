@@ -17,6 +17,13 @@ type SessionContextValue = {
   profile: Profile | null;
   isLoading: boolean;
   refreshProfile: () => Promise<void>;
+  /**
+   * Verdadero mientras alguien restablece su contraseña. Validar el código
+   * del correo YA inicia sesión, y sin esto el layout de acceso lo mandaría
+   * al inicio antes de que alcance a escribir la contraseña nueva.
+   */
+  recuperando: boolean;
+  setRecuperando: (valor: boolean) => void;
 };
 
 const SessionContext = createContext<SessionContextValue>({
@@ -24,6 +31,8 @@ const SessionContext = createContext<SessionContextValue>({
   profile: null,
   isLoading: true,
   refreshProfile: async () => {},
+  recuperando: false,
+  setRecuperando: () => {},
 });
 
 /**
@@ -44,6 +53,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [recuperando, setRecuperando] = useState(false);
 
   const loadProfile = useCallback(async (userId: string | undefined) => {
     if (!userId) {
@@ -76,7 +86,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const refreshProfile = useCallback(() => loadProfile(session?.user.id), [loadProfile, session]);
 
   return (
-    <SessionContext.Provider value={{ session, profile, isLoading, refreshProfile }}>
+    <SessionContext.Provider value={{ session, profile, isLoading, refreshProfile, recuperando, setRecuperando }}>
       {children}
     </SessionContext.Provider>
   );

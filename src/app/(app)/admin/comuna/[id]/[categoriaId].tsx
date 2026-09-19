@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -59,9 +59,13 @@ export default function PerfilesDeCategoriaScreen() {
     }
   }, [comunaId, categoriaId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Al volver de la ficha de un usuario se recarga: pudo ocultarse o
+  // eliminarse desde allí.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   async function handleToggle(perfil: PerfilEnCategoria) {
     const nuevo = !perfil.activo;
@@ -131,7 +135,7 @@ export default function PerfilesDeCategoriaScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.tituloSeccion}>{tituloCategoria}</Text>
         <Text style={styles.ayuda}>
-          Perfiles con publicaciones en esta categoría y comuna. El interruptor los oculta del catálogo —junto con todas
+          Perfiles con publicaciones en esta categoría y comuna. Toca uno para ver su ficha. El interruptor los oculta del catálogo —junto con todas
           sus publicaciones, en cualquier comuna— y se puede revertir; “Eliminar” no.
         </Text>
 
@@ -150,7 +154,12 @@ export default function PerfilesDeCategoriaScreen() {
               <View style={[styles.avatar, styles.avatarVacio]} />
             )}
 
-            <View style={styles.rowInfo}>
+            {/* Tocar el usuario abre su ficha: contacto, permisos,
+                pendientes y todo lo que publicó. */}
+            <Pressable
+              style={styles.rowInfo}
+              onPress={() => router.push({ pathname: '/(app)/admin/usuario/[id]', params: { id: perfil.id } })}
+              accessibilityRole="button">
               <Text style={styles.nombre} numberOfLines={1}>
                 {perfil.nombre}
               </Text>
@@ -162,7 +171,7 @@ export default function PerfilesDeCategoriaScreen() {
                 {perfil.activo ? 'Visible' : 'Oculto'}
                 {perfil.rol === 'admin' ? ' · administrador' : ''}
               </Text>
-            </View>
+            </Pressable>
 
             <View style={styles.rowActions}>
               <Switch
