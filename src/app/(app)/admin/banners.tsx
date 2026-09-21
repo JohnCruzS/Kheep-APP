@@ -7,8 +7,46 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
-import { BannerAdmin, eliminarBanner, fetchBannersActivosAdmin } from '@/lib/catalog';
+import { BannerAdmin, CUPO_BANNERS, eliminarBanner, fetchBannersActivosAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
+
+/**
+ * Cuánto le queda al banner, como HH:MM:SS (documento EDIT APP). Pasado un
+ * día se dice en días: "3 d 04:15:20" es ilegible, y a esa distancia lo que
+ * importa es el día, no el segundo.
+ */
+function restante(fechaInicio: string | null, fechaFin: string | null): string {
+  if (!fechaFin) return 'Sin vencimiento';
+  const ms = new Date(fechaFin).getTime() - Date.now();
+  if (ms <= 0) return 'Terminado';
+
+  // Lo contratado, para leer "lo que queda / lo que duraba".
+  const total = fechaInicio ? new Date(fechaFin).getTime() - new Date(fechaInicio).getTime() : null;
+  const totalTexto = total ? ` / ${Math.round(total / 3600000)}:00` : '';
+
+  // Pasadas 48 horas, "568:08:51" no lo lee nadie: se cuenta en días.
+  if (ms > 48 * 3600000) {
+    const dias = Math.floor(ms / 86400000);
+    const horas = Math.floor((ms % 86400000) / 3600000);
+    const totalDias = total ? ` / ${Math.round(total / 86400000)} d` : '';
+    return `${dias} d ${String(horas).padStart(2, '0')} h${totalDias}`;
+  }
+
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const seg = Math.floor((ms % 60000) / 1000);
+  return [h, m, seg].map((n) => String(n).padStart(2, '0')).join(':') + totalTexto;
+}
+
+/** Qué parte del tiempo contratado ya pasó, de 0 a 1. */
+function progreso(fechaInicio: string | null, fechaFin: string | null): number {
+  if (!fechaInicio || !fechaFin) return 0;
+  const inicio = new Date(fechaInicio).getTime();
+  const fin = new Date(fechaFin).getTime();
+  if (fin <= inicio) return 1;
+  return Math.min(1, Math.max(0, (Date.now() - inicio) / (fin - inicio)));
+}
 
 /** DD/MM/AAAA, el mismo formato que el resto de la app. */
 function fecha(iso: string): string {
@@ -27,6 +65,13 @@ export default function BannersAdminScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [eliminando, setEliminando] = useState<string | null>(null);
+  // El tiempo restante se redibuja cada segundo: es una cuenta atrás, y
+  // congelada no dice nada.
+  const [, setTic] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTic((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,12 +123,6 @@ export default function BannersAdminScreen() {
           de lo mismo y separarlas obligaba a salir y volver a entrar. */}
       <EncabezadoMarca subtitulo="Banners" onVolver={() => router.back()} />
 
-      <Pressable
-        style={({ pressed }) => [styles.publicar, pressed && styles.publicarPresionado]}
-        onPress={() => router.push('/(app)/banner/publicar')}>
-        <Text style={styles.publicarLabel}>Publicar banner</Text>
-      </Pressable>
-
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
       {!loading && !error && banners.length === 0 && (
@@ -92,26 +131,45 @@ export default function BannersAdminScreen() {
 
       {!loading && !error && banners.length > 0 && (
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]}>
-          <Text style={styles.ayuda}>
-            {banners.length === 1 ? 'Este banner se está' : `Estos ${banners.length} banners se están`} mostrando hoy en
-            el carrusel del catálogo.
-          </Text>
-
           {banners.map((banner) => (
             <View key={banner.id} style={styles.card}>
               <Image source={{ uri: banner.imagen_url }} style={styles.imagen} contentFit="cover" />
-              <View style={styles.info}>
-                <View style={styles.infoTexto}>
-                  <Text style={styles.autor} numberOfLines={1}>
-                    {banner.autor?.nombre ?? 'Banner del sistema'}
+              {/* Cuántos espacios del carrusel están ocupados. */}
+              <Text style={[styles.cupo, banners.length >= CUPO_BANNERS && styles.cupoLleno]}>
+                {banners.length}/{CUPO_BANNERS}
+              </Text>
+
+              {/* La barra: cuánto corrió ya del tiempo contratado. */}
+              <View style={styles.barra}>
+                <View style={[styles.barraLlena, { flex: progreso(banner.fecha_inicio, banner.fecha_fin) }]} />
+                <View style={{ flex: 1 - progreso(banner.fecha_inicio, banner.fecha_fin) }} />
+              </View>
+
+              <Text style={styles.cuentaAtras} numberOfLines={1}>
+                {restante(banner.fecha_inicio, banner.fecha_fin)}
+              </Text>
+
+              {/* Lo que quiere saber quien lo pagó. */}
+              <View style={styles.metricas}>
+                <Text style={styles.metricaEtiqueta}>
+                  Vistas <Text style={styles.metricaValor}>{banner.vistas.toLocaleString('es-CL')}</Text>
+                </Text>
+                {banner.enlace ? (
+                  <Text style={styles.metricaEtiqueta}>
+                    Enlace <Text style={styles.metricaValor}>{banner.clics.toLocaleString('es-CL')}</Text>
                   </Text>
-                  <Text style={styles.detalle} numberOfLines={1}>
-                    {banner.comuna?.nombre ?? 'Todas las comunas'}
-                  </Text>
-                  <Text style={styles.detalle} numberOfLines={1}>
-                    {banner.fecha_fin ? `Hasta el ${fecha(banner.fecha_fin)}` : 'Sin fecha de término'}
-                  </Text>
-                </View>
+                ) : (
+                  <Text style={styles.sinEnlace}>Sin enlace</Text>
+                )}
+              </View>
+
+              <View style={styles.pieCard}>
+                <Text style={styles.detalle} numberOfLines={1}>
+                  {(banner.autor?.nombre ?? 'Banner del sistema') +
+                    ' · ' +
+                    (banner.comuna?.nombre ?? 'Todas las comunas') +
+                    (banner.fecha_fin ? ` · hasta el ${fecha(banner.fecha_fin)}` : '')}
+                </Text>
                 <Pressable
                   onPress={() => handleEliminar(banner)}
                   disabled={eliminando === banner.id}
@@ -125,6 +183,18 @@ export default function BannersAdminScreen() {
           ))}
         </ScrollView>
       )}
+
+      {/* El botón queda abajo, al alcance del pulgar y después de ver lo que
+          ya hay publicado (documento EDIT APP). */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.publicar,
+          { marginBottom: Spacing.three + insets.bottom },
+          pressed && styles.publicarPresionado,
+        ]}
+        onPress={() => router.push('/(app)/banner/publicar')}>
+        <Text style={styles.publicarLabel}>Nuevo</Text>
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -134,23 +204,73 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  cupo: {
+    fontFamily: Fonts.light,
+    fontSize: 19,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: Spacing.three,
+  },
+  cupoLleno: {
+    color: Colors.warning,
+  },
+  barra: {
+    flexDirection: 'row',
+    height: 2,
+    marginHorizontal: Spacing.four,
+    backgroundColor: '#FFFFFF',
+  },
+  barraLlena: {
+    backgroundColor: Colors.accent,
+  },
+  cuentaAtras: {
+    fontFamily: Fonts.light,
+    fontSize: 17,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: Spacing.three,
+  },
+  metricas: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Spacing.five,
+    paddingBottom: Spacing.three,
+  },
+  metricaEtiqueta: {
+    fontFamily: Fonts.light,
+    fontSize: 17,
+    color: Colors.accent,
+  },
+  metricaValor: {
+    color: Colors.text,
+  },
+  sinEnlace: {
+    fontFamily: Fonts.light,
+    fontSize: 17,
+    color: Colors.textMuted,
+  },
+  pieCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.three,
+  },
   publicar: {
-    marginHorizontal: Spacing.three,
-    marginBottom: Spacing.three,
+    marginHorizontal: u(REJILLA.margenLateral),
     paddingVertical: Spacing.four,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
+    borderRadius: u(REJILLA.curvatura),
+    backgroundColor: Colors.accent,
     alignItems: 'center',
   },
   publicarPresionado: {
-    backgroundColor: Colors.backgroundAlt,
+    backgroundColor: Colors.accentPressed,
   },
   publicarLabel: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.medium,
     fontSize: 21,
-    color: Colors.accent,
+    color: '#FFFFFF',
   },
   topBar: {
     flexDirection: 'row',
@@ -171,10 +291,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   content: {
-    padding: Spacing.three,
-    paddingBottom: Spacing.six,
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
   },
   ayuda: {
+    // Sin `flex`, el texto empuja el cupo fuera de la pantalla.
+    flex: 1,
     fontFamily: Fonts.light,
     fontSize: 13,
     lineHeight: 19,
@@ -183,15 +306,16 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     overflow: 'hidden',
     marginBottom: Spacing.three,
   },
   imagen: {
+    // El mismo alto que en el catálogo: el admin lo ve como lo ven todos.
     width: '100%',
-    height: 150,
+    height: u(REJILLA.bannerAlto),
     backgroundColor: Colors.backgroundAlt,
   },
   info: {
@@ -209,10 +333,11 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   detalle: {
+    // Sin `flex`, el texto empuja "Eliminar" fuera de la tarjeta.
+    flex: 1,
     fontFamily: Fonts.light,
     fontSize: 12,
     color: Colors.textMuted,
-    marginTop: 2,
   },
   eliminarBtn: {
     paddingHorizontal: Spacing.three,

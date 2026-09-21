@@ -79,6 +79,6 @@ export const Fonts = {
 const ANCHO_PANTALLA = Dimensions.get('window').width;
 
 export const Layout = {
-  /** 75 de 1000 = 7,5% del ancho, a cada lado. */
-  catalogMargin: Math.round(ANCHO_PANTALLA * 0.075),
+  /** 25 de 1000, según el documento EDIT APP (antes 75). */
+  catalogMargin: Math.round(ANCHO_PANTALLA * 0.025),
 } as const;

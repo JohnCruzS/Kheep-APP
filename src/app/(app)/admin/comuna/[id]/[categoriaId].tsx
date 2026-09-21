@@ -17,6 +17,7 @@ import {
   fetchPerfilesDeCategoria,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
 
 /**
  * Los perfiles que publican en una categoría dentro de una comuna.
@@ -228,7 +229,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   content: {
-    padding: Spacing.three,
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.six,
   },
   ayuda: {
@@ -250,7 +252,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: u(REJILLA.curvatura),
     padding: Spacing.three,
     marginBottom: Spacing.two,
     borderWidth: 1,

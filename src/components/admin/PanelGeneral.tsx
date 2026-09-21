@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { fetchPublicacionesPendientes } from '@/lib/catalog';
+import { REJILLA, u } from '@/lib/rejilla';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -109,14 +110,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: u(REJILLA.margenLateral),
     paddingBottom: Spacing.six,
   },
   tarjeta: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surface,
-    borderRadius: 18,
+    borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     paddingHorizontal: Spacing.four,

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { FormScroll } from '@/components/ui/FormScroll';
+import { TarjetaClaraProvider } from '@/components/ui/TarjetaClara';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { useAltoTeclado } from '@/hooks/useTeclado';
 
@@ -86,7 +87,9 @@ export function AuthCard({ eyebrow, children }: AuthCardProps) {
         contentContainerStyle={[styles.scrollContent, tecladoAbierto && styles.scrollContentCompacto]}>
         {/* Con el teclado abierto el aire de arriba de la tarjeta sobra: se
             recorta para que no queden huecos entre el borde y el primer campo. */}
-        <View style={[styles.card, tecladoAbierto && styles.cardCompacta]}>{children}</View>
+        <View style={[styles.card, tecladoAbierto && styles.cardCompacta]}>
+          <TarjetaClaraProvider value={true}>{children}</TarjetaClaraProvider>
+        </View>
       </FormScroll>
     </View>
   );

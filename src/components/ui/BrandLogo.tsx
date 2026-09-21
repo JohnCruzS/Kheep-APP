@@ -65,6 +65,7 @@ export function TituloPosicionado({
   url,
   debajo,
   recorteArriba = 0,
+  onProporcion,
 }: {
   /**
    * Cuánto mide una unidad de la rejilla, en píxeles: el ancho de la pantalla
@@ -83,6 +84,12 @@ export function TituloPosicionado({
   url: string | null;
   debajo?: ReactNode;
   /**
+   * La proporción real de la imagen cargada. El editor del panel la necesita
+   * para su control de "Alto": el alto no se guarda, sale del ancho y de la
+   * forma de la imagen, así el título nunca se deforma.
+   */
+  onProporcion?: (proporcion: number) => void;
+  /**
    * Cuántos píxeles del perímetro quedan por encima de este contenedor (la
    * franja de la barra de estado, que el área segura ya reservó aparte). Las
    * medidas se toman desde el borde físico de la pantalla, así que sin
@@ -90,11 +97,10 @@ export function TituloPosicionado({
    */
   recorteArriba?: number;
 }) {
-  const [proporcion, setProporcion] = useState(PROPORCION);
-  const proporcionActual = url ? proporcion : PROPORCION;
-
+  // El alto y el ancho son medidas independientes (documento EDIT APP): la
+  // imagen se estira a cada lado por separado, así que `contentFit="fill"`.
   const anchoLogo = Math.round(medidas.ancho * unidad);
-  const altoLogo = Math.round(anchoLogo / proporcionActual);
+  const altoLogo = Math.round(medidas.alto * unidad);
 
   // Las medidas apuntan al CENTRO del logo; el dibujo necesita su esquina.
   const izquierda = Math.round(medidas.centroX * unidad - anchoLogo / 2);
@@ -116,9 +122,9 @@ export function TituloPosicionado({
         <Image
           source={url ? { uri: url } : logoKheep}
           style={{ width: anchoLogo, height: altoLogo }}
-          contentFit="contain"
+          contentFit="fill"
           onLoad={({ source }) => {
-            if (url && source?.width && source?.height) setProporcion(source.width / source.height);
+            if (source?.width && source?.height) onProporcion?.(source.width / source.height);
           }}
           accessibilityRole="image"
           accessibilityLabel="Kheep"

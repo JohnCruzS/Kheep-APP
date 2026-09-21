@@ -1,8 +1,9 @@
 import { Stack } from 'expo-router';
-import { View } from 'react-native';
+import { useEffect } from 'react';
+import { Alert } from 'react-native';
 
 import { BienvenidaUbicacion } from '@/components/onboarding/BienvenidaUbicacion';
-import { Colors } from '@/constants/theme';
+import { PantallaArranque } from '@/components/ui/PantallaArranque';
 import { useUbicacion } from '@/providers/UbicacionProvider';
 
 // El catálogo es la vitrina pública de Kheep: cualquiera lo navega sin
@@ -18,15 +19,51 @@ import { useUbicacion } from '@/providers/UbicacionProvider';
 export default function AppLayout() {
   const { estado } = useUbicacion();
 
-  // Mientras se lee la comuna guardada del teléfono (un parpadeo), el fondo
-  // negro: así el arranque no muestra un destello blanco antes del logo.
+  // Mientras se lee la comuna guardada del teléfono (un parpadeo), la misma
+  // vista de arranque: así no hay ni destello blanco ni cambio de pantalla.
   if (estado === 'cargando') {
-    return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+    return <PantallaArranque />;
+  }
+
+  // Carga intermedia entre elegir la comuna y ver su contenido.
+  if (estado === 'cambiando') {
+    return <PantallaArranque />;
   }
 
   if (estado === 'bienvenida') {
     return <BienvenidaUbicacion />;
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <>
+      <AvisoDeComuna />
+      <Stack screenOptions={{ headerShown: false }} />
+    </>
+  );
+}
+
+/**
+ * "¿Estás en otra comuna?": el GPS detectó una distinta de la guardada.
+ *
+ * La comuna NUNCA cambia sola (documento EDIT APP: el cambio es manual). Si
+ * el usuario dice que no, se queda con la última y no se le vuelve a
+ * preguntar hasta la próxima apertura.
+ */
+function AvisoDeComuna() {
+  const { sugerencia, elegirComuna, descartarSugerencia } = useUbicacion();
+
+  useEffect(() => {
+    if (!sugerencia) return;
+    Alert.alert(
+      `¿Estás en ${sugerencia.nombre}?`,
+      'Podemos mostrarte los comercios de esa comuna, o seguir con la que tenías.',
+      [
+        { text: 'Seguir igual', style: 'cancel', onPress: descartarSugerencia },
+        { text: `Ver ${sugerencia.nombre}`, onPress: () => elegirComuna(sugerencia.id) },
+      ],
+      { onDismiss: descartarSugerencia },
+    );
+  }, [sugerencia, elegirComuna, descartarSugerencia]);
+
+  return null;
 }

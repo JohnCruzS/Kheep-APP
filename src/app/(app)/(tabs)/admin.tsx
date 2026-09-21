@@ -8,6 +8,7 @@ import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { ComunaAdmin, actualizarComunaActiva, fetchComunasAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
 import { useSession } from '@/providers/SessionProvider';
 
 /**
@@ -94,7 +95,6 @@ export default function ComunasTabScreen() {
                     {region.replace(/^Regi[oó]n (de |del |de la )?/i, '')}
                   </Text>
                   <Text style={styles.contador}>{`${visibles}/${lista.length}`}</Text>
-                  <Text style={[styles.flecha, abierta && styles.flechaAbierta]}>▼</Text>
                 </Pressable>
 
                 {abierta &&
@@ -107,6 +107,7 @@ export default function ComunasTabScreen() {
                         onPress={() => router.push({ pathname: '/(app)/admin/comuna/[id]', params: { id: comuna.id } })}
                         accessibilityRole="button">
                         <Text style={[styles.comuna, !comuna.activa && styles.comunaOculta]} numberOfLines={1}>
+                          {'-  '}
                           {comuna.nombre}
                         </Text>
                       </Pressable>
@@ -133,12 +134,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    paddingHorizontal: Spacing.three,
+    // Misma rejilla que el catálogo: 25 de 1000 a cada lado.
+    paddingHorizontal: u(REJILLA.margenLateral),
     paddingBottom: Spacing.six,
   },
   tarjeta: {
     backgroundColor: Colors.surface,
-    borderRadius: 18,
+    borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     marginBottom: Spacing.two,
@@ -152,23 +154,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
   },
   region: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.medium,
     flex: 1,
-    fontSize: 21,
-    color: Colors.accent,
+    fontSize: 23,
+    color: Colors.text,
   },
   contador: {
-    fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  flecha: {
-    fontFamily: Fonts.light,
-    fontSize: 14,
+    fontFamily: Fonts.medium,
+    fontSize: 17,
     color: Colors.accent,
-  },
-  flechaAbierta: {
-    transform: [{ rotate: '180deg' }],
   },
   filaComuna: {
     flexDirection: 'row',
@@ -183,7 +177,7 @@ const styles = StyleSheet.create({
   },
   comuna: {
     fontFamily: Fonts.light,
-    fontSize: 19,
+    fontSize: 21,
     color: Colors.text,
   },
   comunaOculta: {

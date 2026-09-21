@@ -113,9 +113,9 @@ function FilaAccion({
 }) {
   return (
     <Pressable style={({ pressed }) => [styles.adminRow, pressed && styles.adminRowPresionada]} onPress={onPress}>
-      <Ionicons name={icono} size={18} color={Colors.cardText} />
+      <Ionicons name={icono} size={20} color={Colors.text} />
       <Text style={styles.adminRowLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={17} color={Colors.cardTextMuted} />
+      <Ionicons name="chevron-forward" size={17} color={Colors.textMuted} />
     </Pressable>
   );
 }
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.background,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
   },
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     marginTop: Spacing.three,
     fontSize: 19,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   badge: {
     marginTop: Spacing.two,
@@ -184,7 +184,10 @@ const styles = StyleSheet.create({
   },
   badgeLabel: {
     fontFamily: Fonts.semiBold,
-    fontSize: 11.5,
+    fontSize: 12.5,
+    // El color lo pone cada insignia; sin este, el texto heredaba el oscuro
+    // de la tarjeta blanca y sobre negro no se leía.
+    color: Colors.text,
   },
   badgeRevision: {
     backgroundColor: Colors.warningBg,
@@ -193,7 +196,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.successBg,
   },
   badgeAdmin: {
-    backgroundColor: 'rgba(255,59,0,0.12)',
+    backgroundColor: 'rgba(217,8,4,0.22)',
   },
   infoList: {
     width: '100%',
@@ -204,25 +207,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
+    borderBottomColor: Colors.surfaceBorder,
     paddingBottom: Spacing.two,
   },
   infoLabel: {
     fontFamily: Fonts.light,
-    fontSize: 13,
-    color: Colors.cardTextMuted,
+    fontSize: 15,
+    color: Colors.textMuted,
   },
   infoValue: {
     fontFamily: Fonts.medium,
-    fontSize: 13,
-    color: Colors.cardText,
+    fontSize: 15,
+    color: Colors.text,
   },
   hintText: {
     fontFamily: Fonts.light,
     marginTop: Spacing.four,
     fontSize: 12.5,
     lineHeight: 18,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     textAlign: 'center',
   },
   actionRows: {
@@ -235,18 +238,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    backgroundColor: '#F5F5F5',
+    paddingVertical: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    backgroundColor: Colors.surface,
     borderRadius: 14,
   },
   adminRowPresionada: {
-    backgroundColor: '#ECECEC',
+    backgroundColor: Colors.backgroundAlt,
   },
   adminRowLabel: {
     fontFamily: Fonts.medium,
     flex: 1,
-    fontSize: 14,
-    color: Colors.cardText,
+    fontSize: 17,
+    color: Colors.text,
   },
 });

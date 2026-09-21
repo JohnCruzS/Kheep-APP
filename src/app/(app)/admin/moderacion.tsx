@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { PublicacionPendiente, aprobarPublicacion, fetchPublicacionesPendientes, rechazarPublicacion } from '@/lib/catalog';
@@ -70,13 +71,7 @@ export default function ModeracionScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>Moderación</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      <EncabezadoMarca subtitulo="Aprobar" onVolver={() => router.back()} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}

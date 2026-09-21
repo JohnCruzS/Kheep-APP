@@ -111,7 +111,7 @@ export default function RestablecerContrasenaScreen() {
 
   return (
     <AuthCard eyebrow="Nueva contraseña">
-      <Text style={{ fontFamily: Fonts.light, fontSize: 14, lineHeight: 20, color: Colors.cardText }}>
+      <Text style={{ fontFamily: Fonts.light, fontSize: 14, lineHeight: 20, color: Colors.text }}>
         Si hay una cuenta con <Text style={{ fontFamily: Fonts.medium }}>{correo}</Text>, te llegará un correo con un
         código. Revisa también la carpeta de spam.
       </Text>
@@ -162,7 +162,7 @@ export default function RestablecerContrasenaScreen() {
           onPress={handleReenviar}
           disabled={espera > 0}
           style={{ marginTop: Spacing.four, alignItems: 'center' }}>
-          <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: espera > 0 ? Colors.cardTextMuted : Colors.accent }}>
+          <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: espera > 0 ? Colors.textMuted : Colors.accent }}>
             {espera > 0 ? `Reenviar código en ${espera} s` : 'Reenviar código'}
           </Text>
         </Pressable>

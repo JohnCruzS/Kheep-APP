@@ -33,6 +33,15 @@ type ProductoDraft = {
 
 const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
 
+/**
+ * Tope de caracteres del nombre del producto (documento EDIT APP). Es lo que
+ * entra en la tarjeta del catálogo sin cortarse: más largo se vería con
+ * puntos suspensivos y no serviría de nada escribirlo.
+ */
+const MAX_NOMBRE_PRODUCTO = 28;
+/** Hasta 9 dígitos: nadie publica un precio de mil millones. */
+const MAX_DIGITOS_PRECIO = 9;
+
 export default function PublicarScreen() {
   const { session, profile } = useSession();
 
@@ -128,13 +137,12 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
 
   function handleAgregarProducto() {
     setError(null);
-    const precioNumero = Number(draft.precio.replace(/[^\d]/g, ''));
-    if (draft.nombre.trim().length === 0) {
-      setError('Ponle un nombre al producto antes de agregarlo.');
-      return;
-    }
-    if (!precioNumero || precioNumero <= 0) {
-      setError('Ingresa un precio válido para el producto.');
+    const precioNumero = Number(draft.precio.replace(/[^\d]/g, '')) || 0;
+    // El precio es opcional (documento EDIT APP): hay rubros que cotizan
+    // antes de dar un número. Sin precio se guarda en 0 y la tarjeta no
+    // muestra nada donde iría.
+    if (draft.nombre.trim().length === 0 && !draft.image) {
+      setError('Ponle un nombre o una foto al producto antes de agregarlo.');
       return;
     }
     if (productos.length >= 5) {
@@ -250,7 +258,7 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
         value={categoriaNombre}
         open={pickerOpen === 'categoria'}
         onToggle={() => setPickerOpen((p) => (p === 'categoria' ? null : 'categoria'))}
-        options={categorias.map((c) => ({ id: c.id, label: c.icono ? `${c.icono} ${c.nombre}` : c.nombre }))}
+        options={categorias.map((c) => ({ id: c.id, label: c.nombre }))}
         onSelect={(id) => {
           setCategoriaId(id);
           setPickerOpen(null);
@@ -281,7 +289,9 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
           )}
           <View style={styles.productoInfo}>
             <Text style={styles.productoNombre}>{producto.nombre}</Text>
-            <Text style={styles.productoPrecio}>${Number(producto.precio).toLocaleString('es-CL')}</Text>
+            {Number(producto.precio) > 0 && (
+              <Text style={styles.productoPrecio}>${Number(producto.precio).toLocaleString('es-CL')}</Text>
+            )}
           </View>
           <Pressable onPress={() => handleQuitarProducto(index)} hitSlop={8}>
             <Text style={styles.productoQuitar}>Quitar</Text>
@@ -303,15 +313,19 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
               placeholder="Producto"
               placeholderTextColor={Colors.placeholder}
               value={draft.nombre}
-              onChangeText={(text) => setDraft((d) => ({ ...d, nombre: text }))}
+              onChangeText={(text) => setDraft((d) => ({ ...d, nombre: text.slice(0, MAX_NOMBRE_PRODUCTO) }))}
+              maxLength={MAX_NOMBRE_PRODUCTO}
               style={styles.productoInput}
             />
             <TextInput
-              placeholder="Precio"
+              placeholder="Precio (opcional)"
               placeholderTextColor={Colors.placeholder}
               value={draft.precio}
-              onChangeText={(text) => setDraft((d) => ({ ...d, precio: text }))}
+              onChangeText={(text) =>
+                setDraft((d) => ({ ...d, precio: text.replace(/[^0-9]/g, '').slice(0, MAX_DIGITOS_PRECIO) }))
+              }
               keyboardType="number-pad"
+              maxLength={MAX_DIGITOS_PRECIO}
               style={[styles.productoInput, styles.productoInputMuted]}
             />
           </View>
@@ -364,7 +378,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.background,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
   },
@@ -383,7 +397,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     marginTop: Spacing.three,
     fontSize: 18,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   guestMessage: {
     fontFamily: Fonts.light,
@@ -391,7 +405,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
     fontSize: 13.5,
     lineHeight: 20,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     textAlign: 'center',
   },
   avatarWrapper: {
@@ -456,18 +470,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
     fontSize: 11,
     letterSpacing: 0.6,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   telefonoNota: {
     fontFamily: Fonts.light,
     marginTop: Spacing.four,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   telefonoNotaFuerte: {
     fontFamily: Fonts.semiBold,
 
-    color: Colors.cardText,
+    color: Colors.text,
   },
   telefonoNotaAlerta: {
     fontFamily: Fonts.medium,
@@ -495,24 +509,28 @@ const styles = StyleSheet.create({
   productoNombre: {
     fontFamily: Fonts.semiBold,
     fontSize: 15,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   productoPrecio: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     marginTop: 2,
   },
   productoInput: {
+    // Mismo trato que el resto de los campos: fondo propio y esquinas.
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     fontFamily: Fonts.light,
     fontSize: 15,
-    color: Colors.cardText,
-    paddingVertical: 2,
+    color: Colors.text,
   },
   productoInputMuted: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   productoQuitar: {
     fontFamily: Fonts.medium,

@@ -3,11 +3,16 @@ import { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Fonts } from '@/constants/theme';
+import { REJILLA, u } from '@/lib/rejilla';
 import type { PublicacionResumen } from '@/lib/catalog';
 
 type Props = {
   publicacion: PublicacionResumen;
   onPress: (id: string) => void;
+  /** Tocar el título contacta directo por WhatsApp (documento EDIT APP). */
+  onContactar: (publicacion: PublicacionResumen) => void;
+  /** Tocar la foto la abre completa, sin entrar a la publicación. */
+  onVerFoto: (url: string) => void;
 };
 
 /**
@@ -23,34 +28,57 @@ type Props = {
  * flotara — y el panel negro con título, foto del producto al centro y
  * nombre + precio abajo, todo en Poppins.
  */
-function PublicacionCardComponent({ publicacion, onPress }: Props) {
+function PublicacionCardComponent({ publicacion, onPress, onContactar, onVerFoto }: Props) {
   const producto = useMemo(
     () => [...publicacion.productos].sort((a, b) => a.orden - b.orden)[0],
     [publicacion.productos],
   );
-  const icono = publicacion.categoria?.icono ?? '🛍️';
   const handlePress = useCallback(() => onPress(publicacion.id), [onPress, publicacion.id]);
 
   return (
     <Pressable onPress={handlePress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+      {/* La foto del comercio, no un icono: se toca para verla completa
+          (documento EDIT APP). */}
       <View style={styles.iconPanel}>
-        <View style={styles.iconCircle}>
-          <Text style={styles.iconGlyph}>{icono}</Text>
-        </View>
+        <Pressable
+          onPress={() => publicacion.logo_url && onVerFoto(publicacion.logo_url)}
+          disabled={!publicacion.logo_url}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Ver la foto de ${publicacion.titulo}`}>
+          {publicacion.logo_url ? (
+            <Image source={{ uri: publicacion.logo_url }} style={styles.fotoPerfil} contentFit="cover" />
+          ) : (
+            <View style={[styles.fotoPerfil, styles.fotoPerfilVacia]} />
+          )}
+        </Pressable>
         <View style={styles.iconShadow} />
       </View>
 
       <View style={styles.contentPanel}>
         <View style={styles.titleRow}>
-          <Text style={styles.title} numberOfLines={1}>
-            {publicacion.titulo}
-          </Text>
+          {/* El título es el atajo a WhatsApp; el resto de la tarjeta abre la
+              publicación. Por eso el toque se detiene acá. */}
+          <Pressable
+            style={styles.titlePress}
+            onPress={() => onContactar(publicacion)}
+            accessibilityRole="button"
+            accessibilityLabel={`Contactar a ${publicacion.titulo} por WhatsApp`}>
+            <Text style={styles.title} numberOfLines={1}>
+              {publicacion.titulo}
+            </Text>
+          </Pressable>
           {publicacion.destacado && <Text style={styles.destacado}>★</Text>}
         </View>
 
         <View style={styles.imageWrap}>
           {producto?.imagen_url ? (
-            <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="contain" />
+            <Pressable
+              style={styles.imagePress}
+              onPress={() => onVerFoto(producto.imagen_url!)}
+              accessibilityRole="imagebutton"
+              accessibilityLabel={`Ver foto de ${producto.nombre}`}>
+              <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="contain" />
+            </Pressable>
           ) : (
             <View style={[styles.productImage, styles.productImageFallback]} />
           )}
@@ -61,7 +89,9 @@ function PublicacionCardComponent({ publicacion, onPress }: Props) {
             <Text style={styles.productName} numberOfLines={1}>
               {producto.nombre}
             </Text>
-            <Text style={styles.price}>$ {producto.precio.toLocaleString('es-CL')}</Text>
+            {producto.precio > 0 && (
+              <Text style={styles.price}>$ {producto.precio.toLocaleString('es-CL')}</Text>
+            )}
           </View>
         )}
       </View>
@@ -74,8 +104,8 @@ export const PublicacionCard = memo(PublicacionCardComponent);
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    height: 218,
-    borderRadius: 8,
+    height: u(REJILLA.galeriaAlto),
+    borderRadius: u(REJILLA.curvatura),
     overflow: 'hidden',
     backgroundColor: '#0D0D0D',
   },
@@ -88,17 +118,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
   },
-  iconCircle: {
+  fotoPerfil: {
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  iconGlyph: {
-    fontFamily: Fonts.light,
-    fontSize: 28,
+  fotoPerfilVacia: {
+    backgroundColor: '#E4E4E4',
   },
   // "Sombra en el piso" debajo del círculo: una elipse que se desvanece hacia
   // los bordes. `radial-gradient` viene en el core de React Native 0.86.
@@ -119,6 +145,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  titlePress: {
+    flexShrink: 1,
+  },
+  imagePress: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     flexShrink: 1,

@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Fonts } from '@/constants/theme';
+import { REJILLA, u } from '@/lib/rejilla';
 import type { Categoria } from '@/lib/catalog';
 
 type Props = {
@@ -10,9 +11,12 @@ type Props = {
   onSelect: (id: string | null) => void;
 };
 
-/** Alto de la fila. Es el del texto, y se usa también para el hueco que se
- * deja mientras las categorías todavía no llegan. */
-const ALTO_FILA = 30;
+/**
+ * Alto de la fila (185 de 1000, documento EDIT APP). Se usa también para el
+ * hueco que se deja mientras las categorías todavía no llegan, así el
+ * catálogo no da un salto cuando la lista llega.
+ */
+const ALTO_FILA = u(REJILLA.categoriasAlto);
 
 /**
  * Fila de categorías como texto plano (sin fondo de "chip"), en Poppins

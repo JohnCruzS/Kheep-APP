@@ -6,6 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { ImageViewer } from '@/components/catalog/ImageViewer';
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { PublicacionDetalle, fetchPublicacionDetalle } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
@@ -62,11 +63,9 @@ export default function PublicacionDetalleScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backButton}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-      </View>
+      {/* El mismo encabezado que el resto de la app: el título arriba y,
+          debajo, de qué comercio se trata. */}
+      <EncabezadoMarca subtitulo={publicacion?.titulo ?? 'Comercio'} onVolver={() => router.back()} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
@@ -112,7 +111,9 @@ export default function PublicacionDetalleScreen() {
                       <Text style={styles.productName} numberOfLines={1}>
                         {producto.nombre}
                       </Text>
-                      <Text style={styles.productPrice}>${producto.precio.toLocaleString('es-CL')}</Text>
+                      {producto.precio > 0 && (
+                        <Text style={styles.productPrice}>${producto.precio.toLocaleString('es-CL')}</Text>
+                      )}
                     </View>
                   ))}
                 </View>

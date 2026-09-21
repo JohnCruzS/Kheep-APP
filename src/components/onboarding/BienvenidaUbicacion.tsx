@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { BrandLogo } from '@/components/ui/BrandLogo';
+import { TituloPosicionado } from '@/components/ui/BrandLogo';
+import { PantallaArranque } from '@/components/ui/PantallaArranque';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { Comuna, fetchComunas } from '@/lib/catalog';
 import { detectarComunaActual, pedirPermisoUbicacion } from '@/lib/location';
+import { PERIMETRO_ALTO, useMarca } from '@/lib/marca';
+import { REJILLA, u } from '@/lib/rejilla';
 import { normalizarTexto } from '@/lib/text';
 import { useUbicacion } from '@/providers/UbicacionProvider';
 
@@ -110,17 +113,10 @@ export function BienvenidaUbicacion() {
     return <ListaComunas comunas={comunas} onElegir={elegirComuna} />;
   }
 
-  return (
-    <View style={styles.pantallaLogo}>
-      <BrandLogo />
-      {paso === 'identificando' && (
-        <View style={styles.cargando}>
-          <ActivityIndicator color={Colors.accent} />
-          <Text style={styles.cargandoTexto}>Identificando tu comuna…</Text>
-        </View>
-      )}
-    </View>
-  );
+  // El logo, el permiso y la identificación son la MISMA vista: solo cambia
+  // el texto de abajo. Antes el logo de aquí no era el del splash y el paso
+  // de uno a otro se veía como un salto.
+  return <PantallaArranque mensaje={paso === 'identificando' ? 'Identificando tu comuna…' : undefined} />;
 }
 
 /**
@@ -130,6 +126,12 @@ export function BienvenidaUbicacion() {
  */
 function ListaComunas({ comunas, onElegir }: { comunas: Comuna[]; onElegir: (id: string | null) => void }) {
   const [busqueda, setBusqueda] = useState('');
+  // Mismo diseño que el selector del catálogo (documento EDIT APP): el
+  // título con "Chile" debajo, el buscador a la altura del banner y las
+  // comunas centradas. Es la misma pregunta, así que se ve igual.
+  const { width } = useWindowDimensions();
+  const marca = useMarca();
+  const unidad = width / 1000;
 
   const filas = useMemo(() => {
     const termino = normalizarTexto(busqueda);
@@ -139,18 +141,22 @@ function ListaComunas({ comunas, onElegir }: { comunas: Comuna[]; onElegir: (id:
 
   return (
     <SafeAreaView style={styles.pantallaLista} edges={['top', 'bottom']}>
-      <View style={styles.listaEncabezado}>
-        <BrandLogo height={34} />
-        <Text style={styles.titulo}>¿En qué comuna estás?</Text>
-        <Text style={styles.subtitulo}>Elígela para ver los comercios que tienes cerca.</Text>
+      <View style={{ height: Math.round(PERIMETRO_ALTO * unidad) }}>
+        <TituloPosicionado
+          unidad={unidad}
+          altoPerimetro={PERIMETRO_ALTO}
+          medidas={{ centroX: marca.centroX, ancho: marca.ancho, alto: marca.alto, centroY: marca.centroY }}
+          url={marca.url}
+          debajo={<Text style={styles.pais}>Chile</Text>}
+        />
       </View>
 
       <TextInput
-        placeholder="Buscar comuna"
+        placeholder="Buscar"
         placeholderTextColor={Colors.placeholder}
         value={busqueda}
         onChangeText={setBusqueda}
-        style={styles.buscador}
+        style={[styles.buscador, { marginHorizontal: u(REJILLA.margenLateral) }]}
         autoCorrect={false}
       />
 
@@ -183,57 +189,24 @@ function ListaComunas({ comunas, onElegir }: { comunas: Comuna[]; onElegir: (id:
 }
 
 const styles = StyleSheet.create({
-  pantallaLogo: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cargando: {
-    position: 'absolute',
-    bottom: '22%',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  cargandoTexto: {
-    fontFamily: Fonts.light,
-    fontSize: 14,
-    color: Colors.textMuted,
-  },
   pantallaLista: {
     flex: 1,
     backgroundColor: Colors.background,
   },
-  listaEncabezado: {
-    alignItems: 'center',
-    paddingTop: Spacing.five,
-    paddingHorizontal: Spacing.four,
-  },
-  titulo: {
-    fontFamily: Fonts.semiBold,
-    marginTop: Spacing.four,
-    fontSize: 19,
-    color: Colors.text,
-  },
-  subtitulo: {
+  pais: {
     fontFamily: Fonts.light,
-    marginTop: Spacing.two,
-    fontSize: 13.5,
-    lineHeight: 19,
-    color: Colors.textMuted,
-    textAlign: 'center',
+    fontSize: 18,
+    color: '#8A8A8A',
   },
   buscador: {
     fontFamily: Fonts.light,
-    margin: Spacing.four,
-    marginBottom: Spacing.three,
+    textAlign: 'center',
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
+    height: 54,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
-    fontSize: 15,
+    borderRadius: 999,
+    fontSize: 18,
     color: Colors.text,
   },
   cargandoLista: {
@@ -241,17 +214,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   listaContenido: {
+    paddingTop: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.four,
   },
   fila: {
-    paddingVertical: Spacing.three,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
   },
   filaLabel: {
     fontFamily: Fonts.light,
-    fontSize: 16,
+    fontSize: 19,
+    textAlign: 'center',
     color: Colors.text,
   },
   vacio: {

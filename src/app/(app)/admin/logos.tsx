@@ -25,8 +25,6 @@ import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import {
   ANCHO_MIN,
-  CENTRO_X_MAX,
-  CENTRO_X_MIN,
   PERIMETRO_ALTO,
   EstadoLogo,
   LogoTematico,
@@ -82,9 +80,14 @@ const mismasMedidas = (a: MedidasLogo, b: MedidasLogo) =>
  * alto como el espacio que va de arriba de la pantalla al banner— con tres
  * medidas en la rejilla de 1000 del cliente:
  *
- *   Centro  de izquierda a derecha (0 izquierda, 500 centrado, 1000 derecha)
- *   Ancho   el tamaño de la imagen, que escala entera y sin deformarse
- *   Alto    de arriba a abajo dentro del perímetro
+ *   Centro  distancia desde el borde de arriba de la pantalla al centro
+ *           exacto de la imagen
+ *   Alto    lo que mide la imagen de arriba a abajo
+ *   Ancho   lo que mide de lado a lado
+ *
+ * El título va siempre centrado a lo ancho de la pantalla, como en el
+ * documento EDIT APP. Alto y Ancho son la misma medida vista de dos formas:
+ * mover una mueve la otra, y así la imagen nunca se deforma.
  *
  * Arriba se ve una maqueta de la pantalla con esas medidas aplicadas: los
  * tres números solo se entienden mirando el resultado, no leyéndolos. Cada
@@ -104,7 +107,10 @@ export default function LogosAdminScreen() {
   const [medidas, setMedidas] = useState<MedidasLogo>(MEDIDAS_POR_DEFECTO);
   const [guardadas, setGuardadas] = useState<MedidasLogo>(MEDIDAS_POR_DEFECTO);
   const [guardando, setGuardando] = useState(false);
-  const [guias, setGuias] = useState<Guias>({ centroX: false, ancho: false, centroY: false });
+  const [guias, setGuias] = useState<Guias>({ centro: false, alto: false, ancho: false });
+  // Forma de la imagen que se está mostrando (ancho ÷ alto). La avisa la
+  // vista previa al cargarla, y de ella sale el "Alto" del título.
+  const [, setProporcion] = useState(483 / 143);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -222,13 +228,13 @@ export default function LogosAdminScreen() {
           <VistaPreviaTitulo
             key={vigente?.id ?? 'normal'}
             medidas={medidas}
+            alto={medidas.alto}
             url={vigente?.imagen_url ?? null}
             guias={guias}
             comuna="Valdivia"
+            onCambiarImagen={faltaMigracion ? undefined : () => setCreando(true)}
+            onProporcion={setProporcion}
           />
-          <Text style={styles.previewNota}>
-            {vigente ? `Hoy se ve “${vigente.nombre}”` : 'Así se ve hoy en el catálogo'}
-          </Text>
         </View>
 
         {loading && <LoadingState />}
@@ -247,14 +253,27 @@ export default function LogosAdminScreen() {
 
         {!faltaMigracion && (
           <View style={styles.medidas}>
+            {/* El orden es el del documento: Centro, Alto, Ancho. El centro
+                no puede pasar del perímetro (340): más abajo, el título se
+                metería en el banner. */}
             <ControlMedida
               etiqueta="Centro"
-              valor={medidas.centroX}
-              onChange={(centroX) => setMedidas((m) => ({ ...m, centroX }))}
-              guia={guias.centroX}
-              onGuia={(centroX) => setGuias((g) => ({ ...g, centroX }))}
-              min={CENTRO_X_MIN}
-              max={CENTRO_X_MAX}
+              valor={medidas.centroY}
+              onChange={(centroY) => setMedidas((m) => ({ ...m, centroY }))}
+              guia={guias.centro}
+              onGuia={(centro) => setGuias((g) => ({ ...g, centro }))}
+              max={PERIMETRO_ALTO}
+            />
+            {/* Alto y Ancho son independientes: cada uno estira la imagen
+                por su lado (documento EDIT APP). */}
+            <ControlMedida
+              etiqueta="Alto"
+              valor={medidas.alto}
+              onChange={(alto) => setMedidas((m) => ({ ...m, alto }))}
+              guia={guias.alto}
+              onGuia={(altoGuia) => setGuias((g) => ({ ...g, alto: altoGuia }))}
+              min={10}
+              max={PERIMETRO_ALTO}
             />
             <ControlMedida
               etiqueta="Ancho"
@@ -263,18 +282,6 @@ export default function LogosAdminScreen() {
               guia={guias.ancho}
               onGuia={(ancho) => setGuias((g) => ({ ...g, ancho }))}
               min={ANCHO_MIN}
-            />
-            {/* El alto se mueve dentro del perímetro (340), no de los 1000
-                de la pantalla: fuera de ahí el título se metería en el
-                banner. El control muestra su tope real. */}
-            <ControlMedida
-              etiqueta="Alto"
-              valor={medidas.centroY}
-              onChange={(centroY) => setMedidas((m) => ({ ...m, centroY }))}
-              guia={guias.centroY}
-              onGuia={(centroY) => setGuias((g) => ({ ...g, centroY }))}
-              max={PERIMETRO_ALTO}
-              referencia={PERIMETRO_ALTO}
             />
 
             <View style={styles.acciones}>
@@ -312,16 +319,6 @@ export default function LogosAdminScreen() {
               </Text>
             </Pressable>
           </View>
-        )}
-
-        <Text style={styles.ayuda}>
-          Programa un logo para una fecha especial (Fiestas Patrias, Navidad, un aniversario…). Mientras esté vigente
-          reemplaza al logo normal en toda la app; al terminar su fecha, vuelve solo al normal. Todos se colocan con las
-          medidas de arriba.
-        </Text>
-
-        {!loading && !error && !faltaMigracion && logos.length === 0 && (
-          <Text style={styles.vacio}>Todavía no hay logos programados. Crea el primero con “+ Nuevo”.</Text>
         )}
 
         {logos.map((logo) => {
@@ -655,7 +652,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.backgroundAlt,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
     padding: Spacing.four,
@@ -664,7 +661,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: Fonts.semiBold,
     fontSize: 17,
-    color: Colors.cardText,
+    color: Colors.text,
     marginBottom: Spacing.three,
   },
   imagenBox: {
@@ -689,10 +686,10 @@ const styles = StyleSheet.create({
   input: {
     fontFamily: Fonts.light,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
+    borderBottomColor: Colors.surfaceBorder,
     paddingVertical: Spacing.two,
     fontSize: 16,
-    color: Colors.cardText,
+    color: Colors.text,
     marginBottom: Spacing.three,
   },
   fechasRow: {
@@ -706,7 +703,7 @@ const styles = StyleSheet.create({
   fechasHint: {
     fontFamily: Fonts.light,
     fontSize: 12,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     marginBottom: Spacing.three,
   },
   errorText: {
@@ -722,6 +719,6 @@ const styles = StyleSheet.create({
   cancelLabel: {
     fontFamily: Fonts.medium,
     fontSize: 14,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
 });

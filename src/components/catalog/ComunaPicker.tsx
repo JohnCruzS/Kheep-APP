@@ -1,9 +1,13 @@
 import { memo, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { TituloPosicionado } from '@/components/ui/BrandLogo';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
+import { PERIMETRO_ALTO, useMarca } from '@/lib/marca';
+import { REJILLA, u } from '@/lib/rejilla';
 import { normalizarTexto } from '@/lib/text';
 
 type Props = {
@@ -29,9 +33,22 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
   const { width } = useWindowDimensions();
   const tamanoNombre = Math.min(26, Math.max(14, Math.round((width * 45) / 1000)));
 
+  // El título de esta pantalla es el mismo de la app, con sus medidas.
+  const marca = useMarca();
+  // La barra de botones de Android se dibuja encima: sin esto, "Cerrar"
+  // quedaba debajo de ella y no se podía tocar.
+  const insets = useSafeAreaInsets();
+  const unidad = width / 1000;
+  const altoPerimetro = Math.round(PERIMETRO_ALTO * unidad);
+  const margen = u(REJILLA.margenLateral);
+
   const [open, setOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
-  const label = comunas.find((c) => c.id === selectedId)?.nombre ?? 'Todas las comunas';
+  // Sin comuna elegida dice "Comuna", como el documento EDIT APP: es el
+  // hueco donde va el nombre, no una comuna de verdad. Con el permiso de
+  // ubicación se llena solo con la detectada, y si no, con la que la persona
+  // elija; después queda guardada en el teléfono para las próximas veces.
+  const label = comunas.find((c) => c.id === selectedId)?.nombre ?? 'Comuna';
 
   const filas = useMemo<Fila[]>(() => {
     const termino = normalizarTexto(busqueda);
@@ -66,43 +83,45 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
         </Text>
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
-        {/* El panel se ancla abajo, justo donde aparece el teclado. Con
-            `padding` el contenedor se encoge al alto libre y, como el panel
-            mide un porcentaje de ese contenedor, queda completo sobre el
-            teclado en vez de quedar tapado. */}
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-          <Pressable style={styles.backdrop} onPress={handleClose}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.sheetTitle}>Elige tu comuna</Text>
-
-            <TextInput
-              value={busqueda}
-              onChangeText={setBusqueda}
-              placeholder="Buscar comuna…"
-              placeholderTextColor={Colors.textMuted}
-              style={styles.buscador}
-              autoCorrect={false}
+      {/* Pantalla completa, no un panel encima del catálogo (documento EDIT
+          APP): el mismo título arriba pero con "Chile" debajo —se está
+          eligiendo el país entero, no una comuna—, el buscador justo donde
+          va el banner, y las comunas centradas. */}
+      <Modal visible={open} animationType="fade" onRequestClose={handleClose}>
+        <KeyboardAvoidingView style={styles.pantalla} behavior="padding">
+          <View style={{ height: altoPerimetro }}>
+            <TituloPosicionado
+              unidad={unidad}
+              altoPerimetro={PERIMETRO_ALTO}
+              medidas={{ centroX: marca.centroX, ancho: marca.ancho, alto: marca.alto, centroY: marca.centroY }}
+              url={marca.url}
+              debajo={<Text style={styles.pais}>Chile</Text>}
             />
+          </View>
 
-            <FlatList
-              data={filas}
-              keyExtractor={(item) => item.id ?? 'todas'}
-              keyboardShouldPersistTaps="handled"
-              initialNumToRender={16}
-              maxToRenderPerBatch={16}
-              windowSize={10}
-              renderItem={({ item }) => (
-                <Option
-                  label={item.label}
-                  active={selectedId === item.id}
-                  onPress={() => handleSelect(item.id)}
-                />
-              )}
-              ListEmptyComponent={<Text style={styles.sinResultados}>No encontramos esa comuna.</Text>}
-            />
-          </Pressable>
-          </Pressable>
+          <TextInput
+            value={busqueda}
+            onChangeText={setBusqueda}
+            placeholder="Buscar"
+            placeholderTextColor={Colors.textMuted}
+            style={[styles.buscador, { marginHorizontal: margen }]}
+            autoCorrect={false}
+          />
+
+          <FlatList
+            data={filas}
+            keyExtractor={(item) => item.id ?? 'todas'}
+            keyboardShouldPersistTaps="handled"
+            initialNumToRender={16}
+            maxToRenderPerBatch={16}
+            windowSize={10}
+            contentContainerStyle={[styles.lista, { paddingBottom: Spacing.four + insets.bottom }]}
+            renderItem={({ item }) => (
+              <Option label={item.label} active={selectedId === item.id} onPress={() => handleSelect(item.id)} />
+            )}
+            ListEmptyComponent={<Text style={styles.sinResultados}>No encontramos esa comuna.</Text>}
+          />
+
         </KeyboardAvoidingView>
       </Modal>
     </>
@@ -115,7 +134,6 @@ function Option({ label, active, onPress }: { label: string; active: boolean; on
   return (
     <Pressable onPress={onPress} style={styles.option}>
       <Text style={[styles.optionLabel, active && styles.optionLabelActive]}>{label}</Text>
-      {active && <Text style={styles.check}>✓</Text>}
     </Pressable>
   );
 }
@@ -135,60 +153,44 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: '#8A8A8A',
   },
-  backdrop: {
+  pantalla: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
+    backgroundColor: Colors.background,
   },
-  sheet: {
-    backgroundColor: Colors.backgroundAlt,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
-    // Alto acotado: sin esto, un FlatList con 300+ filas simplemente se
-    // sale de la pantalla y no queda espacio donde hacer scroll.
-    height: '75%',
-  },
-  sheetTitle: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 13,
-    letterSpacing: 0.4,
-    color: Colors.textMuted,
-    marginBottom: Spacing.three,
+  pais: {
+    fontFamily: Fonts.light,
+    fontSize: 18,
+    color: '#8A8A8A',
   },
   buscador: {
     fontFamily: Fonts.light,
-    backgroundColor: Colors.surface,
+    textAlign: 'center',
+    // Cápsula, como el documento EDIT APP.
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
-    borderRadius: 12,
+    borderRadius: 999,
     paddingHorizontal: Spacing.three,
-    height: 44,
-    fontSize: 14,
+    height: 54,
+    fontSize: 18,
     color: Colors.text,
-    marginBottom: Spacing.two,
+  },
+  lista: {
+    paddingTop: Spacing.three,
+    paddingHorizontal: Spacing.four,
   },
   option: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Spacing.three,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
+    paddingVertical: Spacing.two,
   },
   optionLabel: {
     fontFamily: Fonts.light,
-    fontSize: 15,
+    fontSize: 19,
+    textAlign: 'center',
     color: Colors.text,
   },
   optionLabelActive: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.accent,
-  },
-  check: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.accent,
+    fontFamily: Fonts.medium,
+    color: Colors.text,
   },
   sinResultados: {
     fontFamily: Fonts.light,

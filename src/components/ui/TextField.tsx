@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 
+import { useTarjetaClara } from '@/components/ui/TarjetaClara';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { useCampoVisible } from '@/components/ui/FormScroll';
 
@@ -22,6 +23,9 @@ export function TextField({
   onBlur,
   ...inputProps
 }: TextFieldProps) {
+  // Dentro de la tarjeta blanca del acceso el campo es una línea; fuera, una
+  // cápsula sobre negro.
+  const claro = useTarjetaClara();
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const isPasswordField = secureTextEntry === true;
 
@@ -33,12 +37,12 @@ export function TextField({
 
   return (
     <View style={styles.container}>
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, claro && styles.inputRowClaro]}>
         <TextInput
           ref={inputRef}
           placeholder={label}
           placeholderTextColor={Colors.placeholder}
-          style={[styles.input, style]}
+          style={[styles.input, claro && styles.inputClaro, style]}
           secureTextEntry={isPasswordField && !isPasswordVisible}
           onFocus={(e) => {
             registrarCampo(inputRef.current);
@@ -60,7 +64,7 @@ export function TextField({
             <Ionicons
               name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
               size={22}
-              color={Colors.cardTextMuted}
+              color={claro ? Colors.cardTextMuted : Colors.textMuted}
             />
           </Pressable>
         )}
@@ -79,22 +83,38 @@ const styles = StyleSheet.create({
   container: {
     marginTop: Spacing.four,
   },
+  // Cápsula de borde blanco sobre negro, como el documento EDIT APP. Antes
+  // era una línea inferior sobre tarjeta blanca.
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingHorizontal: Spacing.four,
+    height: 62,
   },
   input: {
     flex: 1,
     fontFamily: Fonts.light,
     fontSize: 18,
-    color: Colors.cardText,
+    color: Colors.text,
+  },
+  // Acceso: la línea de siempre sobre la tarjeta blanca.
+  inputRowClaro: {
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    height: undefined,
     paddingBottom: Spacing.two,
+  },
+  inputClaro: {
+    color: Colors.cardText,
   },
   toggle: {
     paddingLeft: Spacing.two,
-    paddingBottom: Spacing.two,
   },
   error: {
     fontFamily: Fonts.light,

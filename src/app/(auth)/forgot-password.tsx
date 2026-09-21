@@ -52,7 +52,7 @@ export default function ForgotPasswordScreen() {
 
       {error ? <Text style={{ fontFamily: Fonts.light, color: Colors.danger, marginTop: Spacing.three }}>{error}</Text> : null}
 
-      <Text style={{ fontFamily: Fonts.light, fontSize: 13, color: Colors.cardTextMuted, marginTop: Spacing.two }}>
+      <Text style={{ fontFamily: Fonts.light, fontSize: 13, color: Colors.textMuted, marginTop: Spacing.two }}>
         Te enviaremos un código para crear una contraseña nueva.
       </Text>
 

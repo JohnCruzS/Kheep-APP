@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   CategoriaDeComuna,
   actualizarCategoria,
@@ -10,13 +12,21 @@ import {
   crearCategoriaEnTodasLasComunas,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
 
 /**
- * Crear o editar una categoría: nombre e icono.
+ * Crear o editar una categoría, como el documento EDIT APP: pantalla negra,
+ * un solo campo en cápsula al centro y, abajo, "Comuna/Todo" con el botón
+ * rojo de guardar. Al editar aparece además "Eliminar" en rojo.
  *
- * Al crear se elige si nace solo en esta comuna o en todas. Al editar no
- * aparece esa opción: el nombre y el icono son de la categoría, y cambiarlos
- * la cambia dondequiera que esté — no tendría sentido preguntar dónde.
+ * Las categorías ya no llevan icono (el círculo de la tarjeta del catálogo
+ * es la foto del comercio, no un icono), así que el único dato es el nombre.
+ *
+ * Qué hace "Comuna/Todo":
+ *  - Al crear, dónde nace la categoría: solo en esta comuna o en todas.
+ *  - Al editar, hasta dónde llega "Eliminar". El nombre es de la categoría y
+ *    se ve igual en todas partes, así que para él ese interruptor no tendría
+ *    sentido.
  */
 export function EditorCategoria({
   categoria,
@@ -25,6 +35,7 @@ export function EditorCategoria({
   nombreComuna,
   onClose,
   onSaved,
+  onEliminar,
 }: {
   /** La categoría a editar, o null si se está creando. */
   categoria: CategoriaDeComuna | null;
@@ -33,11 +44,12 @@ export function EditorCategoria({
   nombreComuna: string;
   onClose: () => void;
   onSaved: () => void;
+  /** Eliminar; `todas` dice si se quita de toda la app o solo de esta comuna. */
+  onEliminar?: (categoria: CategoriaDeComuna, todas: boolean) => void;
 }) {
   const visible = crear || categoria !== null;
 
   const [nombre, setNombre] = useState('');
-  const [icono, setIcono] = useState('');
   const [enTodas, setEnTodas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -45,7 +57,6 @@ export function EditorCategoria({
   useEffect(() => {
     if (!visible) return;
     setNombre(categoria?.nombre ?? '');
-    setIcono(categoria?.icono ?? '');
     setEnTodas(false);
     setError(null);
   }, [visible, categoria]);
@@ -57,7 +68,7 @@ export function EditorCategoria({
     setGuardando(true);
     setError(null);
     try {
-      const datos = { nombre: limpio, icono: icono.trim() || null };
+      const datos = { nombre: limpio, icono: null };
       if (categoria) await actualizarCategoria(categoria.id, datos);
       else if (enTodas) await crearCategoriaEnTodasLasComunas(datos);
       else await crearCategoriaEnComuna(comunaId, datos);
@@ -71,101 +82,111 @@ export function EditorCategoria({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        {/* Sube el panel por encima del teclado: si no, el campo del nombre
-            queda tapado y no se ve lo que se escribe. */}
-        <KeyboardAvoidingView behavior="padding">
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.titulo}>{categoria ? 'Editar categoría' : 'Nueva categoría'}</Text>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={styles.pantalla} edges={['top', 'bottom']}>
+        <EncabezadoMarca subtitulo={categoria ? 'Editar categoría' : 'Nueva categoría'} onVolver={onClose} />
 
-            <View style={styles.fila}>
-              <TextInput
-                placeholder="Icono"
-                placeholderTextColor={Colors.placeholder}
-                value={icono}
-                onChangeText={setIcono}
-                style={[styles.input, styles.inputIcono]}
-                maxLength={4}
-              />
+        <KeyboardAvoidingView style={styles.cuerpo} behavior="padding">
+          <ScrollView contentContainerStyle={styles.contenido} keyboardShouldPersistTaps="handled">
+            {/* Un solo campo: el nombre. Las categorías ya no llevan icono. */}
+            <View style={styles.capsula}>
               <TextInput
                 placeholder="Nombre (ej: Delivery)"
                 placeholderTextColor={Colors.placeholder}
                 value={nombre}
                 onChangeText={setNombre}
-                style={[styles.input, styles.inputNombre]}
+                style={styles.nombre}
                 autoFocus
               />
             </View>
 
-            {!categoria && (
-              <View style={styles.switchFila}>
-                <View style={styles.switchTexto}>
-                  <Text style={styles.switchLabel}>En todas las comunas</Text>
-                  <Text style={styles.switchHint}>
-                    {enTodas ? 'Se verá en todo el país.' : `Se verá solo en ${nombreComuna}.`}
-                  </Text>
-                </View>
-                <Switch
-                  value={enTodas}
-                  onValueChange={setEnTodas}
-                  trackColor={{ false: Colors.inputBorder, true: Colors.accent }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-            )}
-
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
+            {categoria && onEliminar && (
+              <Pressable style={styles.eliminar} onPress={() => onEliminar(categoria, enTodas)} hitSlop={10}>
+                <Text style={styles.eliminarLabel}>Eliminar</Text>
+              </Pressable>
+            )}
+          </ScrollView>
+
+          <View style={styles.pie}>
+            <View style={styles.switchFila}>
+              <View style={styles.switchTexto}>
+                <Text style={styles.switchLabel}>Comuna/Todo</Text>
+                <Text style={styles.switchHint}>
+                  {categoria
+                    ? enTodas
+                      ? 'Eliminar la quita de todas las comunas.'
+                      : `Eliminar la quita solo de ${nombreComuna}.`
+                    : enTodas
+                      ? 'Se creará en todas las comunas.'
+                      : `Se creará solo en ${nombreComuna}.`}
+                </Text>
+              </View>
+              <Switch
+                value={enTodas}
+                onValueChange={setEnTodas}
+                trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
             <Button label={guardando ? 'Guardando…' : 'Guardar'} onPress={handleGuardar} loading={guardando} />
-            <Pressable onPress={onClose} style={styles.cancelar}>
-              <Text style={styles.cancelarLabel}>Cancelar</Text>
-            </Pressable>
-          </Pressable>
+          </View>
         </KeyboardAvoidingView>
-      </Pressable>
+      </SafeAreaView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  pantalla: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
+    backgroundColor: Colors.background,
   },
-  sheet: {
-    backgroundColor: Colors.card,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    padding: Spacing.four,
-    paddingBottom: Spacing.six,
+  cuerpo: {
+    flex: 1,
   },
-  titulo: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 17,
-    color: Colors.cardText,
-    marginBottom: Spacing.three,
+  contenido: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: u(REJILLA.margenLateral),
   },
-  fila: {
+  capsula: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingHorizontal: Spacing.four,
+    height: 66,
   },
-  input: {
-    fontFamily: Fonts.light,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-    color: Colors.cardText,
-    marginBottom: Spacing.three,
-  },
-  inputIcono: {
-    width: 70,
-    textAlign: 'center',
-  },
-  inputNombre: {
+  nombre: {
     flex: 1,
+    fontFamily: Fonts.light,
+    fontSize: 19,
+    color: Colors.text,
+  },
+  error: {
+    fontFamily: Fonts.light,
+    marginTop: Spacing.three,
+    marginLeft: Spacing.four,
+    fontSize: 13,
+    color: Colors.danger,
+  },
+  eliminar: {
+    marginTop: Spacing.six,
+    alignItems: 'center',
+    paddingVertical: Spacing.three,
+  },
+  eliminarLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 21,
+    color: Colors.danger,
+  },
+  pie: {
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingBottom: Spacing.three,
   },
   switchFila: {
     flexDirection: 'row',
@@ -179,28 +200,13 @@ const styles = StyleSheet.create({
   },
   switchLabel: {
     fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.cardText,
+    fontSize: 21,
+    color: Colors.text,
   },
   switchHint: {
     fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.cardTextMuted,
+    fontSize: 12.5,
+    color: Colors.textMuted,
     marginTop: 2,
-  },
-  error: {
-    fontFamily: Fonts.light,
-    marginBottom: Spacing.three,
-    fontSize: 13,
-    color: Colors.danger,
-  },
-  cancelar: {
-    alignItems: 'center',
-    paddingTop: Spacing.three,
-  },
-  cancelarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.cardTextMuted,
   },
 });

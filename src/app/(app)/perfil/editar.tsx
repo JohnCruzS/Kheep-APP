@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { Button } from '@/components/ui/Button';
@@ -48,13 +49,7 @@ export default function EditarPerfilScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>Editar perfil</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      <EncabezadoMarca subtitulo="Editar perfil" onVolver={() => router.back()} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
@@ -197,7 +192,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.background,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
   },

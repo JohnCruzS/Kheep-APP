@@ -1,15 +1,22 @@
 import { useMemo, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { TituloPosicionado } from '@/components/ui/BrandLogo';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
+import { PERIMETRO_ALTO, useMarca } from '@/lib/marca';
+import { REJILLA, u } from '@/lib/rejilla';
 import { normalizarTexto } from '@/lib/text';
+import { useWindowDimensions } from 'react-native';
 
 /**
- * Elegir una comuna de la lista, con buscador. Se usa para mover una categoría
- * de una comuna a otra; con las ~346 comunas del país, sin buscador habría que
- * desplazarse a ciegas.
+ * Elegir una comuna de la lista, con buscador.
+ *
+ * Es la misma pantalla que usa el catálogo para cambiar de comuna (documento
+ * EDIT APP): el título de la app arriba con "Chile" debajo, el buscador a la
+ * altura del banner y las comunas centradas. Antes era un panel que subía
+ * desde abajo, y elegir comuna se veía distinto según desde dónde se entrara.
  */
 export function SelectorComuna({
   visible,
@@ -20,6 +27,7 @@ export function SelectorComuna({
   conTodas = false,
 }: {
   visible: boolean;
+  /** Para qué se está eligiendo; va bajo el título. */
   titulo: string;
   comunas: Comuna[];
   /** null = "Todas las comunas", solo si `conTodas` está activo. */
@@ -29,13 +37,19 @@ export function SelectorComuna({
   conTodas?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const marca = useMarca();
+  const unidad = width / 1000;
+
   const [busqueda, setBusqueda] = useState('');
 
-  const filtradas = useMemo(() => {
+  const filas = useMemo(() => {
     const termino = normalizarTexto(busqueda);
-    if (!termino) return comunas;
-    return comunas.filter((c) => normalizarTexto(c.nombre).includes(termino));
-  }, [comunas, busqueda]);
+    const filtradas = termino ? comunas.filter((c) => normalizarTexto(c.nombre).includes(termino)) : comunas;
+    const lista: { id: string | null; label: string }[] = filtradas.map((c) => ({ id: c.id, label: c.nombre }));
+    // "Todas" solo cuando no se está buscando algo puntual.
+    return conTodas && !termino ? [{ id: null, label: 'Todas las comunas' }, ...lista] : lista;
+  }, [comunas, busqueda, conTodas]);
 
   function cerrar() {
     setBusqueda('');
@@ -43,131 +57,86 @@ export function SelectorComuna({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={cerrar}>
-      <KeyboardAvoidingView style={styles.flex} behavior="padding">
-        <Pressable style={styles.backdrop} onPress={cerrar}>
-          {/* El relleno de abajo reserva la franja del sistema (los tres
-              botones o la barra de gestos): sin ella, "Cancelar" quedaba
-              justo debajo y no se podía tocar. */}
-          <Pressable
-            style={[styles.sheet, { paddingBottom: insets.bottom }]}
-            onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.titulo} numberOfLines={2}>
-              {titulo}
-            </Text>
-
-            <TextInput
-              value={busqueda}
-              onChangeText={setBusqueda}
-              placeholder="Buscar comuna…"
-              placeholderTextColor={Colors.textMuted}
-              style={styles.buscador}
-              autoCorrect={false}
+    <Modal visible={visible} animationType="fade" onRequestClose={cerrar}>
+      <SafeAreaView style={styles.pantalla} edges={['top']}>
+        <KeyboardAvoidingView style={styles.pantalla} behavior="padding">
+          <View style={{ height: Math.round(PERIMETRO_ALTO * unidad) }}>
+            <TituloPosicionado
+              unidad={unidad}
+              altoPerimetro={PERIMETRO_ALTO}
+              medidas={{ centroX: marca.centroX, ancho: marca.ancho, alto: marca.alto, centroY: marca.centroY }}
+              url={marca.url}
+              debajo={<Text style={styles.subtitulo}>{titulo}</Text>}
             />
+          </View>
 
-            {/* "Todas" va fija encima de la lista y no dentro de ella: como
-                primera fila de la lista se perdía al desplazarse entre las 346
-                comunas, y es justo la opción que el admin busca. */}
-            {conTodas && (
+          <TextInput
+            value={busqueda}
+            onChangeText={setBusqueda}
+            placeholder="Buscar"
+            placeholderTextColor={Colors.textMuted}
+            style={[styles.buscador, { marginHorizontal: u(REJILLA.margenLateral) }]}
+            autoCorrect={false}
+          />
+
+          <FlatList
+            data={filas}
+            keyExtractor={(item) => item.id ?? 'todas'}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[styles.lista, { paddingBottom: Spacing.four + insets.bottom }]}
+            ListEmptyComponent={<Text style={styles.vacio}>No encontramos esa comuna.</Text>}
+            renderItem={({ item }) => (
               <Pressable
-                style={({ pressed }) => [styles.todas, pressed && styles.todasPresionada]}
+                style={styles.fila}
                 onPress={() => {
                   setBusqueda('');
-                  onElegir(null);
+                  onElegir(item.id);
                 }}>
-                <Text style={styles.todasLabel}>Todas las comunas</Text>
+                <Text style={styles.filaLabel}>{item.label}</Text>
               </Pressable>
             )}
-
-            <FlatList
-              data={filtradas}
-              keyExtractor={(item) => item.id}
-              keyboardShouldPersistTaps="handled"
-              ListEmptyComponent={<Text style={styles.vacio}>No encontramos esa comuna.</Text>}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={styles.fila}
-                  onPress={() => {
-                    setBusqueda('');
-                    onElegir(item.id);
-                  }}>
-                  <Text style={styles.nombre}>{item.nombre}</Text>
-                </Pressable>
-              )}
-            />
-
-            <Pressable onPress={cerrar} style={styles.cancelar}>
-              <Text style={styles.cancelarLabel}>Cancelar</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
+          />
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
+  pantalla: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: Colors.backgroundAlt,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
-    // Acotado: con cientos de comunas, sin tope la lista se sale de pantalla
-    // y no queda dónde desplazarse.
-    height: '75%',
-  },
-  titulo: {
+  subtitulo: {
     fontFamily: Fonts.light,
-    fontSize: 19,
-    color: Colors.accent,
-    marginBottom: Spacing.three,
+    fontSize: 16,
+    color: '#8A8A8A',
+    textAlign: 'center',
   },
   buscador: {
     fontFamily: Fonts.light,
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
+    textAlign: 'center',
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
+    borderRadius: 999,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    fontSize: 15,
+    height: 54,
+    fontSize: 18,
     color: Colors.text,
-    marginBottom: Spacing.two,
+  },
+  lista: {
+    paddingTop: Spacing.three,
+    paddingHorizontal: Spacing.four,
   },
   fila: {
-    paddingVertical: Spacing.three,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
-  },
-  nombre: {
-    fontFamily: Fonts.light,
-    fontSize: 17,
-    color: Colors.text,
-  },
-  todas: {
-    borderWidth: 1,
-    borderColor: Colors.accent,
-    borderRadius: 12,
-    paddingVertical: Spacing.three,
     alignItems: 'center',
-    marginBottom: Spacing.two,
+    paddingVertical: Spacing.two,
   },
-  todasPresionada: {
-    backgroundColor: Colors.surface,
-  },
-  todasLabel: {
+  filaLabel: {
     fontFamily: Fonts.light,
-    fontSize: 17,
-    color: Colors.accent,
+    fontSize: 19,
+    textAlign: 'center',
+    color: Colors.text,
   },
   vacio: {
     fontFamily: Fonts.light,
@@ -175,14 +144,5 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: Spacing.five,
-  },
-  cancelar: {
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-  },
-  cancelarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.textMuted,
   },
 });

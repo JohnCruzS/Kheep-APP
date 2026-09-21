@@ -6,6 +6,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { BannerCarousel } from '@/components/catalog/BannerCarousel';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { CategoryChips } from '@/components/catalog/CategoryChips';
+import { ImageViewer } from '@/components/catalog/ImageViewer';
 import { ComunaPicker } from '@/components/catalog/ComunaPicker';
 import { PublicacionCard } from '@/components/catalog/PublicacionCard';
 import { TituloPosicionado } from '@/components/ui/BrandLogo';
@@ -18,6 +19,7 @@ import {
   PublicacionResumen,
   fetchBanners,
   fetchCategorias,
+  fetchCategoriasConContenido,
   fetchComunas,
   fetchPublicaciones,
 } from '@/lib/catalog';
@@ -25,6 +27,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { leerUsoCategorias, ordenarPorUso, registrarUsoCategoria } from '@/lib/preferencias';
 import { useSession } from '@/providers/SessionProvider';
 import { useUbicacion } from '@/providers/UbicacionProvider';
+import { contactarPorWhatsApp } from '@/lib/whatsapp';
 
 /**
  * Cuánto se mete la primera tarjeta dentro de la zona negra: en la plantilla
@@ -46,7 +49,7 @@ export default function DashboardScreen() {
   // El perímetro va del borde FÍSICO de arriba —como lo midió el cliente en
   // su plantilla— hasta donde empieza el banner: 340 de 1000 del alto. Su
   // ancho es el del banner, para que el título se alinee con él.
-  const { url: urlTitulo, centroX, ancho: anchoTitulo, centroY } = useMarca();
+  const { url: urlTitulo, centroX, ancho: anchoTitulo, alto: altoTitulo, centroY } = useMarca();
   // Una unidad de la rejilla del cliente = el ancho de la pantalla entre 1000.
   // Las medidas verticales usan la misma unidad que las horizontales, que es
   // lo que mantiene el bloque proporcionado en cualquier teléfono.
@@ -75,6 +78,8 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const publicacionesRef = useRef<PublicacionResumen[]>([]);
+  /** Foto que se está viendo completa desde una tarjeta, si hay alguna. */
+  const [fotoAbierta, setFotoAbierta] = useState<string | null>(null);
 
   // Banners: se vuelven a pedir cada vez que se regresa a Inicio. La
   // pestaña queda montada todo el tiempo, y mientras tanto el admin puede
@@ -104,9 +109,17 @@ export default function DashboardScreen() {
   // movería un chip justo debajo del dedo—: las nuevas entran al final y las
   // eliminadas simplemente desaparecen.
   const ordenMostrado = useRef<string[] | null>(null);
+  /** Mientras el usuario no toque ninguna, manda la selección automática. */
+  const sinElegir = useRef(true);
   const recargarCategorias = useCallback(() => {
-    Promise.all([fetchCategorias(comunaId), leerUsoCategorias()])
-      .then(([categoriasData, uso]) => {
+    // Sin cuenta, las categorías sin ningún comercio no se muestran: solo
+    // llevan a un catálogo vacío. Con cuenta se ven todas — el comerciante
+    // necesita saber dónde puede publicar y el admin, qué hay montado.
+    Promise.all([fetchCategorias(comunaId), leerUsoCategorias(), fetchCategoriasConContenido(comunaId)])
+      .then(([todas, uso, conContenido]) => {
+        const conComercios = todas.filter((c) => conContenido.has(c.id));
+        const categoriasData = session ? todas : conComercios;
+        setComunaVacia(conComercios.length === 0);
         const previo = ordenMostrado.current;
         const ordenadas = previo
           ? [
@@ -118,16 +131,27 @@ export default function DashboardScreen() {
           : // Primera carga: orden del admin + las más usadas por este usuario.
             ordenarPorUso(categoriasData, uso);
         ordenMostrado.current = ordenadas.map((c) => c.id);
+        setCategoriasVisibles(todas.map((c) => c.id));
         setCategorias(ordenadas);
-        // Si el filtro activo era la categoría recién eliminada, el catálogo
-        // quedaría vacío para siempre: se vuelve a "Todas".
-        setCategoriaId((actual) => (actual && !ordenadas.some((c) => c.id === actual) ? null : actual));
+        // Al abrir, la app entra directamente en la primera categoría
+        // (documento EDIT APP). Si el filtro activo era una categoría que ya
+        // no está, se vuelve a la primera en vez de quedar en un catálogo
+        // vacío para siempre.
+        setCategoriaId((actual) => {
+          if (actual && ordenadas.some((c) => c.id === actual)) return actual;
+          if (sinElegir.current && ordenadas.length > 0) {
+            sinElegir.current = false;
+            return ordenadas[0].id;
+          }
+          return actual && !ordenadas.some((c) => c.id === actual) ? (ordenadas[0]?.id ?? null) : actual;
+        });
       })
       .catch(() => {
         // Se queda con las que ya tenía; un catálogo sin chips no es un error
         // que valga la pena mostrarle al usuario.
       });
-  }, [comunaId]);
+    // `session`: al entrar o salir de la cuenta cambia qué categorías se ven.
+  }, [comunaId, session]);
   useFocusEffect(recargarCategorias);
 
   // Cada comuna puede tener su propia lista de categorías (el admin la arma
@@ -141,6 +165,8 @@ export default function DashboardScreen() {
       return;
     }
     ordenMostrado.current = null;
+    sinElegir.current = true;
+    setCategoriasVisibles(null);
     setCategoriaId(null);
     recargarCategorias();
     recargarBanners();
@@ -157,12 +183,24 @@ export default function DashboardScreen() {
 
   // Publicaciones: se cargan de nuevo cada vez (y solo) que cambia un
   // filtro real — categoría, comuna o la búsqueda ya "asentada".
+  // Ids de las categorías que esta comuna muestra. Filtran el catálogo, así
+  // que es estado y no una ref: cuando llegan, las publicaciones se vuelven a
+  // pedir ya filtradas. `null` = todavía no se sabe.
+  const [categoriasVisibles, setCategoriasVisibles] = useState<string[] | null>(null);
+  /** Ninguna categoría de esta comuna tiene comercios todavía. */
+  const [comunaVacia, setComunaVacia] = useState(false);
+
   const loadPublicaciones = useCallback(
     async ({ isRefresh = false }: { isRefresh?: boolean } = {}) => {
       isRefresh ? setRefreshing(true) : setLoading(true);
       setError(null);
       try {
-        const data = await fetchPublicaciones({ categoriaId, comunaId });
+        // Solo lo que cuelga de una categoría visible en esta comuna.
+        const data = await fetchPublicaciones({
+          categoriaId,
+          comunaId,
+          categoriasVisibles,
+        });
         publicacionesRef.current = data;
         setPublicaciones(data);
       } catch (err) {
@@ -171,12 +209,26 @@ export default function DashboardScreen() {
         isRefresh ? setRefreshing(false) : setLoading(false);
       }
     },
-    [categoriaId, comunaId],
+    [categoriaId, comunaId, categoriasVisibles],
   );
 
   useEffect(() => {
     loadPublicaciones();
   }, [loadPublicaciones]);
+
+  // Al volver a Inicio se vuelven a pedir: mientras la pestaña estaba
+  // montada pudo aparecer una publicación nueva (recién aprobada, por
+  // ejemplo) y antes no se veía hasta cambiar de filtro o de comuna.
+  const primerFoco = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (primerFoco.current) {
+        primerFoco.current = false;
+        return;
+      }
+      loadPublicaciones();
+    }, [loadPublicaciones]),
+  );
 
   // Abrir una publicación también cuenta como interés en su categoría. Se
   // busca en una ref (no en el estado) para que este callback no cambie con
@@ -190,13 +242,28 @@ export default function DashboardScreen() {
   );
 
   const handleSeleccionarCategoria = useCallback((id: string | null) => {
+    sinElegir.current = false;
     registrarUsoCategoria(id);
     setCategoriaId(id);
   }, []);
 
+  // Desde la tarjeta se puede contactar sin entrar a la publicación
+  // (documento EDIT APP). El clic se registra igual: es la misma métrica.
+  const handleContactar = useCallback((publicacion: PublicacionResumen) => {
+    registrarUsoCategoria(publicacion.categoria_id);
+    contactarPorWhatsApp(publicacion.id, publicacion.telefono, publicacion.titulo);
+  }, []);
+
   const renderItem = useCallback(
-    ({ item }: { item: PublicacionResumen }) => <PublicacionCard publicacion={item} onPress={handleOpenPublicacion} />,
-    [handleOpenPublicacion],
+    ({ item }: { item: PublicacionResumen }) => (
+      <PublicacionCard
+        publicacion={item}
+        onPress={handleOpenPublicacion}
+        onContactar={handleContactar}
+        onVerFoto={setFotoAbierta}
+      />
+    ),
+    [handleOpenPublicacion, handleContactar],
   );
 
   const keyExtractor = useCallback((item: PublicacionResumen) => item.id, []);
@@ -228,13 +295,17 @@ export default function DashboardScreen() {
             unidad={unidad}
             altoPerimetro={PERIMETRO_ALTO}
             recorteArriba={insets.top}
-            medidas={{ centroX, ancho: anchoTitulo, centroY }}
+            medidas={{ centroX, ancho: anchoTitulo, alto: altoTitulo, centroY }}
             url={urlTitulo}
             debajo={<ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={elegirComuna} />}
           />
+          {/* Sin sesión, el LOGO es el acceso a la cuenta —no hay barra
+              inferior que lleve a "Perfil"—, pero solo el logo: antes este
+              toque cubría todo el perímetro y se comía el de la comuna, así
+              que no se podía cambiar de comuna sin iniciar sesión. */}
           {!session && (
             <Pressable
-              style={StyleSheet.absoluteFill}
+              style={[styles.zonaLogo, { height: Math.max(0, Math.round(centroY * unidad + (altoTitulo * unidad) / 2) - insets.top) }]}
               onPress={() => router.push('/(auth)/login')}
               accessibilityRole="button"
               accessibilityLabel="Iniciar sesión o crear cuenta"
@@ -245,7 +316,11 @@ export default function DashboardScreen() {
         {/* La key cambia si cambia la lista: el carrusel parte de cero en vez
             de quedar apuntando a un banner que ya no existe. */}
         <BannerCarousel key={banners.map((b) => b.id).join(',')} banners={banners} />
-        <CategoryChips categorias={categorias} selectedId={categoriaId} onSelect={handleSeleccionarCategoria} />
+        {/* La fila solo desaparece para quien mira sin cuenta y no hay nada
+            que filtrar; con cuenta se ven todas las categorías. */}
+        {(session || !comunaVacia) && (
+          <CategoryChips categorias={categorias} selectedId={categoriaId} onSelect={handleSeleccionarCategoria} />
+        )}
       </SafeAreaView>
 
       <View style={styles.zonaScroll}>
@@ -282,11 +357,26 @@ export default function DashboardScreen() {
             removeClippedSubviews
             ItemSeparatorComponent={ItemSeparator}
             ListEmptyComponent={
-              <EmptyState title="No encontramos comercios" message="Prueba con otra categoría o cambia de comuna." />
+              comunaVacia ? (
+                <EmptyState
+                  title="Todavía no hay comercios en esta comuna"
+                  message="Nadie ha publicado por acá todavía. Prueba con otra comuna mientras tanto."
+                />
+              ) : (
+                <EmptyState title="No encontramos comercios" message="Prueba con otra categoría o cambia de comuna." />
+              )
             }
           />
         )}
       </View>
+
+      {/* La foto de un producto, a pantalla completa, sin salir del inicio. */}
+      <ImageViewer
+        images={fotoAbierta ? [fotoAbierta] : []}
+        visible={fotoAbierta !== null}
+        initialIndex={0}
+        onClose={() => setFotoAbierta(null)}
+      />
     </View>
   );
 }
@@ -304,6 +394,14 @@ const styles = StyleSheet.create({
   encabezado: {
     backgroundColor: Colors.background,
     paddingHorizontal: Layout.catalogMargin,
+  },
+  // Solo la franja del logo, hasta donde termina la imagen: debajo va el
+  // nombre de la comuna, que tiene su propio toque.
+  zonaLogo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   perimetroTitulo: {
     // El rectángulo donde el admin coloca el título: todo el ancho de la

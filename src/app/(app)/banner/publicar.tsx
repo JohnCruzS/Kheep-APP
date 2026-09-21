@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { SelectorComuna } from '@/components/admin/SelectorComuna';
 import { Button } from '@/components/ui/Button';
 import { FormScroll } from '@/components/ui/FormScroll';
@@ -12,6 +13,8 @@ import {
   Comuna,
   MiBanner,
   PRECIO_BANNER_POR_DIA,
+  CUPO_BANNERS,
+  contarBannersVigentes,
   crearBanner,
   fetchComunas,
   fetchMisBanners,
@@ -44,6 +47,8 @@ export default function PublicarBannerScreen() {
   const [comunaId, setComunaId] = useState<string | null | undefined>(undefined);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dias, setDias] = useState(7);
+  /** A dónde lleva tocar el banner. Opcional (documento EDIT APP). */
+  const [enlace, setEnlace] = useState('');
   // La duración a medida se escribe aparte: mientras el campo está vacío o a
   // medio escribir no se puede calcular el precio, y `dias` tiene que seguir
   // teniendo un número válido.
@@ -103,11 +108,41 @@ export default function PublicarBannerScreen() {
       return;
     }
 
+    // Un enlace mal escrito no abre nada y nadie se entera: se avisa acá, no
+    // después de cobrar.
+    const enlaceLimpio = enlace.trim();
+    if (enlaceLimpio && !/^https?:\/\/\S+$/i.test(enlaceLimpio)) {
+      setError('El enlace tiene que empezar con http:// o https://');
+      return;
+    }
+
+    // El carrusel tiene cupo: con más banners de la cuenta, ninguno alcanza a
+    // verse. Se comprueba antes de cobrar.
+    try {
+      const ocupados = await contarBannersVigentes(comunaId ?? null);
+      if (ocupados >= CUPO_BANNERS) {
+        setError(
+          `Ya hay ${ocupados} de ${CUPO_BANNERS} banners mostrándose ahí. Espera a que termine alguno o elige otra comuna.`,
+        );
+        return;
+      }
+    } catch {
+      // Si no se puede comprobar el cupo, se deja publicar: el banner está
+      // pagado y bloquearlo por una consulta que falló sería peor.
+    }
+
     setSaving(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
       const imagenUrl = await uploadCompressedImage('banners', auth.user!.id, imagen, `banner-${Date.now()}`);
-      const bannerId = await crearBanner({ imagenUrl, comunaId: comunaId ?? null, dias, pagado: esAdmin });
+      const bannerId = await crearBanner({
+        imagenUrl,
+        comunaId: comunaId ?? null,
+        dias,
+        enlace: enlaceLimpio || null,
+        pagado: esAdmin,
+        prioritario: esAdmin,
+      });
 
       if (!esAdmin) {
         await pagarBanner(bannerId);
@@ -119,6 +154,7 @@ export default function PublicarBannerScreen() {
       setImagen(null);
       setComunaId(undefined);
       setDias(7);
+      setEnlace('');
       cargar();
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo publicar el banner.'));
@@ -139,20 +175,17 @@ export default function PublicarBannerScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>Publicar banner</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      <EncabezadoMarca subtitulo="Publicar banner" onVolver={() => router.back()} />
 
       <View style={styles.card}>
         {/* `FormScroll` se encarga del teclado igual que en el resto de la app:
           reserva su alto y corre el formulario si el campo enfocado quedaría
           tapado. */}
       <FormScroll contentContainerStyle={styles.content}>
-          {!loadingList && misBanners.length > 0 && (
+          {/* "Mis banners" es para el comerciante, que no tiene otra forma de
+              ver los suyos. El admin los administra todos en Panel → Banners,
+              así que acá solo estorbaba. */}
+          {!esAdmin && !loadingList && misBanners.length > 0 && (
             <View style={styles.misBannersSection}>
               <Text style={styles.sectionLabel}>MIS BANNERS</Text>
               {misBanners.map((banner) => (
@@ -191,6 +224,18 @@ export default function PublicarBannerScreen() {
             </Text>
             <Text style={styles.selectorFlecha}>▾</Text>
           </Pressable>
+
+          <Text style={styles.diasLabel}>¿A dónde lleva al tocarlo?</Text>
+          <TextInput
+            value={enlace}
+            onChangeText={setEnlace}
+            placeholder="https://… (opcional)"
+            placeholderTextColor={Colors.placeholder}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            style={styles.enlaceInput}
+          />
 
           <Text style={styles.diasLabel}>¿Cuántos días quieres que dure?</Text>
           <View style={styles.diasRow}>
@@ -276,7 +321,7 @@ export default function PublicarBannerScreen() {
           paga por aparecer en su comuna. */}
       <SelectorComuna
         visible={pickerOpen}
-        titulo="¿Dónde se muestra el banner?"
+        titulo="¿Dónde se muestra?"
         comunas={comunas}
         conTodas={esAdmin}
         onClose={() => setPickerOpen(false)}
@@ -337,7 +382,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.background,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
   },
@@ -350,7 +395,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: 11,
     letterSpacing: 0.6,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     marginBottom: Spacing.two,
   },
   misBannersSection: {
@@ -374,7 +419,7 @@ const styles = StyleSheet.create({
   miBannerComuna: {
     fontFamily: Fonts.semiBold,
     fontSize: 14,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   estadoLabel: {
     fontFamily: Fonts.medium,
@@ -391,7 +436,7 @@ const styles = StyleSheet.create({
   },
   estadoVencido: {
     fontFamily: Fonts.light,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   imagePicker: {
     marginBottom: Spacing.four,
@@ -405,19 +450,23 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 2,
     borderRadius: 14,
-    backgroundColor: '#EFEFEF',
+    // Sobre negro: el gris claro de antes era un parche blanco en la
+    // pantalla.
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   imagePlaceholderLabel: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   campoLabel: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     marginTop: Spacing.four,
     marginBottom: Spacing.two,
   },
@@ -426,19 +475,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
+    borderColor: Colors.surfaceBorder,
     borderRadius: 14,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
   },
   selectorPresionado: {
-    backgroundColor: '#F2F2F2',
+    backgroundColor: Colors.backgroundAlt,
   },
   selectorValor: {
     fontFamily: Fonts.light,
     flex: 1,
     fontSize: 16,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   selectorPlaceholder: {
     color: Colors.placeholder,
@@ -446,7 +495,7 @@ const styles = StyleSheet.create({
   selectorFlecha: {
     fontFamily: Fonts.light,
     fontSize: 16,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   aMedidaFila: {
     flexDirection: 'row',
@@ -459,23 +508,35 @@ const styles = StyleSheet.create({
     width: 96,
     textAlign: 'center',
     fontSize: 18,
-    color: Colors.cardText,
+    color: Colors.text,
     borderWidth: 1,
-    borderColor: Colors.inputBorder,
+    borderColor: Colors.surfaceBorder,
     borderRadius: 12,
     paddingVertical: Spacing.two,
   },
   aMedidaHint: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
+  },
+  enlaceInput: {
+    fontFamily: Fonts.light,
+    marginTop: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+    backgroundColor: Colors.surface,
+    fontSize: 15,
+    color: Colors.text,
   },
   diasLabel: {
     fontFamily: Fonts.medium,
     marginTop: Spacing.four,
     marginBottom: Spacing.two,
     fontSize: 13,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   diasRow: {
     flexDirection: 'row',
@@ -485,21 +546,23 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   diaChip: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: 20,
-    backgroundColor: '#F1F1F1',
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
   },
   diaChipActive: {
     backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
   },
   diaChipLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 12.5,
-    color: Colors.cardText,
+    fontFamily: Fonts.light,
+    fontSize: 16,
+    color: Colors.text,
   },
   diaChipLabelActive: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.medium,
     color: '#FFFFFF',
   },
   precioBox: {
@@ -508,18 +571,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.four,
     padding: Spacing.three,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: Colors.surface,
     borderRadius: 14,
   },
   precioLabel: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   precioValor: {
     fontFamily: Fonts.bold,
     fontSize: 18,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   errorText: {
     fontFamily: Fonts.light,
@@ -538,7 +601,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.three,
     fontSize: 11.5,
     lineHeight: 16,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     textAlign: 'center',
   },
 });

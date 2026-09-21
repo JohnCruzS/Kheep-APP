@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { PickerField } from '@/components/forms/PickerField';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
@@ -30,6 +31,10 @@ import { supabase } from '@/lib/supabase';
 
 type ProductoDraft = { nombre: string; precio: string; image: PickedImage | null };
 const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
+
+/** Mismos topes que al publicar (documento EDIT APP). */
+const MAX_NOMBRE_PRODUCTO = 28;
+const MAX_DIGITOS_PRECIO = 9;
 
 export default function EditarPublicacionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -69,13 +74,7 @@ export default function EditarPublicacionScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>Editar publicación</Text>
-        <View style={{ width: 70 }} />
-      </View>
+      <EncabezadoMarca subtitulo="Editar publicación" onVolver={() => router.back()} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
@@ -165,13 +164,10 @@ function EditarForm({
 
   async function handleAgregarProducto() {
     setError(null);
-    const precioNumero = Number(draft.precio.replace(/[^\d]/g, ''));
-    if (draft.nombre.trim().length === 0) {
-      setError('Ponle un nombre al producto antes de agregarlo.');
-      return;
-    }
-    if (!precioNumero || precioNumero <= 0) {
-      setError('Ingresa un precio válido para el producto.');
+    const precioNumero = Number(draft.precio.replace(/[^\d]/g, '')) || 0;
+    // El precio es opcional: sin él se guarda en 0 y no se muestra.
+    if (draft.nombre.trim().length === 0 && !draft.image) {
+      setError('Ponle un nombre o una foto al producto antes de agregarlo.');
       return;
     }
     if (productos.length >= 5) {
@@ -305,7 +301,9 @@ function EditarForm({
             <Text style={styles.productoNombre} numberOfLines={1}>
               {producto.nombre}
             </Text>
-            <Text style={styles.productoPrecio}>${producto.precio.toLocaleString('es-CL')}</Text>
+            {producto.precio > 0 && (
+              <Text style={styles.productoPrecio}>${producto.precio.toLocaleString('es-CL')}</Text>
+            )}
           </View>
           <Pressable onPress={() => handleQuitarExistente(producto.id)} hitSlop={8}>
             <Text style={styles.productoQuitar}>Quitar</Text>
@@ -327,15 +325,19 @@ function EditarForm({
               placeholder="Producto"
               placeholderTextColor={Colors.placeholder}
               value={draft.nombre}
-              onChangeText={(text) => setDraft((d) => ({ ...d, nombre: text }))}
+              onChangeText={(text) => setDraft((d) => ({ ...d, nombre: text.slice(0, MAX_NOMBRE_PRODUCTO) }))}
+              maxLength={MAX_NOMBRE_PRODUCTO}
               style={styles.productoInput}
             />
             <TextInput
-              placeholder="Precio"
+              placeholder="Precio (opcional)"
               placeholderTextColor={Colors.placeholder}
               value={draft.precio}
-              onChangeText={(text) => setDraft((d) => ({ ...d, precio: text }))}
+              onChangeText={(text) =>
+                setDraft((d) => ({ ...d, precio: text.replace(/[^0-9]/g, '').slice(0, MAX_DIGITOS_PRECIO) }))
+              }
               keyboardType="number-pad"
+              maxLength={MAX_DIGITOS_PRECIO}
               style={[styles.productoInput, styles.productoInputMuted]}
             />
           </View>
@@ -385,7 +387,7 @@ const styles = StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.background,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
   },
@@ -415,18 +417,18 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
     fontSize: 11,
     letterSpacing: 0.6,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   telefonoNota: {
     fontFamily: Fonts.light,
     marginTop: Spacing.four,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   telefonoNotaFuerte: {
     fontFamily: Fonts.semiBold,
 
-    color: Colors.cardText,
+    color: Colors.text,
   },
   productoRow: {
     flexDirection: 'row',
@@ -448,24 +450,28 @@ const styles = StyleSheet.create({
   productoNombre: {
     fontFamily: Fonts.semiBold,
     fontSize: 15,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   productoPrecio: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     marginTop: 2,
   },
   productoInput: {
+    // Mismo trato que el resto de los campos: fondo propio y esquinas.
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
     fontFamily: Fonts.light,
     fontSize: 15,
-    color: Colors.cardText,
-    paddingVertical: 2,
+    color: Colors.text,
   },
   productoInputMuted: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
   },
   productoQuitar: {
     fontFamily: Fonts.medium,

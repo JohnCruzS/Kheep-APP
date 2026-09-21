@@ -23,6 +23,7 @@ import {
   quitarCategoriaDeComuna,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
 
 /** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
 const ALTO_FILA = 62;
@@ -110,6 +111,47 @@ export default function CategoriasDeComunaScreen() {
    * de dónde se elimina y después la confirmación, diciendo con todas sus
    * letras qué pasa con las publicaciones.
    */
+  /**
+   * Eliminar con el alcance ya elegido en el editor ("Comuna/Todo"). Sigue
+   * pidiendo confirmación: es lo único que no se deshace.
+   */
+  function confirmarEliminar(categoria: CategoriaDeComuna, todas: boolean) {
+    if (todas) {
+      Alert.alert(
+        'Eliminar de toda la app',
+        `“${categoria.nombre}” se borra del país entero y no queda rastro de ella en ninguna comuna. ` +
+          'Todas sus publicaciones, estén donde estén, pasarán a “Otro”. Esto no se puede deshacer.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Eliminar de todas',
+            style: 'destructive',
+            onPress: () => conError(() => eliminarCategoria(categoria.id), 'No se pudo eliminar la categoría.'),
+          },
+        ],
+      );
+      return;
+    }
+
+    Alert.alert(
+      `Eliminar de ${nombreComuna}`,
+      `“${categoria.nombre}” dejará de existir en ${nombreComuna} y las publicaciones que tenga acá pasarán a “Otro”. ` +
+        'En las demás comunas sigue igual. Esto no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () =>
+            conError(
+              () => quitarCategoriaDeComuna(comunaId, categoria.id),
+              'No se pudo eliminar la categoría de esta comuna.',
+            ),
+        },
+      ],
+    );
+  }
+
   function handleEliminar(categoria: CategoriaDeComuna) {
     Alert.alert(`Eliminar “${categoria.nombre}”`, '¿De dónde quieres eliminarla?', [
       { text: 'Cancelar', style: 'cancel' },
@@ -163,9 +205,7 @@ export default function CategoriasDeComunaScreen() {
       <EncabezadoMarca subtitulo={nombreComuna} onVolver={() => router.back()} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.tarjeta}>
-          <Text style={styles.tituloSeccion}>Categorías</Text>
-
+        <View style={styles.lista}>
           {loading && <LoadingState />}
           {error && <ErrorState message={error} onRetry={load} />}
 
@@ -181,11 +221,12 @@ export default function CategoriasDeComunaScreen() {
               onReordenar={handleReordenar}>
               {(categoria, _indice, arrastrando, propsAsa) => (
                 <View style={[styles.fila, arrastrando && styles.filaArrastrando]}>
-                  {/* El asa: se mantiene apretada y se arrastra para cambiar el
-                      orden. Va aparte del resto de la fila para que un
-                      deslizamiento normal siga moviendo la pantalla. */}
+                  {/* La flecha es el asa: se mantiene apretada y se arrastra
+                      para cambiar el orden. Va aparte del resto de la fila
+                      para que un deslizamiento normal siga desplazando la
+                      pantalla. */}
                   <View {...propsAsa} style={styles.asa} accessibilityLabel={`Mover ${categoria.nombre}`}>
-                    <Text style={styles.asaIcono}>≡</Text>
+                    <Text style={styles.asaIcono}>➤</Text>
                   </View>
 
                   <Pressable
@@ -195,15 +236,15 @@ export default function CategoriasDeComunaScreen() {
                         pathname: '/(app)/admin/comuna/[id]/[categoriaId]',
                         params: { id: comunaId, categoriaId: categoria.id },
                       })
-                    }>
+                    }
+                    // Mantener apretado el nombre abre editar, ocultar, mover,
+                    // agregar a todas y eliminar. Antes eso era un botón ⋯ en
+                    // la fila, que el documento no tiene.
+                    onLongPress={() => setAcciones(categoria)}
+                    delayLongPress={300}>
                     <Text style={[styles.nombre, !categoria.visible && styles.nombreOculto]} numberOfLines={1}>
-                      {categoria.icono ? `${categoria.icono}  ` : ''}
                       {categoria.nombre}
                     </Text>
-                  </Pressable>
-
-                  <Pressable onPress={() => setAcciones(categoria)} hitSlop={10} style={styles.masBoton}>
-                    <Text style={styles.mas}>⋯</Text>
                   </Pressable>
 
                   <Switch
@@ -218,17 +259,17 @@ export default function CategoriasDeComunaScreen() {
           )}
         </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.nueva, pressed && styles.nuevaPresionada]}
-          onPress={() => setCreando(true)}>
-          <Text style={styles.nuevaLabel}>Nueva</Text>
-        </Pressable>
-
         <Text style={styles.ayuda}>
-          Mantén apretado el ≡ para cambiar el orden. Toca el nombre para ver quién publica en esa categoría, y ⋯ para
-          editarla, moverla o eliminarla.
+          Mantén apretada la flecha para cambiar el orden, y el nombre para editar, mover u ocultar la categoría.
         </Text>
       </ScrollView>
+
+      {/* Fijo abajo, como el documento: no se desplaza con la lista. */}
+      <Pressable
+        style={({ pressed }) => [styles.nueva, pressed && styles.nuevaPresionada]}
+        onPress={() => setCreando(true)}>
+        <Text style={styles.nuevaLabel}>Nueva</Text>
+      </Pressable>
 
       {/* Panel propio en vez de un `Alert`: en Android los diálogos solo
           dibujan tres botones y acá hacen falta cinco. */}
@@ -239,7 +280,7 @@ export default function CategoriasDeComunaScreen() {
         acciones={
           acciones
             ? [
-                { label: 'Editar nombre e icono', onPress: () => setEditando(acciones) },
+                { label: 'Editar nombre', onPress: () => setEditando(acciones) },
                 {
                   label: acciones.visible ? 'Ocultar en esta comuna' : 'Mostrar en esta comuna',
                   onPress: () => handleToggle(acciones),
@@ -269,6 +310,10 @@ export default function CategoriasDeComunaScreen() {
           setCreando(false);
         }}
         onSaved={load}
+        onEliminar={(categoria, todas) => {
+          setEditando(null);
+          confirmarEliminar(categoria, todas);
+        }}
       />
 
       <SelectorComuna
@@ -299,25 +344,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: u(REJILLA.margenLateral),
     paddingBottom: Spacing.six,
   },
-  tarjeta: {
-    backgroundColor: Colors.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.two,
+  lista: {
     minHeight: 260,
-  },
-  tituloSeccion: {
-    fontFamily: Fonts.light,
-    fontSize: 21,
-    color: Colors.accent,
-    textAlign: 'center',
-    marginBottom: Spacing.three,
   },
   vacio: {
     fontFamily: Fonts.light,
@@ -331,8 +362,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    borderRadius: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: u(REJILLA.curvatura),
+    paddingHorizontal: Spacing.three,
     height: ALTO_FILA - 8,
   },
   filaArrastrando: {
@@ -344,7 +376,7 @@ const styles = StyleSheet.create({
   },
   asaIcono: {
     fontFamily: Fonts.light,
-    fontSize: 20,
+    fontSize: 17,
     color: Colors.textMuted,
   },
   zonaNombre: {
@@ -369,21 +401,20 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   nueva: {
-    marginTop: Spacing.three,
-    paddingVertical: Spacing.three,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
+    marginHorizontal: u(REJILLA.margenLateral),
+    marginBottom: Spacing.three,
+    paddingVertical: Spacing.four,
+    borderRadius: u(REJILLA.curvatura),
+    backgroundColor: Colors.accent,
     alignItems: 'center',
   },
   nuevaPresionada: {
-    backgroundColor: Colors.backgroundAlt,
+    backgroundColor: Colors.accentPressed,
   },
   nuevaLabel: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.medium,
     fontSize: 21,
-    color: Colors.accent,
+    color: '#FFFFFF',
   },
   ayuda: {
     fontFamily: Fonts.light,

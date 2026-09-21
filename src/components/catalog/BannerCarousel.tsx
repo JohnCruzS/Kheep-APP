@@ -3,15 +3,19 @@ import { memo, useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
   LayoutChangeEvent,
+  Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
 
 import { Layout } from '@/constants/theme';
+import { registrarClicBanner, registrarVistaBanner } from '@/lib/catalog';
 import type { Banner } from '@/lib/catalog';
+import { REJILLA, u } from '@/lib/rejilla';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 /**
@@ -40,6 +44,13 @@ const AUTOPLAY_MS = 3000;
  */
 function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
   const [arrastrando, setArrastrando] = useState(false);
+  /**
+   * Banners ya contados en esta sesión. La vista se cuenta la primera vez que
+   * el banner aparece, no cada vez que el carrusel vuelve a pasar por él: si
+   * no, tener la app abierta unos minutos valdría decenas de "vistas" y el
+   * número no significaría nada para quien lo paga.
+   */
+  const vistos = useRef<Set<string>>(new Set());
   // Ancho real del carrusel, medido del contenedor. Todo —el tamaño de cada
   // banner, el avance automático y el salto del ciclo— usa este número, así
   // que siempre calzan entre sí en cualquier pantalla.
@@ -47,9 +58,31 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
   const scrollRef = useRef<ScrollView>(null);
   const indexRef = useRef(0);
 
+  /** Cuenta la vista de un banner, una sola vez por sesión. */
+  const contarVista = (banner: Banner) => {
+    if (vistos.current.has(banner.id)) return;
+    vistos.current.add(banner.id);
+    registrarVistaBanner(banner.id).catch(() => {
+      // Una métrica perdida no vale interrumpir el catálogo.
+    });
+  };
+
+  async function abrirEnlace(banner: Banner) {
+    if (!banner.enlace) return;
+    registrarClicBanner(banner.id).catch(() => {});
+    if (await Linking.canOpenURL(banner.enlace)) await Linking.openURL(banner.enlace);
+  }
+
   const total = banners.length;
   const enCiclo = total > 1;
   const slides = enCiclo ? [...banners, banners[0]] : banners;
+
+  // El primero se cuenta apenas se dibuja el carrusel; los demás, al llegar
+  // a ellos (ver onScroll).
+  useEffect(() => {
+    if (banners.length > 0) contarVista(banners[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [banners]);
 
   useEffect(() => {
     if (!enCiclo || arrastrando) return;
@@ -75,6 +108,8 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
     // cuadro del desplazamiento y guardarla en el estado redibujaría el
     // carrusel entero decenas de veces por segundo sin que cambie nada.
     indexRef.current = Math.round(x / ancho);
+    const visible = banners[indexRef.current];
+    if (visible) contarVista(visible);
   };
 
   function medirAncho(e: LayoutChangeEvent) {
@@ -113,7 +148,15 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
             accessible={i < total}
             accessibilityLabel={i < total ? `Banner ${i + 1} de ${total}` : undefined}
             importantForAccessibility={i < total ? 'yes' : 'no-hide-descendants'}>
-            <Image source={{ uri: banner.imagen_url }} style={styles.image} contentFit="cover" transition={150} />
+            {/* Tocar el banner lleva a su enlace (documento EDIT APP). Sin
+                enlace no hace nada: no hay a dónde ir. */}
+            <Pressable
+              style={styles.image}
+              onPress={() => abrirEnlace(banner)}
+              disabled={!banner.enlace}
+              accessibilityRole={banner.enlace ? 'link' : 'image'}>
+              <Image source={{ uri: banner.imagen_url }} style={styles.image} contentFit="cover" transition={150} />
+            </Pressable>
           </View>
         ))}
       </ScrollView>
@@ -127,11 +170,11 @@ const styles = StyleSheet.create({
   wrapper: {
     marginBottom: 22,
     overflow: 'hidden',
-    borderRadius: 11,
+    borderRadius: u(REJILLA.curvatura),
   },
   slide: {
-    height: 170,
-    borderRadius: 11,
+    height: u(REJILLA.bannerAlto),
+    borderRadius: u(REJILLA.curvatura),
     overflow: 'hidden',
     backgroundColor: '#17171A',
   },

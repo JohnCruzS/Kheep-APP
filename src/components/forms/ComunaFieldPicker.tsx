@@ -104,14 +104,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
-    paddingBottom: Spacing.two,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingHorizontal: Spacing.four,
+    height: 62,
   },
   value: {
     fontFamily: Fonts.light,
     fontSize: 16,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   placeholder: {
     fontFamily: Fonts.light,
@@ -128,7 +130,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: Colors.card,
+    backgroundColor: Colors.background,
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
     paddingHorizontal: Spacing.four,
@@ -138,7 +140,7 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontFamily: Fonts.semiBold,
     fontSize: 17,
-    color: Colors.cardText,
+    color: Colors.text,
     marginBottom: Spacing.three,
   },
   buscador: {
@@ -148,7 +150,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     height: 44,
     fontSize: 14,
-    color: Colors.cardText,
+    color: Colors.text,
     marginBottom: Spacing.two,
   },
   option: {
@@ -157,12 +159,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.three,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.inputBorder,
+    borderBottomColor: Colors.surfaceBorder,
   },
   optionLabel: {
     fontFamily: Fonts.light,
     fontSize: 15,
-    color: Colors.cardText,
+    color: Colors.text,
   },
   optionLabelActive: {
     fontFamily: Fonts.semiBold,
@@ -176,7 +178,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.light,
     paddingVertical: Spacing.four,
     textAlign: 'center',
-    color: Colors.cardTextMuted,
+    color: Colors.textMuted,
     fontSize: 13,
   },
 });

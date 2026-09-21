@@ -9,9 +9,8 @@ import {
 } from '@expo-google-fonts/poppins';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, View } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { PantallaArranque } from '@/components/ui/PantallaArranque';
 import { SessionProvider, useSession } from '@/providers/SessionProvider';
 import { UbicacionProvider } from '@/providers/UbicacionProvider';
 
@@ -26,12 +25,10 @@ function RootNavigator() {
     Poppins_800ExtraBold,
   });
 
+  // Misma vista que el splash nativo: el arranque no parpadea entre dos
+  // pantallas distintas (documento EDIT APP).
   if (isLoading || !fontsLoaded) {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={Colors.accent} />
-      </View>
-    );
+    return <PantallaArranque />;
   }
 
   return (

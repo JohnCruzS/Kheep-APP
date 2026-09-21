@@ -11,7 +11,12 @@ export type Banner = {
   id: string;
   imagen_url: string;
   orden: number;
+  /** A dónde lleva tocarlo; null = no lleva a ninguna parte. */
+  enlace: string | null;
 };
+
+/** Cuántos banners caben a la vez en una comuna (documento EDIT APP: "3/5"). */
+export const CUPO_BANNERS = 5;
 
 export type Categoria = {
   id: string;
@@ -73,11 +78,31 @@ export type MiPublicacion = {
  * Un banner con comuna es de esa comuna: quien paga por aparecer en Valdivia
  * no debe salir en todo Chile. Los que no tienen comuna salen en todas.
  */
+/**
+ * `enlace`, `vistas` y `clics` llegan con la migración 0025. Mientras no esté
+ * aplicada, pedir esas columnas haría fallar la consulta entera y el catálogo
+ * se quedaría SIN banners: por eso se reintenta sin ellas.
+ */
+function faltaColumnaNueva(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === '42703' || (error?.message ?? '').includes('does not exist');
+}
+
 export async function fetchBanners(comunaId?: string | null): Promise<Banner[]> {
+  const conEnlace = await consultarBanners('id, imagen_url, orden, enlace', comunaId);
+  if (!faltaColumnaNueva(conEnlace.error)) {
+    if (conEnlace.error) throw conEnlace.error;
+    return (conEnlace.data ?? []) as unknown as Banner[];
+  }
+  const basico = await consultarBanners('id, imagen_url, orden', comunaId);
+  if (basico.error) throw basico.error;
+  return ((basico.data ?? []) as unknown as Omit<Banner, 'enlace'>[]).map((b) => ({ ...b, enlace: null }));
+}
+
+async function consultarBanners(columnas: string, comunaId?: string | null) {
   const ahora = new Date().toISOString();
   let request = supabase
     .from('banners')
-    .select('id, imagen_url, orden')
+    .select(columnas)
     .eq('activo', true)
     .eq('pagado', true)
     .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
@@ -88,9 +113,7 @@ export async function fetchBanners(comunaId?: string | null): Promise<Banner[]> 
     request = request.or(`comuna_id.is.null,comuna_id.eq.${comunaId}`);
   }
 
-  const { data, error } = await request;
-  if (error) throw error;
-  return data ?? [];
+  return request;
 }
 
 export async function fetchComunas(): Promise<Comuna[]> {
@@ -132,6 +155,26 @@ export async function fetchCategorias(comunaId?: string | null): Promise<Categor
 }
 
 /**
+ * Las categorías que hoy tienen al menos un comercio visible en esa comuna.
+ *
+ * El inicio solo muestra esas: una categoría vacía manda a un catálogo sin
+ * nada y parece que la app falla. Siguen existiendo para el admin, que las
+ * ve y las administra en la lista de la comuna.
+ */
+export async function fetchCategoriasConContenido(comunaId?: string | null): Promise<Set<string>> {
+  let request = supabase
+    .from('publicaciones')
+    .select('categoria_id')
+    .eq('estado', 'aprobado')
+    .is('deleted_at', null);
+  if (comunaId) request = request.eq('comuna_id', comunaId);
+
+  const { data, error } = await request;
+  if (error) throw error;
+  return new Set(((data ?? []) as { categoria_id: string | null }[]).map((p) => p.categoria_id ?? '').filter(Boolean));
+}
+
+/**
  * La lista propia de una comuna, o null si esa comuna todavía usa la global.
  *
  * Se distingue "sin personalizar" de "personalizada y vacía" con la marca
@@ -168,6 +211,13 @@ async function fetchCategoriasDeComuna(comunaId: string): Promise<Categoria[] | 
 type FetchPublicacionesParams = {
   categoriaId?: string | null;
   comunaId?: string | null;
+  /**
+   * Las categorías que esa comuna muestra. Sin esto, una publicación de una
+   * categoría que el admin ocultó seguía apareciendo en el catálogo aunque su
+   * categoría no estuviera en la fila de arriba: se veía un comercio suelto,
+   * imposible de filtrar.
+   */
+  categoriasVisibles?: string[] | null;
   query?: string;
 };
 
@@ -188,6 +238,7 @@ type FetchPublicacionesParams = {
 export async function fetchPublicaciones({
   categoriaId,
   comunaId,
+  categoriasVisibles,
   query,
 }: FetchPublicacionesParams = {}): Promise<PublicacionResumen[]> {
   let request = supabase
@@ -202,6 +253,11 @@ export async function fetchPublicaciones({
 
   if (categoriaId) {
     request = request.eq('categoria_id', categoriaId);
+  } else if (categoriasVisibles) {
+    // Sin ninguna categoría visible no hay nada que mostrar; `in` con lista
+    // vacía no filtra, así que se corta acá.
+    if (categoriasVisibles.length === 0) return [];
+    request = request.in('categoria_id', categoriasVisibles);
   }
   if (comunaId) {
     request = request.eq('comuna_id', comunaId);
@@ -640,6 +696,9 @@ export type BannerAdmin = {
   fecha_inicio: string | null;
   fecha_fin: string | null;
   pagado: boolean;
+  enlace: string | null;
+  vistas: number;
+  clics: number;
   autor: { nombre: string } | null;
   comuna: { nombre: string } | null;
 };
@@ -652,17 +711,57 @@ export type BannerAdmin = {
  */
 export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
   const ahora = new Date().toISOString();
-  const { data, error } = await supabase
-    .from('banners')
-    .select(
-      'id, imagen_url, fecha_inicio, fecha_fin, pagado, autor:profiles!banners_usuario_id_fkey(nombre), comuna:comunas(nombre)',
-    )
-    .eq('activo', true)
-    .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
-    .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}`)
-    .order('orden', { ascending: true });
+  const base = 'id, imagen_url, fecha_inicio, fecha_fin, pagado, ';
+  const relaciones = 'autor:profiles!banners_usuario_id_fkey(nombre), comuna:comunas(nombre)';
+
+  const consultar = (columnas: string) =>
+    supabase
+      .from('banners')
+      .select(columnas)
+      .eq('activo', true)
+      .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
+      .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}`)
+      .order('orden', { ascending: true });
+
+  // Igual que en el catálogo: sin la migración 0025 se muestra la lista sin
+  // enlace ni métricas, en vez de un error.
+  const completo = await consultar(`${base}enlace, vistas, clics, ${relaciones}`);
+  if (!faltaColumnaNueva(completo.error)) {
+    if (completo.error) throw completo.error;
+    return (completo.data as unknown as BannerAdmin[]) ?? [];
+  }
+
+  const simple = await consultar(base + relaciones);
+  if (simple.error) throw simple.error;
+  return ((simple.data ?? []) as unknown as Omit<BannerAdmin, 'enlace' | 'vistas' | 'clics'>[]).map((b) => ({
+    ...b,
+    enlace: null,
+    vistas: 0,
+    clics: 0,
+  }));
+}
+
+/**
+ * Suma una vista o un clic del banner. Se hace en la base (0025) porque el
+ * catálogo lo ve gente sin cuenta: nadie puede escribir el número a mano,
+ * solo pedir que suba de a uno.
+ *
+ * Los dos fallan en silencio a propósito: una métrica perdida no vale
+ * interrumpirle nada al usuario.
+ */
+export async function registrarVistaBanner(bannerId: string): Promise<void> {
+  await supabase.rpc('registrar_vista_banner', { p_banner: bannerId });
+}
+
+export async function registrarClicBanner(bannerId: string): Promise<void> {
+  await supabase.rpc('registrar_clic_banner', { p_banner: bannerId });
+}
+
+/** Cuántos banners vigentes hay en una comuna; con CUPO_BANNERS da el "3/5". */
+export async function contarBannersVigentes(comunaId: string | null): Promise<number> {
+  const { data, error } = await supabase.rpc('banners_vigentes_en_comuna', { p_comuna: comunaId });
   if (error) throw error;
-  return (data as unknown as BannerAdmin[]) ?? [];
+  return Number(data ?? 0);
 }
 
 // ============================================================================
@@ -946,6 +1045,13 @@ export async function crearBanner(input: {
   imagenUrl: string;
   comunaId: string | null;
   dias: number;
+  /** A dónde lleva tocar el banner. Opcional. */
+  enlace?: string | null;
+  /**
+   * Los banners del admin van primero en el carrusel: son los de la casa
+   * (campañas, avisos) y no compiten con los que paga un comerciante.
+   */
+  prioritario?: boolean;
   /**
    * El banner nace ya pagado. Es para los banners del propio admin: no pasan
    * por el cobro, y sin esto quedaban sin pagar y por lo tanto invisibles en
@@ -963,6 +1069,9 @@ export async function crearBanner(input: {
       imagen_url: input.imagenUrl,
       comuna_id: input.comunaId,
       dias: input.dias,
+      // `orden` ordena el carrusel de menor a mayor.
+      orden: input.prioritario ? -100 : 0,
+      enlace: input.enlace?.trim() ? input.enlace.trim() : null,
       pagado: input.pagado ?? false,
     })
     .select('id')

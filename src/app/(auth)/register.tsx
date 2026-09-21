@@ -107,7 +107,7 @@ export default function RegisterScreen() {
       />
 
       {error ? <Text style={{ fontFamily: Fonts.light, color: Colors.danger, marginTop: Spacing.three }}>{error}</Text> : null}
-      {info ? <Text style={{ fontFamily: Fonts.light, color: Colors.cardText, marginTop: Spacing.three }}>{info}</Text> : null}
+      {info ? <Text style={{ fontFamily: Fonts.light, color: Colors.text, marginTop: Spacing.three }}>{info}</Text> : null}
 
       <Button label="Guardar" onPress={handleRegister} loading={loading} />
 

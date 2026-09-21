@@ -47,33 +47,31 @@ export function registrarUsoCategoria(id: string | null | undefined): void {
   });
 }
 
+/** Cuántas favoritas se adelantan al frente de la fila. */
+const FAVORITAS = 3;
+
 /**
- * Pone primera la categoría que más usa este usuario y deja TODAS las demás
- * en el orden que definió el admin para esa comuna.
+ * Adelanta las tres categorías que más usa esta persona y deja el resto en el
+ * orden que definió el admin para esa comuna.
  *
- * Se adelanta una sola, no varias: el orden por comuna es una decisión del
- * admin y adelantar cada categoría con unos cuantos toques lo deshacía casi
- * entero, de modo que el catálogo ya no se parecía a lo que él había dejado.
- * Con una basta para el atajo —la que el usuario abre siempre queda a mano— y
- * el resto sigue contando la historia que el admin quiso contar.
+ * Tres y no todas: el orden por comuna es una decisión del admin, y adelantar
+ * cada categoría con unos cuantos toques lo deshacía casi entero. Con las tres
+ * primeras alcanza para el atajo —lo que el usuario abre siempre queda a
+ * mano— y de la cuarta en adelante manda el admin.
  *
- * Hace falta superar MIN_USOS: sin ese mínimo, un solo toque de curiosidad ya
- * cambiaría la primera categoría del catálogo.
+ * Hace falta superar MIN_USOS: sin ese mínimo, un toque de curiosidad ya
+ * cambiaría el frente del catálogo.
  */
 export function ordenarPorUso<T extends Categoria>(categorias: T[], uso: UsoCategorias): T[] {
-  let favorita: T | null = null;
-  let masUsos = MIN_USOS - 1;
+  const favoritas = categorias
+    .filter((categoria) => (uso[categoria.id] ?? 0) >= MIN_USOS)
+    // Más usos primero; en empate gana la que el admin puso antes, porque
+    // `sort` mantiene el orden original de las iguales.
+    .sort((a, b) => (uso[b.id] ?? 0) - (uso[a.id] ?? 0))
+    .slice(0, FAVORITAS);
 
-  for (const categoria of categorias) {
-    const usos = uso[categoria.id] ?? 0;
-    // Estrictamente mayor: ante un empate gana la que el admin puso antes,
-    // que es la que ya viene primera en la lista.
-    if (usos > masUsos) {
-      masUsos = usos;
-      favorita = categoria;
-    }
-  }
+  if (favoritas.length === 0) return categorias;
 
-  if (!favorita) return categorias;
-  return [favorita, ...categorias.filter((c) => c.id !== favorita!.id)];
+  const adelantadas = new Set(favoritas.map((c) => c.id));
+  return [...favoritas, ...categorias.filter((c) => !adelantadas.has(c.id))];
 }

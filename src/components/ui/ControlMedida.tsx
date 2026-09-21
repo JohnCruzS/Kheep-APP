@@ -110,7 +110,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
+    // Negro, como el documento; el gris de antes se veía "plomo".
+    backgroundColor: '#000000',
     borderRadius: 28,
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
@@ -132,7 +133,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   valor: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.medium,
     fontSize: 19,
     color: Colors.text,
   },

@@ -20,6 +20,7 @@ import {
   rechazarPublicacion,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
 
 /**
  * Todo lo de un usuario en un solo lugar: se llega tocándolo en la lista de
@@ -374,7 +375,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    padding: Spacing.three,
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.six,
   },
   vacio: {
@@ -449,7 +451,7 @@ const styles = StyleSheet.create({
   },
   tarjeta: {
     backgroundColor: Colors.surface,
-    borderRadius: 14,
+    borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     paddingHorizontal: Spacing.three,

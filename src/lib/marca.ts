@@ -42,9 +42,19 @@ export const MARGEN_LATERAL = 75;
 
 /** Centro del título de izquierda a derecha. 500 = el centro de la pantalla. */
 export const CENTRO_X_DEFECTO = 500;
-/** Ancho del título: 400 de 1000, el de la plantilla. */
+/**
+ * La posición ORIGINAL del título, la de la plantilla del cliente:
+ *
+ *     120  desde el borde de arriba hasta el título
+ *     110  alto del título
+ *     400  ancho del título
+ *
+ * El centro queda entonces a 120 + 110/2 = 175 del borde. Estas son las
+ * medidas a las que vuelve el botón "Volver a las medidas originales": el
+ * admin puede probar lo que quiera sabiendo que siempre puede regresar acá.
+ */
 export const ANCHO_DEFECTO = 400;
-/** Centro del título de arriba a abajo: 120 de margen + la mitad de sus 110 de alto. */
+export const ALTO_DEFECTO = 110;
 export const CENTRO_Y_DEFECTO = 175;
 
 export const MEDIDA_MAX = 1000;
@@ -60,21 +70,31 @@ export type Marca = {
   url: string | null;
   centroX: number;
   ancho: number;
+  alto: number;
   centroY: number;
 };
 
 /** Las tres medidas juntas, como se guardan y como las edita el admin. */
 export type MedidasLogo = {
   centroX: number;
+  /** Ancho de la imagen; solo afecta a lo ancho. */
   ancho: number;
+  /** Alto de la imagen; solo afecta a lo alto. */
+  alto: number;
   centroY: number;
 };
 
 export const MEDIDAS_POR_DEFECTO: MedidasLogo = {
   centroX: CENTRO_X_DEFECTO,
   ancho: ANCHO_DEFECTO,
+  alto: ALTO_DEFECTO,
   centroY: CENTRO_Y_DEFECTO,
 };
+
+/** El alto se mueve dentro del perímetro: más allá se metería en el banner. */
+export function limitarAlto(valor: number): number {
+  return limitar(valor, 10, PERIMETRO_ALTO);
+}
 
 function limitar(valor: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(valor)));
@@ -91,6 +111,20 @@ export function limitarCentroY(valor: number): number {
 
 export function limitarAncho(valor: number): number {
   return limitar(valor, ANCHO_MIN, MEDIDA_MAX);
+}
+
+/**
+ * El alto del título no se guarda: sale de su ancho y de la forma de la
+ * imagen. Se muestra igual como medida propia porque es la que el cliente
+ * mide en su plantilla, y moverla mueve el ancho con ella — así el logo
+ * cambia de tamaño sin deformarse nunca.
+ */
+export function altoDesdeAncho(ancho: number, proporcion: number): number {
+  return Math.round(ancho / proporcion);
+}
+
+export function anchoDesdeAlto(alto: number, proporcion: number): number {
+  return limitarAncho(Math.round(alto * proporcion));
 }
 
 export type EstadoLogo = 'vigente' | 'programado' | 'vencido' | 'inactivo';
@@ -167,6 +201,35 @@ async function consultarLogoVigente(): Promise<string | null> {
   }
 }
 
+type FilaMedidas = { logo_ancho: number | null; logo_alto: number | null; logo_centro_y: number | null };
+
+/**
+ * Lee la fila de medidas. `logo_alto` llega con la migración 0026; mientras
+ * no esté aplicada se vuelve a preguntar sin esa columna —si no, la consulta
+ * entera falla y el panel diría que falta una migración que sí está— y el
+ * alto se toma del diseño.
+ */
+async function leerFila(): Promise<FilaMedidas | null> {
+  const completo = await supabase
+    .from('configuracion_marca')
+    .select('logo_ancho, logo_alto, logo_centro_y')
+    .limit(1)
+    .maybeSingle();
+  if (!completo.error) return completo.data as FilaMedidas | null;
+
+  const faltaColumna =
+    completo.error.code === '42703' || (completo.error.message ?? '').includes('does not exist');
+  if (!faltaColumna) throw completo.error;
+
+  const simple = await supabase
+    .from('configuracion_marca')
+    .select('logo_ancho, logo_centro_y')
+    .limit(1)
+    .maybeSingle();
+  if (simple.error) throw simple.error;
+  return simple.data ? ({ ...(simple.data as object), logo_alto: null } as FilaMedidas) : null;
+}
+
 /**
  * Las medidas que fijó el admin. Si la consulta falla (sin conexión, o falta
  * la migración 0020) se usan las del diseño: el título nunca debe quedar sin
@@ -174,15 +237,13 @@ async function consultarLogoVigente(): Promise<string | null> {
  */
 async function consultarMedidas(): Promise<MedidasLogo> {
   try {
-    const { data, error } = await supabase
-      .from('configuracion_marca')
-      .select('logo_centro_x, logo_ancho, logo_centro_y')
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return MEDIDAS_POR_DEFECTO;
+    const data = await leerFila();
+    if (!data) return MEDIDAS_POR_DEFECTO;
     return {
-      centroX: limitarCentroX((data.logo_centro_x as number | null) ?? CENTRO_X_DEFECTO),
+      // Siempre centrado a lo ancho: ver fetchMedidasLogo.
+      centroX: CENTRO_X_DEFECTO,
       ancho: limitarAncho((data.logo_ancho as number | null) ?? ANCHO_DEFECTO),
+      alto: limitarAlto((data.logo_alto as number | null) ?? ALTO_DEFECTO),
       centroY: limitarCentroY((data.logo_centro_y as number | null) ?? CENTRO_Y_DEFECTO),
     };
   } catch {
@@ -271,15 +332,14 @@ export async function crearLogo(input: {
 
 /** Las medidas actuales del título, para editarlas en el panel. */
 export async function fetchMedidasLogo(): Promise<MedidasLogo> {
-  const { data, error } = await supabase
-    .from('configuracion_marca')
-    .select('logo_centro_x, logo_ancho, logo_centro_y')
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
+  const data = await leerFila();
   return {
-    centroX: limitarCentroX((data?.logo_centro_x as number | null) ?? CENTRO_X_DEFECTO),
+    // El título va siempre centrado a lo ancho (documento EDIT APP): ya no
+    // hay control horizontal, así que una medida vieja fuera del centro
+    // dejaría el logo corrido y sin forma de enderezarlo.
+    centroX: CENTRO_X_DEFECTO,
     ancho: limitarAncho((data?.logo_ancho as number | null) ?? ANCHO_DEFECTO),
+    alto: limitarAlto((data?.logo_alto as number | null) ?? ALTO_DEFECTO),
     centroY: limitarCentroY((data?.logo_centro_y as number | null) ?? CENTRO_Y_DEFECTO),
   };
 }
@@ -294,16 +354,22 @@ export async function fetchMedidasLogo(): Promise<MedidasLogo> {
  * éxito", y el cambio se perdería en silencio.
  */
 export async function guardarMedidasLogo(medidas: MedidasLogo): Promise<void> {
-  const { data, error } = await supabase
-    .from('configuracion_marca')
-    .update({
-      logo_centro_x: limitarCentroX(medidas.centroX),
-      logo_ancho: limitarAncho(medidas.ancho),
-      logo_centro_y: limitarCentroY(medidas.centroY),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', true)
-    .select('logo_centro_x');
+  const base = {
+    logo_centro_x: CENTRO_X_DEFECTO,
+    logo_ancho: limitarAncho(medidas.ancho),
+    logo_centro_y: limitarCentroY(medidas.centroY),
+    updated_at: new Date().toISOString(),
+  };
+
+  const guardar = (valores: object) =>
+    supabase.from('configuracion_marca').update(valores).eq('id', true).select('logo_ancho');
+
+  // Con la migración 0026 se guarda también el alto; sin ella, el resto se
+  // guarda igual en vez de perderse el cambio entero.
+  let { data, error } = await guardar({ ...base, logo_alto: limitarAlto(medidas.alto) });
+  if (error && (error.code === '42703' || (error.message ?? '').includes('does not exist'))) {
+    ({ data, error } = await guardar(base));
+  }
   if (error) throw error;
   if (!data || data.length === 0) {
     throw new Error('No se pudieron guardar las medidas. Revisa que tu cuenta sea de administrador.');
