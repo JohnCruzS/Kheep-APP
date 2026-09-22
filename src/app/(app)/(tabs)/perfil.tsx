@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PanelGeneral } from '@/components/admin/PanelGeneral';
 import { VistaCuenta } from '@/components/perfil/VistaCuenta';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { Button } from '@/components/ui/Button';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -22,10 +23,28 @@ import { useSession } from '@/providers/SessionProvider';
  * aquí; navegar durante el render es lo que hacía crashear con <Redirect>.
  */
 export default function PerfilScreen() {
-  const { session, profile } = useSession();
+  const { session, profile, isLoading, refreshProfile } = useSession();
 
-  if (!session || !profile) {
-    return null;
+  if (!session) {
+    return <View style={styles.safeArea} />;
+  }
+
+  // Hay sesión pero no se pudo cargar el perfil (sin conexión, por ejemplo):
+  // se dice y se ofrece reintentar, en vez de dejar la pantalla vacía.
+  if (!profile) {
+    return (
+      <View style={[styles.safeArea, styles.centrado]}>
+        {isLoading ? null : (
+          <>
+            <Text style={styles.sinPerfilTitulo}>No pudimos cargar tu perfil</Text>
+            <Text style={styles.sinPerfilTexto}>Revisa tu conexión a internet e inténtalo de nuevo.</Text>
+            <View style={styles.reintentar}>
+              <Button label="Reintentar" variant="secondary" onPress={refreshProfile} />
+            </View>
+          </>
+        )}
+      </View>
+    );
   }
 
   if (profile.rol === 'admin' || profile.rol === 'admin_zona') {
@@ -54,6 +73,28 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  centrado: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.five,
+  },
+  sinPerfilTitulo: {
+    fontFamily: Fonts.medium,
+    fontSize: 19,
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  sinPerfilTexto: {
+    fontFamily: Fonts.light,
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: Spacing.two,
+  },
+  reintentar: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.three,
   },
   header: {
     alignItems: 'center',

@@ -189,15 +189,15 @@ const styles = StyleSheet.create({
   productName: {
     flexShrink: 1,
     fontFamily: Fonts.light,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 16,
+    lineHeight: 22,
     color: Colors.text,
   },
   price: {
     marginLeft: 8,
     fontFamily: Fonts.light,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 16,
+    lineHeight: 22,
     color: Colors.text,
   },
 });

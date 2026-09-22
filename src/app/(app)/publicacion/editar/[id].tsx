@@ -33,7 +33,7 @@ type ProductoDraft = { nombre: string; precio: string; image: PickedImage | null
 const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
 
 /** Mismos topes que al publicar (documento EDIT APP). */
-const MAX_NOMBRE_PRODUCTO = 28;
+const MAX_NOMBRE_PRODUCTO = 22;
 const MAX_DIGITOS_PRECIO = 9;
 
 export default function EditarPublicacionScreen() {
@@ -329,6 +329,11 @@ function EditarForm({
               maxLength={MAX_NOMBRE_PRODUCTO}
               style={styles.productoInput}
             />
+            {/* El tope se ve mientras se escribe: si no, el campo simplemente
+                deja de aceptar letras y parece que falla. */}
+            <Text style={styles.contador}>
+              {draft.nombre.length}/{MAX_NOMBRE_PRODUCTO}
+            </Text>
             <TextInput
               placeholder="Precio (opcional)"
               placeholderTextColor={Colors.placeholder}
@@ -467,6 +472,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.light,
     fontSize: 15,
     color: Colors.text,
+  },
+  contador: {
+    fontFamily: Fonts.light,
+    fontSize: 11,
+    color: Colors.textMuted,
+    alignSelf: 'flex-end',
+    marginTop: 2,
+    marginBottom: 4,
   },
   productoInputMuted: {
     fontFamily: Fonts.light,

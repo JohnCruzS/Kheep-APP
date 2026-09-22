@@ -34,11 +34,11 @@ type ProductoDraft = {
 const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
 
 /**
- * Tope de caracteres del nombre del producto (documento EDIT APP). Es lo que
- * entra en la tarjeta del catálogo sin cortarse: más largo se vería con
- * puntos suspensivos y no serviría de nada escribirlo.
+ * Tope de caracteres del nombre del producto (documento EDIT APP). 22 es lo
+ * que entra en una línea de la tarjeta del catálogo junto al precio: más
+ * largo se vería con puntos suspensivos y no serviría de nada escribirlo.
  */
-const MAX_NOMBRE_PRODUCTO = 28;
+const MAX_NOMBRE_PRODUCTO = 22;
 /** Hasta 9 dígitos: nadie publica un precio de mil millones. */
 const MAX_DIGITOS_PRECIO = 9;
 
@@ -317,6 +317,11 @@ function PublicarForm({ telefonoContacto }: { telefonoContacto: string | null })
               maxLength={MAX_NOMBRE_PRODUCTO}
               style={styles.productoInput}
             />
+            {/* El tope se ve mientras se escribe: si no, el campo simplemente
+                deja de aceptar letras y parece que falla. */}
+            <Text style={styles.contador}>
+              {draft.nombre.length}/{MAX_NOMBRE_PRODUCTO}
+            </Text>
             <TextInput
               placeholder="Precio (opcional)"
               placeholderTextColor={Colors.placeholder}
@@ -526,6 +531,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.light,
     fontSize: 15,
     color: Colors.text,
+  },
+  contador: {
+    fontFamily: Fonts.light,
+    fontSize: 11,
+    color: Colors.textMuted,
+    alignSelf: 'flex-end',
+    marginTop: 2,
+    marginBottom: 4,
   },
   productoInputMuted: {
     fontFamily: Fonts.light,

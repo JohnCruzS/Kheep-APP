@@ -58,6 +58,14 @@ const SessionContext = createContext<SessionContextValue>({
  * ve cada quien (pestaña de admin, insignia de verificado, etc.) — nunca se
  * asume desde el cliente, siempre se lee de `public.profiles`.
  */
+function leerPerfil(userId: string) {
+  return supabase
+    .from('profiles')
+    .select('id, nombre, telefono_contacto, logo_url, rol, nivel')
+    .eq('id', userId)
+    .maybeSingle();
+}
+
 export function SessionProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -71,12 +79,26 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setPermisos(null);
       return;
     }
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, nombre, telefono_contacto, logo_url, rol, nivel')
-      .eq('id', userId)
-      .maybeSingle();
+    // Se reintenta: un fallo de red justo al abrir la app dejaba la sesión
+    // sin perfil, y sin perfil un administrador se veía como una cuenta
+    // cualquiera y su pantalla de perfil quedaba en blanco.
+    let { data, error } = await leerPerfil(userId);
+    for (let intento = 0; error && intento < 3; intento++) {
+      await new Promise((listo) => setTimeout(listo, 1500));
+      ({ data, error } = await leerPerfil(userId));
+    }
     const perfil = (data as Profile) ?? null;
+
+    // La consulta funcionó pero el perfil no existe: la cuenta se eliminó
+    // mientras la sesión seguía abierta en este teléfono. Sin esto la app
+    // quedaba con una sesión "fantasma" y pantallas en blanco. Solo se cierra
+    // si la respuesta fue clara; un fallo de red no debe sacar a nadie.
+    if (!error && !perfil) {
+      await supabase.auth.signOut();
+      setProfile(null);
+      setPermisos(null);
+      return;
+    }
 
     // Una cuenta suspendida no puede iniciar sesión (lo rechaza Supabase),
     // pero una sesión abierta de antes seguiría viva hasta que venza. Se
