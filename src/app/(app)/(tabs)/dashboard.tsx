@@ -24,6 +24,7 @@ import {
   fetchPublicaciones,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { ordenarCatalogo } from '@/lib/ordenCatalogo';
 import { leerUsoCategorias, ordenarPorUso, registrarUsoCategoria } from '@/lib/preferencias';
 import { useSession } from '@/providers/SessionProvider';
 import { useUbicacion } from '@/providers/UbicacionProvider';
@@ -201,8 +202,15 @@ export default function DashboardScreen() {
           comunaId,
           categoriasVisibles,
         });
-        publicacionesRef.current = data;
-        setPublicaciones(data);
+        // Dentro de una categoría, al azar; en "Todas", agrupadas por el
+        // orden de categorías del admin. Ver ordenCatalogo.ts.
+        // `categoriasVisibles` viene de la consulta, así que trae el orden
+        // del admin; `ordenMostrado` tiene las favoritas de esta persona
+        // adelantadas, que es una preferencia de la fila de arriba, no del
+        // catálogo.
+        const ordenadas = ordenarCatalogo(data, categoriasVisibles ?? [], categoriaId);
+        publicacionesRef.current = ordenadas;
+        setPublicaciones(ordenadas);
       } catch (err) {
         setError(getErrorMessage(err, 'Error desconocido.'));
       } finally {

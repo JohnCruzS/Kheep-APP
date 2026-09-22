@@ -5,6 +5,7 @@ import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View }
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { SuspenderCuenta } from '@/components/admin/SuspenderCuenta';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
@@ -13,13 +14,17 @@ import {
   actualizarNivelPerfil,
   actualizarVisibilidadPerfil,
   aprobarPublicacion,
+  darDeBajaPublicacion,
+  reactivarCuenta,
   eliminarPerfil,
   eliminarPublicacionesDePerfil,
   fetchFichaUsuario,
   fetchPublicacionesDeUsuario,
   rechazarPublicacion,
 } from '@/lib/catalog';
+import { puede } from '@/lib/administradores';
 import { getErrorMessage } from '@/lib/errors';
+import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /**
@@ -33,12 +38,15 @@ import { REJILLA, u } from '@/lib/rejilla';
 export default function FichaUsuarioScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { permisos } = useSession();
+  const esGeneral = permisos?.esGeneral ?? false;
 
   const [ficha, setFicha] = useState<FichaUsuario | null>(null);
   const [publicaciones, setPublicaciones] = useState<PublicacionDeUsuario[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [suspendiendo, setSuspendiendo] = useState(false);
   /** Publicación que se está aprobando o rechazando, para no tocarla dos veces. */
   const [moderando, setModerando] = useState<string | null>(null);
 
@@ -133,9 +141,60 @@ export default function FichaUsuarioScreen() {
     ]);
   }
 
-  const pendientes = publicaciones.filter((p) => p.estado === 'pendiente');
-  const resto = publicaciones.filter((p) => p.estado !== 'pendiente');
+  // El de zona ve solo lo de sus comunas: lo demás no le corresponde.
+  const propias = esGeneral ? publicaciones : publicaciones.filter((p) => permisos?.comunas.includes(p.comuna_id ?? ''));
+  const propiasDeZona = propias;
+  const pendientes = propias.filter((p) => p.estado === 'pendiente');
+  const resto = propias.filter((p) => p.estado !== 'pendiente');
+
+  function handleDarDeBaja(publicacion: PublicacionDeUsuario) {
+    Alert.alert(
+      'Dar de baja',
+      `“${publicacion.titulo}” deja de verse en el catálogo. Se puede recuperar durante 6 meses.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Dar de baja',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await darDeBajaPublicacion(publicacion.id);
+              setPublicaciones((lista) => lista.filter((p) => p.id !== publicacion.id));
+            } catch (err) {
+              setError(getErrorMessage(err, 'No se pudo dar de baja.'));
+            }
+          },
+        },
+      ],
+    );
+  }
   const esAdmin = ficha?.rol === 'admin';
+  // Suspender: nunca a un administrador general; a uno de zona, solo el
+  // general; y el de zona, solo a quien publica en sus comunas. La base
+  // vuelve a comprobar todo esto (0029).
+  const puedeSuspender =
+    !!ficha &&
+    ficha.rol !== 'admin' &&
+    (esGeneral || (ficha.rol !== 'admin_zona' && puede(permisos, 'suspender') && propiasDeZona.length > 0));
+
+  function handleReactivar() {
+    if (!ficha) return;
+    Alert.alert('Reactivar cuenta', `${ficha.nombre} vuelve a poder entrar y sus publicaciones se ven otra vez.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Reactivar',
+        onPress: async () => {
+          try {
+            await reactivarCuenta(ficha.id);
+            setAviso('La cuenta está activa otra vez.');
+            await load();
+          } catch (err) {
+            setError(getErrorMessage(err, 'No se pudo reactivar la cuenta.'));
+          }
+        },
+      },
+    ]);
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -165,6 +224,7 @@ export default function FichaUsuarioScreen() {
                   tono={esAdmin || ficha.nivel === 2 ? 'ok' : 'aviso'}
                 />
                 <Insignia texto={ficha.activo ? 'Visible' : 'Oculto'} tono={ficha.activo ? 'ok' : 'aviso'} />
+                {ficha.suspendida && <Insignia texto="Suspendida" tono="aviso" />}
               </View>
             </View>
 
@@ -177,11 +237,13 @@ export default function FichaUsuarioScreen() {
                 valor={ficha.telefono_contacto}
                 onPress={ficha.telefono_contacto ? () => Linking.openURL(`tel:${ficha.telefono_contacto}`) : undefined}
               />
-              <Dato
-                etiqueta="Correo"
-                valor={ficha.email ?? 'Falta la migración 0024'}
-                onPress={ficha.email ? () => Linking.openURL(`mailto:${ficha.email}`) : undefined}
-              />
+              {esGeneral && (
+                <Dato
+                  etiqueta="Correo"
+                  valor={ficha.email ?? 'Falta la migración 0024'}
+                  onPress={ficha.email ? () => Linking.openURL(`mailto:${ficha.email}`) : undefined}
+                />
+              )}
               {/* Las fechas llegan con el correo: sin él no se sabe nada de
                   la cuenta, y "Nunca" sería mentira. */}
               {ficha.creado && (
@@ -197,7 +259,7 @@ export default function FichaUsuarioScreen() {
             </Seccion>
 
             {/* Permisos */}
-            {!esAdmin && (
+            {esGeneral && !esAdmin && (
               <Seccion titulo="Permisos">
                 <Interruptor
                   titulo="Libre publicación"
@@ -232,6 +294,7 @@ export default function FichaUsuarioScreen() {
               {pendientes.map((p) => (
                 <View key={p.id} style={styles.pendiente}>
                   <FilaPublicacion publicacion={p} onPress={() => verPublicacion(p.id)} />
+                  {puede(permisos, 'moderar', p.comuna_id) && (
                   <View style={styles.botonesModeracion}>
                     <Pressable
                       style={[styles.botonModeracion, styles.botonRechazar]}
@@ -246,6 +309,7 @@ export default function FichaUsuarioScreen() {
                       <Text style={styles.botonAprobarLabel}>Aprobar</Text>
                     </Pressable>
                   </View>
+                  )}
                 </View>
               ))}
             </Seccion>
@@ -254,13 +318,42 @@ export default function FichaUsuarioScreen() {
             <Seccion titulo={`Publicaciones (${resto.length})`}>
               {resto.length === 0 && <Text style={styles.vacioSeccion}>No tiene publicaciones.</Text>}
               {resto.map((p) => (
-                <FilaPublicacion key={p.id} publicacion={p} onPress={() => verPublicacion(p.id)} />
+                <View key={p.id}>
+                  <FilaPublicacion publicacion={p} onPress={() => verPublicacion(p.id)} />
+                  {!esGeneral && puede(permisos, 'publicaciones', p.comuna_id) && (
+                    <Pressable onPress={() => handleDarDeBaja(p)} hitSlop={8} style={styles.darDeBaja}>
+                      <Text style={styles.darDeBajaLabel}>Dar de baja</Text>
+                    </Pressable>
+                  )}
+                </View>
               ))}
             </Seccion>
 
+            {/* Suspender / reactivar. */}
+            {puedeSuspender && (
+              <Seccion titulo="Cuenta">
+                {ficha.suspendida ? (
+                  <>
+                    <Dato
+                      etiqueta="Suspendida"
+                      valor={ficha.suspendidaHasta ? `hasta el ${fecha(ficha.suspendidaHasta)}` : 'indefinidamente'}
+                    />
+                    {ficha.suspensionMotivo && <Text style={styles.nota}>Motivo: {ficha.suspensionMotivo}</Text>}
+                    <Pressable style={styles.reactivar} onPress={handleReactivar}>
+                      <Text style={styles.reactivarLabel}>Reactivar cuenta</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Pressable style={styles.suspender} onPress={() => setSuspendiendo(true)}>
+                    <Text style={styles.suspenderLabel}>Suspender cuenta</Text>
+                  </Pressable>
+                )}
+              </Seccion>
+            )}
+
             {/* A un administrador no se le ofrece eliminar: la base lo
                 rechaza igual (ver 0017). */}
-            {!esAdmin && (
+            {esGeneral && !esAdmin && (
               <Pressable style={styles.eliminar} onPress={handleEliminar}>
                 <Text style={styles.eliminarLabel}>Eliminar…</Text>
               </Pressable>
@@ -268,6 +361,19 @@ export default function FichaUsuarioScreen() {
           </>
         )}
       </ScrollView>
+
+      {ficha && (
+        <SuspenderCuenta
+          visible={suspendiendo}
+          perfilId={ficha.id}
+          nombre={ficha.nombre}
+          onClose={() => setSuspendiendo(false)}
+          onSuspendida={() => {
+            setAviso('Cuenta suspendida.');
+            load();
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 
@@ -583,6 +689,40 @@ const styles = StyleSheet.create({
     color: Colors.success,
   },
   estadoRechazado: {
+    color: Colors.danger,
+  },
+  suspender: {
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.danger,
+    paddingVertical: Spacing.three,
+    marginVertical: Spacing.two,
+  },
+  suspenderLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 16,
+    color: Colors.danger,
+  },
+  reactivar: {
+    alignItems: 'center',
+    borderRadius: 999,
+    backgroundColor: Colors.success,
+    paddingVertical: Spacing.three,
+    marginVertical: Spacing.two,
+  },
+  reactivarLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  darDeBaja: {
+    alignSelf: 'flex-end',
+    paddingBottom: Spacing.two,
+  },
+  darDeBajaLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
     color: Colors.danger,
   },
   eliminar: {

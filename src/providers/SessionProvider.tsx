@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useState } from 'react';
 
+import { PermisosAdmin, fetchMisPermisosAdmin } from '@/lib/administradores';
 import { supabase } from '@/lib/supabase';
 
 export type Profile = {
@@ -8,7 +9,8 @@ export type Profile = {
   nombre: string;
   telefono_contacto: string | null;
   logo_url: string | null;
-  rol: 'comerciante' | 'admin';
+  /** admin = administrador general; admin_zona = solo en sus comunas (0027). */
+  rol: 'comerciante' | 'admin' | 'admin_zona';
   nivel: 1 | 2;
 };
 
@@ -24,6 +26,12 @@ type SessionContextValue = {
    */
   recuperando: boolean;
   setRecuperando: (valor: boolean) => void;
+  /**
+   * Qué puede hacer como administrador, general o de zona. null para quien
+   * no administra nada. Decide qué pantallas y botones se muestran; la base
+   * lo vuelve a comprobar en cada acción.
+   */
+  permisos: PermisosAdmin | null;
 };
 
 const SessionContext = createContext<SessionContextValue>({
@@ -33,6 +41,7 @@ const SessionContext = createContext<SessionContextValue>({
   refreshProfile: async () => {},
   recuperando: false,
   setRecuperando: () => {},
+  permisos: null,
 });
 
 /**
@@ -54,10 +63,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [recuperando, setRecuperando] = useState(false);
+  const [permisos, setPermisos] = useState<PermisosAdmin | null>(null);
 
   const loadProfile = useCallback(async (userId: string | undefined) => {
     if (!userId) {
       setProfile(null);
+      setPermisos(null);
       return;
     }
     const { data } = await supabase
@@ -65,7 +76,32 @@ export function SessionProvider({ children }: PropsWithChildren) {
       .select('id, nombre, telefono_contacto, logo_url, rol, nivel')
       .eq('id', userId)
       .maybeSingle();
-    setProfile((data as Profile) ?? null);
+    const perfil = (data as Profile) ?? null;
+
+    // Una cuenta suspendida no puede iniciar sesión (lo rechaza Supabase),
+    // pero una sesión abierta de antes seguiría viva hasta que venza. Se
+    // cierra acá; al intentar entrar de nuevo verá el aviso de suspensión.
+    const suspendida = await supabase.rpc('cuenta_suspendida', { p_usuario: userId });
+    if (!suspendida.error && suspendida.data === true) {
+      await supabase.auth.signOut();
+      setProfile(null);
+      setPermisos(null);
+      return;
+    }
+
+    setProfile(perfil);
+
+    if (perfil?.rol === 'admin' || perfil?.rol === 'admin_zona') {
+      try {
+        setPermisos(await fetchMisPermisosAdmin());
+      } catch {
+        // Sin la migración 0027 la función no existe: el general sigue siendo
+        // general, que es lo que era antes de los administradores de zona.
+        setPermisos(perfil.rol === 'admin' ? { esGeneral: true, permisos: [], comunas: [] } : null);
+      }
+    } else {
+      setPermisos(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -86,7 +122,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const refreshProfile = useCallback(() => loadProfile(session?.user.id), [loadProfile, session]);
 
   return (
-    <SessionContext.Provider value={{ session, profile, isLoading, refreshProfile, recuperando, setRecuperando }}>
+    <SessionContext.Provider value={{ session, profile, isLoading, refreshProfile, recuperando, setRecuperando, permisos }}>
       {children}
     </SessionContext.Provider>
   );

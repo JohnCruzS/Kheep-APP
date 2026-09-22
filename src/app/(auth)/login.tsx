@@ -6,6 +6,7 @@ import { AuthCard } from '@/components/ui/AuthCard';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { translateAuthError } from '@/lib/authErrors';
 import { supabase } from '@/lib/supabase';
 import { isValidEmail } from '@/lib/validation';
 
@@ -35,7 +36,9 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (signInError) {
-      setError('Correo o contraseña incorrectos.');
+      // Traducido: además de la contraseña equivocada, puede ser una cuenta
+      // suspendida, y la persona tiene que saber cuál de las dos es.
+      setError(translateAuthError(signInError.message));
       return;
     }
 

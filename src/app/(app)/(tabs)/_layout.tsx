@@ -23,7 +23,9 @@ export default function TabsLayout() {
   // ese espacio; si no, en teléfonos con 3 botones quedan encimadas y los
   // botones de la app no se pueden tocar.
   const insets = useSafeAreaInsets();
-  const isAdmin = profile?.rol === 'admin';
+  // General o de zona: los dos tienen las pestañas de administración; lo
+  // que ve cada uno adentro depende de sus permisos.
+  const isAdmin = profile?.rol === 'admin' || profile?.rol === 'admin_zona';
 
   return (
     <Tabs

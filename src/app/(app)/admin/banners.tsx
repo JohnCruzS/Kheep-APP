@@ -9,6 +9,7 @@ import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { BannerAdmin, CUPO_BANNERS, eliminarBanner, fetchBannersActivosAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /**
@@ -61,6 +62,7 @@ function fecha(iso: string): string {
 export default function BannersAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { permisos } = useSession();
   const [banners, setBanners] = useState<BannerAdmin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,13 +79,18 @@ export default function BannersAdminScreen() {
     setLoading(true);
     setError(null);
     try {
-      setBanners(await fetchBannersActivosAdmin());
+      const todos = await fetchBannersActivosAdmin();
+      // El de zona administra los banners de sus comunas; los de "todas las
+      // comunas" son del administrador general.
+      setBanners(
+        permisos?.esGeneral ? todos : todos.filter((b) => b.comuna_id && permisos?.comunas.includes(b.comuna_id)),
+      );
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [permisos]);
 
   useEffect(() => {
     load();

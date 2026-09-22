@@ -7,11 +7,13 @@ import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { MetricaPublicacion, fetchMetricas } from '@/lib/catalog';
+import { useSession } from '@/providers/SessionProvider';
 import { getErrorMessage } from '@/lib/errors';
 
 export default function MetricasScreen() {
   const router = useRouter();
 
+  const { permisos } = useSession();
   const [metricas, setMetricas] = useState<MetricaPublicacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,13 +22,17 @@ export default function MetricasScreen() {
     setLoading(true);
     setError(null);
     try {
-      setMetricas(await fetchMetricas());
+      const todas = await fetchMetricas();
+      // El de zona ve las de sus comunas.
+      setMetricas(
+        permisos?.esGeneral ? todas : todas.filter((m) => m.comuna_id && permisos?.comunas.includes(m.comuna_id)),
+      );
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [permisos]);
 
   useEffect(() => {
     load();

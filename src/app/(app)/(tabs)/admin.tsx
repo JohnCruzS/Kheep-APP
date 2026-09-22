@@ -23,7 +23,10 @@ import { useSession } from '@/providers/SessionProvider';
  * una tarjeta por cada una obligaba a desplazarse eternamente.
  */
 export default function ComunasTabScreen() {
-  const { profile } = useSession();
+  const { profile, permisos } = useSession();
+  // El de zona solo ve las comunas que cubre, y no puede mostrar u ocultar
+  // comunas enteras: eso es del administrador general.
+  const esGeneral = permisos?.esGeneral ?? false;
   const router = useRouter();
 
   const [comunas, setComunas] = useState<ComunaAdmin[]>([]);
@@ -49,14 +52,15 @@ export default function ComunasTabScreen() {
 
   const regiones = useMemo(() => {
     const porRegion = new Map<string, ComunaAdmin[]>();
-    for (const comuna of comunas) {
+    const visibles = esGeneral ? comunas : comunas.filter((c) => permisos?.comunas.includes(c.id));
+    for (const comuna of visibles) {
       const region = comuna.region ?? 'Sin región';
       const lista = porRegion.get(region);
       if (lista) lista.push(comuna);
       else porRegion.set(region, [comuna]);
     }
     return [...porRegion.entries()];
-  }, [comunas]);
+  }, [comunas, esGeneral, permisos]);
 
   async function handleToggle(comuna: ComunaAdmin) {
     const nuevo = !comuna.activa;
@@ -69,7 +73,7 @@ export default function ComunasTabScreen() {
     }
   }
 
-  if (profile && profile.rol !== 'admin') {
+  if (profile && profile.rol !== 'admin' && profile.rol !== 'admin_zona') {
     return <Redirect href="/(app)/(tabs)/dashboard" />;
   }
 
@@ -111,12 +115,14 @@ export default function ComunasTabScreen() {
                           {comuna.nombre}
                         </Text>
                       </Pressable>
-                      <Switch
-                        value={comuna.activa}
-                        onValueChange={() => handleToggle(comuna)}
-                        trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                        thumbColor="#FFFFFF"
-                      />
+                      {esGeneral && (
+                        <Switch
+                          value={comuna.activa}
+                          onValueChange={() => handleToggle(comuna)}
+                          trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
+                          thumbColor="#FFFFFF"
+                        />
+                      )}
                     </View>
                   ))}
               </View>

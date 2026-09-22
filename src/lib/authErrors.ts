@@ -16,6 +16,10 @@ export function translateAuthError(message: string): string {
   if (lower.includes('for security purposes') || lower.includes('only request this after')) {
     return 'Espera un momento antes de pedir otro código.';
   }
+  // Supabase lo devuelve cuando la cuenta está suspendida (0029).
+  if (lower.includes('banned')) {
+    return 'Tu cuenta está suspendida. Si crees que es un error, contacta a Kheep.';
+  }
   if (lower.includes('rate limit')) {
     return 'Se enviaron demasiados correos en poco tiempo. Espera unos minutos e intenta de nuevo.';
   }

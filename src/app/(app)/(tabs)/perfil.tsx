@@ -28,7 +28,7 @@ export default function PerfilScreen() {
     return null;
   }
 
-  if (profile.rol === 'admin') {
+  if (profile.rol === 'admin' || profile.rol === 'admin_zona') {
     return <PanelGeneral />;
   }
 

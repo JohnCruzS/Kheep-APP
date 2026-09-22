@@ -36,6 +36,7 @@ export function EditorCategoria({
   onClose,
   onSaved,
   onEliminar,
+  soloEstaComuna = false,
 }: {
   /** La categoría a editar, o null si se está creando. */
   categoria: CategoriaDeComuna | null;
@@ -46,6 +47,11 @@ export function EditorCategoria({
   onSaved: () => void;
   /** Eliminar; `todas` dice si se quita de toda la app o solo de esta comuna. */
   onEliminar?: (categoria: CategoriaDeComuna, todas: boolean) => void;
+  /**
+   * Para un administrador de zona: todo queda en esta comuna, así que no se
+   * ofrece "Comuna/Todo".
+   */
+  soloEstaComuna?: boolean;
 }) {
   const visible = crear || categoria !== null;
 
@@ -110,6 +116,7 @@ export function EditorCategoria({
           </ScrollView>
 
           <View style={styles.pie}>
+            {!soloEstaComuna && (
             <View style={styles.switchFila}>
               <View style={styles.switchTexto}>
                 <Text style={styles.switchLabel}>Comuna/Todo</Text>
@@ -130,6 +137,7 @@ export function EditorCategoria({
                 thumbColor="#FFFFFF"
               />
             </View>
+            )}
 
             <Button label={guardando ? 'Guardando…' : 'Guardar'} onPress={handleGuardar} loading={guardando} />
           </View>

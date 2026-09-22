@@ -17,6 +17,7 @@ import {
   fetchPerfilesDeCategoria,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /**
@@ -34,6 +35,8 @@ import { REJILLA, u } from '@/lib/rejilla';
 export default function PerfilesDeCategoriaScreen() {
   const router = useRouter();
   const { id: comunaId, categoriaId } = useLocalSearchParams<{ id: string; categoriaId: string }>();
+  const { permisos } = useSession();
+  const esGeneral = permisos?.esGeneral ?? false;
 
   const [perfiles, setPerfiles] = useState<PerfilEnCategoria[]>([]);
   const [comunaNombre, setComunaNombre] = useState('');
@@ -174,6 +177,9 @@ export default function PerfilesDeCategoriaScreen() {
               </Text>
             </Pressable>
 
+            {/* Ocultar o eliminar la cuenta afecta a todas las comunas: solo
+                el administrador general. */}
+            {esGeneral && (
             <View style={styles.rowActions}>
               <Switch
                 value={perfil.activo}
@@ -189,6 +195,7 @@ export default function PerfilesDeCategoriaScreen() {
                 </Pressable>
               )}
             </View>
+            )}
           </View>
         ))}
       </ScrollView>

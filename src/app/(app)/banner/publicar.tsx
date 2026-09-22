@@ -31,8 +31,11 @@ const DIAS_MAX = 365;
 
 export default function PublicarBannerScreen() {
   const router = useRouter();
-  const { session, profile } = useSession();
+  const { session, profile, permisos } = useSession();
   const esAdmin = profile?.rol === 'admin';
+  // Administrador de zona: publica sin pagar, igual que el general, pero solo
+  // en una comuna suya y sin la prioridad del carrusel.
+  const esZona = profile?.rol === 'admin_zona';
 
   const [misBanners, setMisBanners] = useState<MiBanner[]>([]);
   const [comunas, setComunas] = useState<Comuna[]>([]);
@@ -140,11 +143,11 @@ export default function PublicarBannerScreen() {
         comunaId: comunaId ?? null,
         dias,
         enlace: enlaceLimpio || null,
-        pagado: esAdmin,
+        pagado: esAdmin || esZona,
         prioritario: esAdmin,
       });
 
-      if (!esAdmin) {
+      if (!esAdmin && !esZona) {
         await pagarBanner(bannerId);
         setSuccess(`¡Listo! Pagaste $${(dias * PRECIO_BANNER_POR_DIA).toLocaleString('es-CL')} y tu banner ya está activo.`);
       } else {
@@ -185,7 +188,7 @@ export default function PublicarBannerScreen() {
           {/* "Mis banners" es para el comerciante, que no tiene otra forma de
               ver los suyos. El admin los administra todos en Panel → Banners,
               así que acá solo estorbaba. */}
-          {!esAdmin && !loadingList && misBanners.length > 0 && (
+          {!esAdmin && !esZona && !loadingList && misBanners.length > 0 && (
             <View style={styles.misBannersSection}>
               <Text style={styles.sectionLabel}>MIS BANNERS</Text>
               {misBanners.map((banner) => (
@@ -291,7 +294,7 @@ export default function PublicarBannerScreen() {
             </View>
           )}
 
-          {!esAdmin && (
+          {!esAdmin && !esZona && (
             <View style={styles.precioBox}>
               <Text style={styles.precioLabel}>Total a pagar</Text>
               <Text style={styles.precioValor}>${precio.toLocaleString('es-CL')}</Text>
@@ -305,7 +308,7 @@ export default function PublicarBannerScreen() {
             <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.three }} />
           ) : (
             <Button
-              label={esAdmin ? 'Publicar' : `Pagar $${precio.toLocaleString('es-CL')} (simulado)`}
+              label={esAdmin || esZona ? 'Publicar' : `Pagar $${precio.toLocaleString('es-CL')} (simulado)`}
               onPress={handlePublicar}
             />
           )}
@@ -322,7 +325,7 @@ export default function PublicarBannerScreen() {
       <SelectorComuna
         visible={pickerOpen}
         titulo="¿Dónde se muestra?"
-        comunas={comunas}
+        comunas={esZona ? comunas.filter((c) => permisos?.comunas.includes(c.id)) : comunas}
         conTodas={esAdmin}
         onClose={() => setPickerOpen(false)}
         onElegir={(id) => {

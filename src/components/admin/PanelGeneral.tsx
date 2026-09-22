@@ -5,6 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { puede } from '@/lib/administradores';
+import { useSession } from '@/providers/SessionProvider';
 import { fetchPublicacionesPendientes } from '@/lib/catalog';
 import { REJILLA, u } from '@/lib/rejilla';
 import { supabase } from '@/lib/supabase';
@@ -22,6 +24,9 @@ import { supabase } from '@/lib/supabase';
  */
 export function PanelGeneral() {
   const router = useRouter();
+  const { permisos } = useSession();
+  // El general ve todo. El de zona, solo las secciones de sus permisos.
+  const esGeneral = permisos?.esGeneral ?? false;
   const [pendientes, setPendientes] = useState<number | null>(null);
 
   useFocusEffect(
@@ -55,7 +60,8 @@ export function PanelGeneral() {
       <EncabezadoMarca subtitulo="Admin" />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Opcion label="Título" onPress={() => router.push('/(app)/admin/logos')} />
+        {esGeneral && <Opcion label="Título" onPress={() => router.push('/(app)/admin/logos')} />}
+        {puede(permisos, 'moderar') && (
         <Opcion
           label="Aprobar"
           // Las pendientes son lo único que "se acumula": el número evita
@@ -63,10 +69,16 @@ export function PanelGeneral() {
           insignia={pendientes && pendientes > 0 ? pendientes : undefined}
           onPress={() => router.push('/(app)/admin/moderacion')}
         />
-        <Opcion label="Banners" onPress={() => router.push('/(app)/admin/banners')} />
-        <Opcion label="Métricas" onPress={() => router.push('/(app)/admin/metricas')} />
+        )}
+        {puede(permisos, 'banners') && (
+          <>
+            <Opcion label="Banners" onPress={() => router.push('/(app)/admin/banners')} />
+            <Opcion label="Métricas" onPress={() => router.push('/(app)/admin/metricas')} />
+          </>
+        )}
+        {esGeneral && <Opcion label="Administradores" onPress={() => router.push('/(app)/admin/administradores')} />}
 
-        <Opcion label="Limpieza" tenue onPress={() => router.push('/(app)/admin/limpieza')} />
+        {esGeneral && <Opcion label="Limpieza" tenue onPress={() => router.push('/(app)/admin/limpieza')} />}
 
         {/* La cuenta del propio admin: al pasar esta pestaña a ser el panel,
             "Editar perfil" y "Cerrar sesión" se quedaban sin ningún camino. */}

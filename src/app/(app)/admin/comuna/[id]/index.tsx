@@ -22,7 +22,9 @@ import {
   moverCategoriaDeComuna,
   quitarCategoriaDeComuna,
 } from '@/lib/catalog';
+import { puede } from '@/lib/administradores';
 import { getErrorMessage } from '@/lib/errors';
+import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
@@ -41,6 +43,10 @@ const ALTO_FILA = 62;
 export default function CategoriasDeComunaScreen() {
   const router = useRouter();
   const { id: comunaId } = useLocalSearchParams<{ id: string }>();
+  const { permisos } = useSession();
+  const esGeneral = permisos?.esGeneral ?? false;
+  /** Puede tocar las categorías de ESTA comuna. */
+  const gestiona = puede(permisos, 'categorias', comunaId);
 
   const [nombreComuna, setNombreComuna] = useState('');
   const [comunas, setComunas] = useState<Comuna[]>([]);
@@ -225,7 +231,10 @@ export default function CategoriasDeComunaScreen() {
                       para cambiar el orden. Va aparte del resto de la fila
                       para que un deslizamiento normal siga desplazando la
                       pantalla. */}
-                  <View {...propsAsa} style={styles.asa} accessibilityLabel={`Mover ${categoria.nombre}`}>
+                  <View
+                    {...(gestiona ? propsAsa : {})}
+                    style={styles.asa}
+                    accessibilityLabel={`Mover ${categoria.nombre}`}>
                     <Text style={styles.asaIcono}>➤</Text>
                   </View>
 
@@ -240,36 +249,42 @@ export default function CategoriasDeComunaScreen() {
                     // Mantener apretado el nombre abre editar, ocultar, mover,
                     // agregar a todas y eliminar. Antes eso era un botón ⋯ en
                     // la fila, que el documento no tiene.
-                    onLongPress={() => setAcciones(categoria)}
+                    onLongPress={gestiona ? () => setAcciones(categoria) : undefined}
                     delayLongPress={300}>
                     <Text style={[styles.nombre, !categoria.visible && styles.nombreOculto]} numberOfLines={1}>
                       {categoria.nombre}
                     </Text>
                   </Pressable>
 
-                  <Switch
-                    value={categoria.visible}
-                    onValueChange={() => handleToggle(categoria)}
-                    trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                    thumbColor="#FFFFFF"
-                  />
+                  {gestiona && (
+                    <Switch
+                      value={categoria.visible}
+                      onValueChange={() => handleToggle(categoria)}
+                      trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
+                      thumbColor="#FFFFFF"
+                    />
+                  )}
                 </View>
               )}
             </ListaArrastrable>
           )}
         </View>
 
-        <Text style={styles.ayuda}>
-          Mantén apretada la flecha para cambiar el orden, y el nombre para editar, mover u ocultar la categoría.
-        </Text>
+        {gestiona && (
+          <Text style={styles.ayuda}>
+            Mantén apretada la flecha para cambiar el orden, y el nombre para editar, mover u ocultar la categoría.
+          </Text>
+        )}
       </ScrollView>
 
       {/* Fijo abajo, como el documento: no se desplaza con la lista. */}
-      <Pressable
-        style={({ pressed }) => [styles.nueva, pressed && styles.nuevaPresionada]}
-        onPress={() => setCreando(true)}>
-        <Text style={styles.nuevaLabel}>Nueva</Text>
-      </Pressable>
+      {gestiona && (
+        <Pressable
+          style={({ pressed }) => [styles.nueva, pressed && styles.nuevaPresionada]}
+          onPress={() => setCreando(true)}>
+          <Text style={styles.nuevaLabel}>Nueva</Text>
+        </Pressable>
+      )}
 
       {/* Panel propio en vez de un `Alert`: en Android los diálogos solo
           dibujan tres botones y acá hacen falta cinco. */}
@@ -279,23 +294,36 @@ export default function CategoriasDeComunaScreen() {
         onClose={() => setAcciones(null)}
         acciones={
           acciones
-            ? [
-                { label: 'Editar nombre', onPress: () => setEditando(acciones) },
-                {
-                  label: acciones.visible ? 'Ocultar en esta comuna' : 'Mostrar en esta comuna',
-                  onPress: () => handleToggle(acciones),
-                },
-                { label: 'Mover a otra comuna', onPress: () => setMoviendo(acciones) },
-                {
-                  label: 'Agregar a todas las comunas',
-                  onPress: () =>
-                    conError(
-                      () => agregarCategoriaATodasLasComunas(acciones.id),
-                      'No se pudo agregar la categoría a todas las comunas.',
-                    ),
-                },
-                { label: 'Eliminar…', peligrosa: true, onPress: () => handleEliminar(acciones) },
-              ]
+            ? esGeneral
+              ? [
+                  { label: 'Editar nombre', onPress: () => setEditando(acciones) },
+                  {
+                    label: acciones.visible ? 'Ocultar en esta comuna' : 'Mostrar en esta comuna',
+                    onPress: () => handleToggle(acciones),
+                  },
+                  { label: 'Mover a otra comuna', onPress: () => setMoviendo(acciones) },
+                  {
+                    label: 'Agregar a todas las comunas',
+                    onPress: () =>
+                      conError(
+                        () => agregarCategoriaATodasLasComunas(acciones.id),
+                        'No se pudo agregar la categoría a todas las comunas.',
+                      ),
+                  },
+                  { label: 'Eliminar…', peligrosa: true, onPress: () => handleEliminar(acciones) },
+                ]
+              : [
+                  // Administrador de zona: solo lo que se queda en su comuna.
+                  {
+                    label: acciones.visible ? 'Ocultar en esta comuna' : 'Mostrar en esta comuna',
+                    onPress: () => handleToggle(acciones),
+                  },
+                  {
+                    label: 'Quitar de esta comuna',
+                    peligrosa: true,
+                    onPress: () => confirmarEliminar(acciones, false),
+                  },
+                ]
             : []
         }
       />
@@ -305,6 +333,7 @@ export default function CategoriasDeComunaScreen() {
         crear={creando}
         comunaId={comunaId}
         nombreComuna={nombreComuna}
+        soloEstaComuna={!esGeneral}
         onClose={() => {
           setEditando(null);
           setCreando(false);

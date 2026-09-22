@@ -692,6 +692,7 @@ export async function eliminarCategoria(id: string): Promise<void> {
 // desde la app — ver la nota en la migración 0012.
 export type BannerAdmin = {
   id: string;
+  comuna_id: string | null;
   imagen_url: string;
   fecha_inicio: string | null;
   fecha_fin: string | null;
@@ -711,7 +712,7 @@ export type BannerAdmin = {
  */
 export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
   const ahora = new Date().toISOString();
-  const base = 'id, imagen_url, fecha_inicio, fecha_fin, pagado, ';
+  const base = 'id, comuna_id, imagen_url, fecha_inicio, fecha_fin, pagado, ';
   const relaciones = 'autor:profiles!banners_usuario_id_fkey(nombre), comuna:comunas(nombre)';
 
   const consultar = (columnas: string) =>
@@ -1166,6 +1167,8 @@ export type MetricaPublicacion = {
   titulo: string;
   total_clics_whatsapp: number;
   dias_con_actividad: number;
+  /** Llega con la migración 0027; sirve para filtrar por zona. */
+  comuna_id?: string | null;
 };
 
 /**
@@ -1534,6 +1537,10 @@ export type FichaUsuario = {
   /** 1 = sus publicaciones pasan por aprobación; 2 = publica directo. */
   nivel: 1 | 2;
   activo: boolean;
+  /** Suspensión (0029). Pasada `suspendidaHasta`, la cuenta vuelve sola. */
+  suspendida: boolean;
+  suspensionMotivo: string | null;
+  suspendidaHasta: string | null;
   /**
    * Viven en `auth.users`, fuera del alcance de la API; llegan por la función
    * `admin_datos_de_cuenta` (0024). Nulos si esa migración falta.
@@ -1544,31 +1551,69 @@ export type FichaUsuario = {
 };
 
 export async function fetchFichaUsuario(perfilId: string): Promise<FichaUsuario | null> {
-  const [perfil, cuenta] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('id, nombre, logo_url, telefono_contacto, rol, nivel, activo')
-      .eq('id', perfilId)
-      .maybeSingle(),
+  const base = 'id, nombre, logo_url, telefono_contacto, rol, nivel, activo';
+  const leerPerfil = (columnas: string) =>
+    supabase.from('profiles').select(columnas).eq('id', perfilId).maybeSingle();
+
+  const [conSuspension, cuenta] = await Promise.all([
+    leerPerfil(`${base}, suspendida, suspension_motivo, suspendida_hasta`),
     supabase.rpc('admin_datos_de_cuenta', { p_perfil: perfilId }),
   ]);
+  // Sin la migración 0029 no existen las columnas de suspensión: se lee lo
+  // demás y la cuenta figura como no suspendida.
+  const perfil = conSuspension.error?.code === '42703' ? await leerPerfil(base) : conSuspension;
   if (perfil.error) throw perfil.error;
   if (!perfil.data) return null;
+  const fila = perfil.data as unknown as Record<string, unknown>;
 
   // Sin la migración 0024 la ficha se muestra igual, solo sin el correo.
-  const fila = (Array.isArray(cuenta.data) ? cuenta.data[0] : null) as
+  const datosCuenta = (Array.isArray(cuenta.data) ? cuenta.data[0] : null) as
     | { email: string | null; creado: string | null; ultimo_acceso: string | null }
     | undefined;
+
+  // Una suspensión con la fecha vencida ya no cuenta: la cuenta volvió sola.
+  const vigente =
+    Boolean(fila.suspendida) &&
+    (!fila.suspendida_hasta || new Date(fila.suspendida_hasta as string).getTime() > Date.now());
+
   return {
-    ...(perfil.data as Omit<FichaUsuario, 'email' | 'creado' | 'ultimoAcceso'>),
-    email: fila?.email ?? null,
-    creado: fila?.creado ?? null,
-    ultimoAcceso: fila?.ultimo_acceso ?? null,
+    id: fila.id as string,
+    nombre: fila.nombre as string,
+    logo_url: (fila.logo_url as string | null) ?? null,
+    telefono_contacto: (fila.telefono_contacto as string | null) ?? null,
+    rol: fila.rol as string,
+    nivel: fila.nivel as 1 | 2,
+    activo: Boolean(fila.activo),
+    suspendida: vigente,
+    suspensionMotivo: vigente ? ((fila.suspension_motivo as string | null) ?? null) : null,
+    suspendidaHasta: vigente ? ((fila.suspendida_hasta as string | null) ?? null) : null,
+    email: datosCuenta?.email ?? null,
+    creado: datosCuenta?.creado ?? null,
+    ultimoAcceso: datosCuenta?.ultimo_acceso ?? null,
   };
+}
+
+/**
+ * Suspende la cuenta: no puede entrar, sus publicaciones salen del catálogo y
+ * no puede crear ni editar nada (0029). `dias` null = indefinida.
+ */
+export async function suspenderCuenta(perfilId: string, motivo: string, dias: number | null): Promise<void> {
+  const { error } = await supabase.rpc('suspender_cuenta', {
+    p_usuario: perfilId,
+    p_motivo: motivo,
+    p_dias: dias,
+  });
+  if (error) throw error;
+}
+
+export async function reactivarCuenta(perfilId: string): Promise<void> {
+  const { error } = await supabase.rpc('reactivar_cuenta', { p_usuario: perfilId });
+  if (error) throw error;
 }
 
 export type PublicacionDeUsuario = {
   id: string;
+  comuna_id: string | null;
   titulo: string;
   logo_url: string | null;
   estado: 'pendiente' | 'aprobado' | 'rechazado';
@@ -1581,12 +1626,27 @@ export type PublicacionDeUsuario = {
 export async function fetchPublicacionesDeUsuario(perfilId: string): Promise<PublicacionDeUsuario[]> {
   const { data, error } = await supabase
     .from('publicaciones')
-    .select('id, titulo, logo_url, estado, created_at, categoria:categorias(nombre), comuna:comunas(nombre)')
+    .select('id, comuna_id, titulo, logo_url, estado, created_at, categoria:categorias(nombre), comuna:comunas(nombre)')
     .eq('usuario_id', perfilId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data as unknown as PublicacionDeUsuario[]) ?? [];
+}
+
+/**
+ * Da de baja una publicación: deja de verse en el catálogo pero no se borra
+ * (se puede recuperar hasta que la limpieza la purgue, a los 6 meses). Es lo
+ * que puede hacer un administrador de zona en sus comunas.
+ */
+export async function darDeBajaPublicacion(publicacionId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from('publicaciones')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', publicacionId)
+    .select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo dar de baja la publicación.');
 }
 
 /**
