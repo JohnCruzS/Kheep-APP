@@ -12,7 +12,7 @@ type Props = {
 };
 
 /**
- * Alto de la fila (185 de 1000, documento EDIT APP). Se usa también para el
+ * Alto de la fila (95 de 1000, documento EDIT APP). Se usa también para el
  * hueco que se deja mientras las categorías todavía no llegan, así el
  * catálogo no da un salto cuando la lista llega.
  */

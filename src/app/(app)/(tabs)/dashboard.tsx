@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,6 +20,7 @@ import {
   fetchBanners,
   fetchCategorias,
   fetchCategoriasConContenido,
+  fetchComuna,
   fetchComunas,
   fetchPublicaciones,
 } from '@/lib/catalog';
@@ -37,7 +38,7 @@ import { contactarPorWhatsApp } from '@/lib/whatsapp';
  */
 const SOLAPE_TARJETA = 41;
 /** Espacio entre la fila de categorías y el borde superior de la tarjeta. */
-const ESPACIO_CATEGORIAS_TARJETA = 21;
+const ESPACIO_CATEGORIAS_TARJETA = 24;
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -67,12 +68,15 @@ export default function DashboardScreen() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [comunas, setComunas] = useState<Comuna[]>([]);
 
-  const [publicaciones, setPublicaciones] = useState<PublicacionResumen[]>([]);
+  /** Todo el catálogo de la comuna, tal como vino de la base. */
+  const [deLaComuna, setDeLaComuna] = useState<PublicacionResumen[]>([]);
+  /** Nombre de la comuna actual: llega solo, antes que la lista completa. */
+  const [nombreComuna, setNombreComuna] = useState<string | null>(null);
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   // La comuna no es estado de esta pantalla: se resolvió antes de entrar (en
   // la bienvenida) y queda guardada en el teléfono, así que al volver a abrir
   // la app el catálogo ya arranca en la comuna del usuario.
-  const { comunaId, elegirComuna } = useUbicacion();
+  const { comunaId, elegirComuna, avisarCatalogoListo } = useUbicacion();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -138,6 +142,7 @@ export default function DashboardScreen() {
         // (documento EDIT APP). Si el filtro activo era una categoría que ya
         // no está, se vuelve a la primera en vez de quedar en un catálogo
         // vacío para siempre.
+        setCategoriasListas(true);
         setCategoriaId((actual) => {
           if (actual && ordenadas.some((c) => c.id === actual)) return actual;
           if (sinElegir.current && ordenadas.length > 0) {
@@ -150,6 +155,7 @@ export default function DashboardScreen() {
       .catch(() => {
         // Se queda con las que ya tenía; un catálogo sin chips no es un error
         // que valga la pena mostrarle al usuario.
+        setCategoriasListas(true);
       });
     // `session`: al entrar o salir de la cuenta cambia qué categorías se ven.
   }, [comunaId, session]);
@@ -169,17 +175,39 @@ export default function DashboardScreen() {
     sinElegir.current = true;
     setCategoriasVisibles(null);
     setCategoriaId(null);
+    setCategoriasListas(false);
     recargarCategorias();
     recargarBanners();
   }, [comunaId, recargarCategorias, recargarBanners]);
 
-  // Comunas: una sola vez al montar (las administra el admin y casi no
-  // cambian). Solo para llenar el selector del encabezado — cuál está
-  // elegida ya se decidió en la bienvenida.
+  // El encabezado solo necesita el NOMBRE de la comuna: una fila. La lista
+  // completa (las ~350 del selector) se pide después y no retrasa el arranque.
+  useEffect(() => {
+    if (!comunaId) {
+      setNombreComuna(null);
+      return;
+    }
+    let vivo = true;
+    fetchComuna(comunaId)
+      .then((comuna) => {
+        if (vivo) setNombreComuna(comuna?.nombre ?? null);
+      })
+      .catch(() => {
+        // Sin nombre se sigue igual: el catálogo es lo que importa.
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [comunaId]);
+
+  // La lista completa, en segundo plano: es para cuando se abra el selector.
   useEffect(() => {
     fetchComunas()
       .then(setComunas)
-      .catch((err) => setError(getErrorMessage(err, 'Error desconocido.')));
+      .catch(() => {
+        // El selector se queda vacío; no es motivo para tapar el catálogo con
+        // un error.
+      });
   }, []);
 
   // Publicaciones: se cargan de nuevo cada vez (y solo) que cambia un
@@ -190,39 +218,50 @@ export default function DashboardScreen() {
   const [categoriasVisibles, setCategoriasVisibles] = useState<string[] | null>(null);
   /** Ninguna categoría de esta comuna tiene comercios todavía. */
   const [comunaVacia, setComunaVacia] = useState(false);
+  /** Ya se resolvió la fila de categorías, aunque haya quedado vacía. */
+  const [categoriasListas, setCategoriasListas] = useState(false);
 
+  // Se pide TODO el catálogo de la comuna de una vez, sin esperar a saber qué
+  // categorías tiene: así esta consulta viaja en paralelo con la de las
+  // categorías en vez de ir detrás (el arranque se acortaba a la mitad). De
+  // paso, cambiar de categoría ya no pide nada a la red: se filtra acá mismo
+  // y es instantáneo.
   const loadPublicaciones = useCallback(
     async ({ isRefresh = false }: { isRefresh?: boolean } = {}) => {
       isRefresh ? setRefreshing(true) : setLoading(true);
       setError(null);
       try {
-        // Solo lo que cuelga de una categoría visible en esta comuna.
-        const data = await fetchPublicaciones({
-          categoriaId,
-          comunaId,
-          categoriasVisibles,
-        });
-        // Dentro de una categoría, al azar; en "Todas", agrupadas por el
-        // orden de categorías del admin. Ver ordenCatalogo.ts.
-        // `categoriasVisibles` viene de la consulta, así que trae el orden
-        // del admin; `ordenMostrado` tiene las favoritas de esta persona
-        // adelantadas, que es una preferencia de la fila de arriba, no del
-        // catálogo.
-        const ordenadas = ordenarCatalogo(data, categoriasVisibles ?? [], categoriaId);
-        publicacionesRef.current = ordenadas;
-        setPublicaciones(ordenadas);
+        setDeLaComuna(await fetchPublicaciones({ comunaId }));
       } catch (err) {
         setError(getErrorMessage(err, 'Error desconocido.'));
       } finally {
         isRefresh ? setRefreshing(false) : setLoading(false);
       }
     },
-    [categoriaId, comunaId, categoriasVisibles],
+    [comunaId],
   );
 
   useEffect(() => {
     loadPublicaciones();
   }, [loadPublicaciones]);
+
+  // Lo que se muestra: la categoría elegida o, en "Todas", solo lo que cuelga
+  // de una categoría visible en esta comuna. Dentro de una categoría va al
+  // azar y en "Todas" agrupado por el orden del admin (ver ordenCatalogo.ts);
+  // el orden se recalcula solo cuando cambia algo de verdad, no en cada
+  // dibujado, para que las tarjetas no salten solas.
+  const publicaciones = useMemo(() => {
+    const visibles = categoriaId
+      ? deLaComuna.filter((p) => p.categoria_id === categoriaId)
+      : categoriasVisibles
+        ? deLaComuna.filter((p) => p.categoria_id && categoriasVisibles.includes(p.categoria_id))
+        : deLaComuna;
+    return ordenarCatalogo(visibles, categoriasVisibles ?? [], categoriaId);
+  }, [deLaComuna, categoriaId, categoriasVisibles]);
+
+  useEffect(() => {
+    publicacionesRef.current = publicaciones;
+  }, [publicaciones]);
 
   // Al volver a Inicio se vuelven a pedir: mientras la pestaña estaba
   // montada pudo aparecer una publicación nueva (recién aprobada, por
@@ -276,6 +315,30 @@ export default function DashboardScreen() {
 
   const keyExtractor = useCallback((item: PublicacionResumen) => item.id, []);
 
+  // Con el nombre de la comuna, la fila de categorías y la primera tanda de
+  // comercios ya en pantalla, se puede quitar el arranque. Si algo falló, se
+  // quita igual: el error se muestra dentro del catálogo y nadie se queda
+  // mirando el negro.
+  const listoParaMostrar =
+    !!error ||
+    ((!comunaId || !!nombreComuna) &&
+      categoriasListas &&
+      !loading &&
+      // Y con las tarjetas ya en la mano: si no, se alcanzaba a ver el inicio
+      // con el hueco gris y la ruedita. Una comuna sin comercios, o sin
+      // categorías, no tiene nada que esperar.
+      (publicaciones.length > 0 || comunaVacia || categorias.length === 0));
+  useEffect(() => {
+    if (listoParaMostrar) avisarCatalogoListo();
+  }, [listoParaMostrar, avisarCatalogoListo]);
+
+  // Tope de seguridad: pase lo que pase, la app se muestra. Sin esto, una
+  // consulta que nunca responde dejaría al usuario mirando el negro.
+  useEffect(() => {
+    const id = setTimeout(avisarCatalogoListo, 8000);
+    return () => clearTimeout(id);
+  }, [avisarCatalogoListo]);
+
   // El solape solo tiene sentido si hay tarjetas; con la lista cargando,
   // vacía o con error, el negro termina normal y no tapa esos mensajes.
   const solapar = !loading && !error && publicaciones.length > 0;
@@ -305,7 +368,9 @@ export default function DashboardScreen() {
             recorteArriba={insets.top}
             medidas={{ centroX, ancho: anchoTitulo, alto: altoTitulo, centroY }}
             url={urlTitulo}
-            debajo={<ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={elegirComuna} />}
+            debajo={
+              <ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={elegirComuna} nombre={nombreComuna} />
+            }
           />
           {/* Sin sesión, el LOGO es el acceso a la cuenta —no hay barra
               inferior que lleve a "Perfil"—, pero solo el logo: antes este
@@ -367,11 +432,12 @@ export default function DashboardScreen() {
             ListEmptyComponent={
               comunaVacia ? (
                 <EmptyState
+                  sobreClaro
                   title="Todavía no hay comercios en esta comuna"
                   message="Nadie ha publicado por acá todavía. Prueba con otra comuna mientras tanto."
                 />
               ) : (
-                <EmptyState title="No encontramos comercios" message="Prueba con otra categoría o cambia de comuna." />
+                <EmptyState sobreClaro title="No encontramos comercios" message="Prueba con otra categoría o cambia de comuna." />
               )
             }
           />

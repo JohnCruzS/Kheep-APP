@@ -1,11 +1,12 @@
 import { Image } from 'expo-image';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   PerfilEnCategoria,
@@ -181,11 +182,9 @@ export default function PerfilesDeCategoriaScreen() {
                 el administrador general. */}
             {esGeneral && (
             <View style={styles.rowActions}>
-              <Switch
+              <Interruptor
                 value={perfil.activo}
                 onValueChange={() => handleToggle(perfil)}
-                trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                thumbColor="#FFFFFF"
               />
               {/* A un administrador no se le ofrece eliminar: la base lo
                   rechaza igual (ver 0017) y el botón solo confundiría. */}

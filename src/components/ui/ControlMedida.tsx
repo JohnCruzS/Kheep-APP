@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { MEDIDA_MAX } from '@/lib/marca';
 
@@ -50,11 +51,9 @@ export function ControlMedida({
     <View style={styles.bloque}>
       <View style={styles.cabecera}>
         <Text style={styles.etiqueta}>{etiqueta}</Text>
-        <Switch
+        <Interruptor
           value={guia}
           onValueChange={onGuia}
-          trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-          thumbColor="#FFFFFF"
           accessibilityLabel={`Mostrar la guía de ${etiqueta.toLowerCase()} en el ejemplo`}
         />
       </View>

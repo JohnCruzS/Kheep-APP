@@ -126,6 +126,9 @@ export function BienvenidaUbicacion() {
  */
 function ListaComunas({ comunas, onElegir }: { comunas: Comuna[]; onElegir: (id: string | null) => void }) {
   const [busqueda, setBusqueda] = useState('');
+  // Sin texto de ayuda mientras se escribe: centrado, en Android empuja el
+  // cursor al borde derecho.
+  const [escribiendo, setEscribiendo] = useState(false);
   // Mismo diseño que el selector del catálogo (documento EDIT APP): el
   // título con "Chile" debajo, el buscador a la altura del banner y las
   // comunas centradas. Es la misma pregunta, así que se ve igual.
@@ -152,7 +155,9 @@ function ListaComunas({ comunas, onElegir }: { comunas: Comuna[]; onElegir: (id:
       </View>
 
       <TextInput
-        placeholder="Buscar"
+        placeholder={escribiendo ? undefined : 'Buscar'}
+        onFocus={() => setEscribiendo(true)}
+        onBlur={() => setEscribiendo(false)}
         placeholderTextColor={Colors.placeholder}
         value={busqueda}
         onChangeText={setBusqueda}
@@ -178,12 +183,6 @@ function ListaComunas({ comunas, onElegir }: { comunas: Comuna[]; onElegir: (id:
           )}
         />
       )}
-
-      {/* Salida para quien no encuentra su comuna o solo quiere mirar: entra
-          al catálogo completo y puede cambiarla después desde el encabezado. */}
-      <Pressable style={styles.todas} onPress={() => onElegir(null)} hitSlop={8}>
-        <Text style={styles.todasLabel}>Ver todas las comunas</Text>
-      </Pressable>
     </SafeAreaView>
   );
 }
@@ -234,16 +233,5 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: Spacing.five,
-  },
-  todas: {
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    borderTopWidth: 1,
-    borderTopColor: Colors.surfaceBorder,
-  },
-  todasLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.accent,
   },
 });

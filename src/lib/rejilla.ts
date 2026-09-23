@@ -21,7 +21,7 @@ export const REJILLA = {
   /** Alto del banner. */
   bannerAlto: 450,
   /** Alto de la fila de categorías, incluido su espacio. */
-  categoriasAlto: 185,
+  categoriasAlto: 95,
   /** Alto de la tarjeta de un comercio en el inicio. */
   galeriaAlto: 577,
 } as const;

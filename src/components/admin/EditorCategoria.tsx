@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   CategoriaDeComuna,
@@ -130,11 +131,9 @@ export function EditorCategoria({
                       : `Se creará solo en ${nombreComuna}.`}
                 </Text>
               </View>
-              <Switch
+              <Interruptor
                 value={enTodas}
                 onValueChange={setEnTodas}
-                trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                thumbColor="#FFFFFF"
               />
             </View>
             )}

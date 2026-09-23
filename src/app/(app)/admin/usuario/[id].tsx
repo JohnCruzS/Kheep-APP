@@ -1,12 +1,13 @@
 import { Image } from 'expo-image';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { SuspenderCuenta } from '@/components/admin/SuspenderCuenta';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { Interruptor as Palanca } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   FichaUsuario,
@@ -329,33 +330,35 @@ export default function FichaUsuarioScreen() {
               ))}
             </Seccion>
 
-            {/* Suspender / reactivar. */}
-            {puedeSuspender && (
-              <Seccion titulo="Cuenta">
-                {ficha.suspendida ? (
-                  <>
-                    <Dato
-                      etiqueta="Suspendida"
-                      valor={ficha.suspendidaHasta ? `hasta el ${fecha(ficha.suspendidaHasta)}` : 'indefinidamente'}
-                    />
-                    {ficha.suspensionMotivo && <Text style={styles.nota}>Motivo: {ficha.suspensionMotivo}</Text>}
-                    <Pressable style={styles.reactivar} onPress={handleReactivar}>
-                      <Text style={styles.reactivarLabel}>Reactivar cuenta</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <Pressable style={styles.suspender} onPress={() => setSuspendiendo(true)}>
-                    <Text style={styles.suspenderLabel}>Suspender cuenta</Text>
-                  </Pressable>
-                )}
-              </Seccion>
+            {/* Los botones de la cuenta van sueltos sobre el negro, uno
+                debajo del otro: dentro de una tarjeta gris se veían como un
+                recuadro encima de otro. A un administrador no se le ofrece
+                eliminar: la base lo rechaza igual (ver 0017). */}
+            {ficha.suspendida && puedeSuspender && (
+              <View style={styles.datosSuspension}>
+                <Dato
+                  etiqueta="Suspendida"
+                  valor={ficha.suspendidaHasta ? `hasta el ${fecha(ficha.suspendidaHasta)}` : 'indefinidamente'}
+                />
+                {ficha.suspensionMotivo && <Text style={styles.nota}>Motivo: {ficha.suspensionMotivo}</Text>}
+              </View>
             )}
 
-            {/* A un administrador no se le ofrece eliminar: la base lo
-                rechaza igual (ver 0017). */}
+            {puedeSuspender && (
+              <Pressable
+                style={({ pressed }) => [styles.botonLleno, pressed && styles.botonLlenoPresionado]}
+                onPress={ficha.suspendida ? handleReactivar : () => setSuspendiendo(true)}>
+                <Text style={styles.botonLlenoLabel}>
+                  {ficha.suspendida ? 'Reactivar cuenta' : 'Suspender cuenta'}
+                </Text>
+              </Pressable>
+            )}
+
             {esGeneral && !esAdmin && (
-              <Pressable style={styles.eliminar} onPress={handleEliminar}>
-                <Text style={styles.eliminarLabel}>Eliminar…</Text>
+              <Pressable
+                style={({ pressed }) => [styles.botonBorde, pressed && styles.botonBordePresionado]}
+                onPress={handleEliminar}>
+                <Text style={styles.botonBordeLabel}>Eliminar cuenta</Text>
               </Pressable>
             )}
           </>
@@ -433,11 +436,9 @@ function Interruptor({
         <Text style={styles.interruptorTitulo}>{titulo}</Text>
         <Text style={styles.interruptorDetalle}>{detalle}</Text>
       </View>
-      <Switch
+      <Palanca
         value={valor}
         onValueChange={onCambio}
-        trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-        thumbColor="#FFFFFF"
       />
     </View>
   );
@@ -691,30 +692,49 @@ const styles = StyleSheet.create({
   estadoRechazado: {
     color: Colors.danger,
   },
-  suspender: {
+  /**
+   * Los dos botones de la cuenta, con la misma forma y la misma altura que
+   * "Nueva", "Guardar" o "Listo" del resto del panel: rectángulo con la
+   * curvatura de la rejilla y un solo rojo, el de la marca.
+   *
+   * Relleno = la acción de la sección (suspender, o reactivar si ya está
+   * suspendida). Con borde = eliminar, que no tiene vuelta atrás y por eso no
+   * compite visualmente con nada.
+   */
+  botonLleno: {
     alignItems: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: Colors.danger,
-    paddingVertical: Spacing.three,
-    marginVertical: Spacing.two,
+    paddingVertical: Spacing.four,
+    borderRadius: u(REJILLA.curvatura),
+    backgroundColor: Colors.accent,
+    marginTop: Spacing.five,
   },
-  suspenderLabel: {
+  botonLlenoPresionado: {
+    backgroundColor: Colors.accentPressed,
+  },
+  botonLlenoLabel: {
     fontFamily: Fonts.medium,
-    fontSize: 16,
-    color: Colors.danger,
-  },
-  reactivar: {
-    alignItems: 'center',
-    borderRadius: 999,
-    backgroundColor: Colors.success,
-    paddingVertical: Spacing.three,
-    marginVertical: Spacing.two,
-  },
-  reactivarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 16,
+    fontSize: 19,
     color: '#FFFFFF',
+  },
+  botonBorde: {
+    alignItems: 'center',
+    paddingVertical: Spacing.four,
+    borderRadius: u(REJILLA.curvatura),
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    // Pegado al de arriba: los dos son de la cuenta y se leen como un par.
+    marginTop: Spacing.two,
+  },
+  botonBordePresionado: {
+    backgroundColor: 'rgba(217,8,4,0.12)',
+  },
+  botonBordeLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 19,
+    color: Colors.accent,
+  },
+  datosSuspension: {
+    marginTop: Spacing.five,
   },
   darDeBaja: {
     alignSelf: 'flex-end',
@@ -723,19 +743,6 @@ const styles = StyleSheet.create({
   darDeBajaLabel: {
     fontFamily: Fonts.medium,
     fontSize: 13,
-    color: Colors.danger,
-  },
-  eliminar: {
-    marginTop: Spacing.five,
-    alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.danger,
-    paddingVertical: Spacing.three,
-  },
-  eliminarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 15,
-    color: Colors.danger,
+    color: Colors.accent,
   },
 });

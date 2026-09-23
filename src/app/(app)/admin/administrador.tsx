@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SelectorComuna } from '@/components/admin/SelectorComuna';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { FormScroll } from '@/components/ui/FormScroll';
 import { TextField } from '@/components/ui/TextField';
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   PERMISOS_ZONA,
@@ -22,10 +23,9 @@ import { ComunaAdmin, fetchComunasAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { REJILLA, u } from '@/lib/rejilla';
 import { isValidEmail } from '@/lib/validation';
+import { compararRegiones, nombreRegion } from '@/lib/regiones';
 
-function sinPrefijo(region: string): string {
-  return region.replace(/^Regi[oó]n (de |del |de la )?/i, '');
-}
+const sinPrefijo = nombreRegion;
 
 /**
  * Crear o editar un administrador de zona.
@@ -79,7 +79,7 @@ export default function AdministradorScreen() {
     })();
   }, [id]);
 
-  const todasLasRegiones = useMemo(() => [...new Set(comunas.map((c) => c.region))].sort(), [comunas]);
+  const todasLasRegiones = useMemo(() => [...new Set(comunas.map((c) => c.region))].sort(compararRegiones), [comunas]);
   const nombreDe = (comunaId: string) => comunas.find((c) => c.id === comunaId)?.nombre ?? 'Comuna';
 
   function alternar<T>(lista: T[], valor: T): T[] {
@@ -191,11 +191,9 @@ export default function AdministradorScreen() {
             todasLasRegiones.map((region) => (
               <View key={region} style={styles.opcion}>
                 <Text style={styles.opcionLabel}>{sinPrefijo(region)}</Text>
-                <Switch
+                <Interruptor
                   value={regiones.includes(region)}
                   onValueChange={() => setRegiones((r) => alternar(r, region))}
-                  trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                  thumbColor="#FFFFFF"
                 />
               </View>
             ))}
@@ -224,11 +222,9 @@ export default function AdministradorScreen() {
                 <Text style={styles.opcionLabel}>{permiso.nombre}</Text>
                 <Text style={styles.opcionDetalle}>{permiso.detalle}</Text>
               </View>
-              <Switch
+              <Interruptor
                 value={permisos.includes(permiso.clave)}
                 onValueChange={() => setPermisos((p) => alternar(p, permiso.clave))}
-                trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                thumbColor="#FFFFFF"
               />
             </View>
           ))}
@@ -375,3 +371,4 @@ const styles = StyleSheet.create({
     color: Colors.danger,
   },
 });
+

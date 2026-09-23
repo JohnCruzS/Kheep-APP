@@ -14,6 +14,12 @@ type Props = {
   comunas: Comuna[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /**
+   * Nombre de la comuna elegida, si ya se sabe. El inicio lo pide aparte —una
+   * sola fila— para no esperar a que llegue la lista completa de comunas, que
+   * solo hace falta al abrir este selector.
+   */
+  nombre?: string | null;
 };
 
 type Fila = { id: string | null; label: string };
@@ -25,7 +31,7 @@ type Fila = { id: string | null; label: string };
  * virtualizada — mostrarlas todas de una en un View sin buscador se sentía
  * lento para abrir y ni siquiera se podía hacer scroll.
  */
-function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
+function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre }: Props) {
   // El nombre escala con el ancho de la pantalla, en la misma rejilla que el
   // título (45 de 1000), para que el bloque completo se vea igual de
   // proporcionado en un teléfono chico y en una tablet. Los topes evitan los
@@ -44,11 +50,15 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
 
   const [open, setOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+  // Con el buscador activo no se muestra "Buscar": en Android, un texto de
+  // ayuda centrado empuja el cursor al borde derecho, y tiene que quedar al
+  // centro.
+  const [escribiendo, setEscribiendo] = useState(false);
   // Sin comuna elegida dice "Comuna", como el documento EDIT APP: es el
   // hueco donde va el nombre, no una comuna de verdad. Con el permiso de
   // ubicación se llena solo con la detectada, y si no, con la que la persona
   // elija; después queda guardada en el teléfono para las próximas veces.
-  const label = comunas.find((c) => c.id === selectedId)?.nombre ?? 'Comuna';
+  const label = comunas.find((c) => c.id === selectedId)?.nombre ?? nombre ?? 'Comuna';
 
   const filas = useMemo<Fila[]>(() => {
     const termino = normalizarTexto(busqueda);
@@ -56,10 +66,9 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
       ? comunas.filter((c) => normalizarTexto(c.nombre).includes(termino))
       : comunas;
 
-    const lista: Fila[] = comunasFiltradas.map((c) => ({ id: c.id, label: c.nombre }));
-    // "Todas las comunas" solo tiene sentido cuando no se está buscando algo
-    // puntual.
-    return termino ? lista : [{ id: null, label: 'Todas las comunas' }, ...lista];
+    // Sin "Todas las comunas" (documento EDIT APP): el catálogo es siempre
+    // el de una comuna.
+    return comunasFiltradas.map((c) => ({ id: c.id, label: c.nombre }));
   }, [comunas, busqueda]);
 
   function handleClose() {
@@ -102,7 +111,9 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
           <TextInput
             value={busqueda}
             onChangeText={setBusqueda}
-            placeholder="Buscar"
+            placeholder={escribiendo ? undefined : 'Buscar'}
+            onFocus={() => setEscribiendo(true)}
+            onBlur={() => setEscribiendo(false)}
             placeholderTextColor={Colors.textMuted}
             style={[styles.buscador, { marginHorizontal: margen }]}
             autoCorrect={false}
@@ -110,7 +121,7 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect }: Props) {
 
           <FlatList
             data={filas}
-            keyExtractor={(item) => item.id ?? 'todas'}
+            keyExtractor={(item) => item.id ?? ''}
             keyboardShouldPersistTaps="handled"
             initialNumToRender={16}
             maxToRenderPerBatch={16}

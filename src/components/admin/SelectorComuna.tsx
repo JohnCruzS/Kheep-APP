@@ -42,6 +42,9 @@ export function SelectorComuna({
   const unidad = width / 1000;
 
   const [busqueda, setBusqueda] = useState('');
+  // Sin texto de ayuda mientras se escribe: centrado, en Android empuja el
+  // cursor al borde derecho.
+  const [escribiendo, setEscribiendo] = useState(false);
 
   const filas = useMemo(() => {
     const termino = normalizarTexto(busqueda);
@@ -73,7 +76,9 @@ export function SelectorComuna({
           <TextInput
             value={busqueda}
             onChangeText={setBusqueda}
-            placeholder="Buscar"
+            placeholder={escribiendo ? undefined : 'Buscar'}
+            onFocus={() => setEscribiendo(true)}
+            onBlur={() => setEscribiendo(false)}
             placeholderTextColor={Colors.textMuted}
             style={[styles.buscador, { marginHorizontal: u(REJILLA.margenLateral) }]}
             autoCorrect={false}

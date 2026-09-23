@@ -28,6 +28,8 @@ export type Categoria = {
 export type Comuna = {
   id: string;
   nombre: string;
+  /** Región a la que pertenece, tal como está en la base. */
+  region?: string | null;
 };
 
 export type PublicacionResumen = {
@@ -116,10 +118,24 @@ async function consultarBanners(columnas: string, comunaId?: string | null) {
   return request;
 }
 
+/**
+ * Solo la comuna en la que está parado el catálogo.
+ *
+ * Al abrir la app lo único que hace falta es su nombre, para el encabezado.
+ * Pedir de una las ~350 comunas del selector tardaba medio segundo largo y
+ * retrasaba TODO el arranque; la lista completa se pide aparte, en segundo
+ * plano, y está lista mucho antes de que alguien toque el selector.
+ */
+export async function fetchComuna(id: string): Promise<Comuna | null> {
+  const { data, error } = await supabase.from('comunas').select('id, nombre, region').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return (data as Comuna | null) ?? null;
+}
+
 export async function fetchComunas(): Promise<Comuna[]> {
   const { data, error } = await supabase
     .from('comunas')
-    .select('id, nombre')
+    .select('id, nombre, region')
     .eq('activa', true)
     .order('nombre', { ascending: true });
 
@@ -809,6 +825,32 @@ function archivoDeUrl(url: string | null): string | null {
   return url.slice(url.lastIndexOf('/') + 1);
 }
 
+/** Cuántas filas se piden por vuelta al listar referencias. */
+const PAGINA_REFERENCIAS = 1000;
+
+/**
+ * Todas las URL de una columna, en tandas.
+ *
+ * Es imprescindible que estén TODAS: la limpieza borra lo que no aparece acá,
+ * así que una respuesta recortada (el servidor devuelve como mucho 1000 filas
+ * por consulta) haría desaparecer imágenes en pleno uso apenas la tabla pase
+ * de ese tamaño. Ante cualquier error se corta con una excepción, nunca con
+ * una lista a medias.
+ */
+async function leerColumnaCompleta(tabla: string, columna: string): Promise<(string | null)[]> {
+  const urls: (string | null)[] = [];
+  for (let desde = 0; ; desde += PAGINA_REFERENCIAS) {
+    const { data, error } = await supabase
+      .from(tabla)
+      .select(columna)
+      .range(desde, desde + PAGINA_REFERENCIAS - 1);
+    if (error) throw error;
+    const filas = (data as unknown as Record<string, string | null>[] | null) ?? [];
+    for (const fila of filas) urls.push(fila[columna] ?? null);
+    if (filas.length < PAGINA_REFERENCIAS) return urls;
+  }
+}
+
 /**
  * Busca imágenes que ya no usa nadie: están en el almacenamiento pero ninguna
  * fila las referencia.
@@ -822,17 +864,17 @@ export async function buscarImagenesHuerfanas(): Promise<ImagenHuerfana[]> {
   // imágenes. Si algún día se agrega otra tabla con imágenes, HAY QUE
   // sumarla acá: lo que no esté en esta lista se considerará basura.
   const referencias = await Promise.all([
-    supabase.from('profiles').select('logo_url'),
-    supabase.from('publicaciones').select('logo_url'),
-    supabase.from('productos').select('imagen_url'),
-    supabase.from('banners').select('imagen_url'),
-    supabase.from('logos_tematicos').select('imagen_url'),
+    leerColumnaCompleta('profiles', 'logo_url'),
+    leerColumnaCompleta('publicaciones', 'logo_url'),
+    leerColumnaCompleta('productos', 'imagen_url'),
+    leerColumnaCompleta('banners', 'imagen_url'),
+    leerColumnaCompleta('logos_tematicos', 'imagen_url'),
   ]);
 
   const enUso = new Set<string>();
-  for (const { data } of referencias) {
-    for (const fila of (data as Record<string, string | null>[] | null) ?? []) {
-      const archivo = archivoDeUrl(fila.logo_url ?? fila.imagen_url ?? null);
+  for (const urls of referencias) {
+    for (const url of urls) {
+      const archivo = archivoDeUrl(url);
       if (archivo) enUso.add(archivo);
     }
   }
@@ -1080,6 +1122,44 @@ export async function crearBanner(input: {
 
   if (error) throw error;
   return data.id as string;
+}
+
+/**
+ * El mismo banner en varias comunas (documento EDIT APP: se eligen regiones y
+ * comunas con interruptores). Cada comuna lleva su propia fila, con su cupo,
+ * su duración y sus métricas; `null` es "todas las comunas" y solo lo usa el
+ * administrador general. Se insertan todas de una vez: o quedan todas o
+ * ninguna.
+ */
+export async function crearBanners(input: {
+  imagenUrl: string;
+  comunaIds: (string | null)[];
+  dias: number;
+  enlace?: string | null;
+  prioritario?: boolean;
+  pagado?: boolean;
+}): Promise<string[]> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('Debes iniciar sesión.');
+  const enlace = input.enlace?.trim() ? input.enlace.trim() : null;
+
+  const { data, error } = await supabase
+    .from('banners')
+    .insert(
+      input.comunaIds.map((comunaId) => ({
+        usuario_id: auth.user!.id,
+        imagen_url: input.imagenUrl,
+        comuna_id: comunaId,
+        dias: input.dias,
+        orden: input.prioritario ? -100 : 0,
+        enlace,
+        pagado: input.pagado ?? false,
+      })),
+    )
+    .select('id');
+
+  if (error) throw error;
+  return (data ?? []).map((fila) => fila.id as string);
 }
 
 /**

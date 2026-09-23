@@ -36,6 +36,7 @@ export function VistaPreviaTitulo({
   comuna,
   onCambiarImagen,
   onProporcion,
+  recorteArriba = 0,
 }: {
   medidas: MedidasLogo;
   /** Alto de la imagen en unidades de la rejilla; sale del ancho. */
@@ -46,19 +47,29 @@ export function VistaPreviaTitulo({
   /** Tocar la imagen cambia la que está puesta (documento EDIT APP). */
   onCambiarImagen?: () => void;
   onProporcion?: (proporcion: number) => void;
+  /**
+   * Píxeles de arriba que tapa la barra de estado. La maqueta va desde el
+   * borde físico de la pantalla, como el inicio: con esto se recorta esa
+   * franja y el título queda exactamente donde lo verán todos.
+   */
+  recorteArriba?: number;
 }) {
   // Escala real: una unidad de la rejilla es el ancho de ESTA pantalla / 1000,
   // igual que en el catálogo.
   const { width: anchoPantalla } = useWindowDimensions();
   const unidad = anchoPantalla / 1000;
 
-  const altoPerimetro = Math.round(PERIMETRO_ALTO * unidad);
+  // Perímetro fijo de 340 medido desde el borde de la pantalla; lo que tapa la
+  // barra de estado no se dibuja.
+  const altoPerimetro = Math.round(PERIMETRO_ALTO * unidad) - recorteArriba;
   const altoBanner = Math.round(REJILLA.bannerAlto * unidad);
   const margen = Math.round(REJILLA.margenLateral * unidad);
 
   const anchoLogo = Math.round(medidas.ancho * unidad);
   const altoLogo = Math.round(alto * unidad);
-  const centro = Math.round(medidas.centroY * unidad);
+  const centro = Math.round(medidas.centroY * unidad) - recorteArriba;
+  // El nombre de la comuna, igual que en el inicio (45 de 1000 de ancho).
+  const tamanoComuna = Math.min(26, Math.max(14, Math.round((anchoPantalla * 45) / 1000)));
   /** Borde izquierdo de la imagen: va siempre centrada a lo ancho. */
   const bordeIzquierdo = Math.round((anchoPantalla - anchoLogo) / 2);
 
@@ -67,10 +78,13 @@ export function VistaPreviaTitulo({
       <TituloPosicionado
         unidad={unidad}
         altoPerimetro={PERIMETRO_ALTO}
+        recorteArriba={recorteArriba}
         medidas={medidas}
         url={url}
         onProporcion={onProporcion}
-        debajo={comuna ? <Text style={styles.comuna}>{comuna}</Text> : undefined}
+        debajo={comuna ? <Text style={[styles.comuna, { fontSize: tamanoComuna, lineHeight: Math.round(tamanoComuna * 1.3) }]}>
+              {comuna}
+            </Text> : undefined}
       />
 
       {/* Centro: la horizontal marca dónde queda el medio de la imagen y la
@@ -153,8 +167,7 @@ const styles = StyleSheet.create({
   },
   comuna: {
     fontFamily: Fonts.light,
-    fontSize: 13,
-    color: Colors.textMuted,
+    color: '#8A8A8A',
   },
   banner: {
     position: 'absolute',

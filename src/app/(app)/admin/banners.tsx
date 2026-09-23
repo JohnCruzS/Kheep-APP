@@ -1,7 +1,17 @@
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
@@ -40,15 +50,6 @@ function restante(fechaInicio: string | null, fechaFin: string | null): string {
   return [h, m, seg].map((n) => String(n).padStart(2, '0')).join(':') + totalTexto;
 }
 
-/** Qué parte del tiempo contratado ya pasó, de 0 a 1. */
-function progreso(fechaInicio: string | null, fechaFin: string | null): number {
-  if (!fechaInicio || !fechaFin) return 0;
-  const inicio = new Date(fechaInicio).getTime();
-  const fin = new Date(fechaFin).getTime();
-  if (fin <= inicio) return 1;
-  return Math.min(1, Math.max(0, (Date.now() - inicio) / (fin - inicio)));
-}
-
 /** DD/MM/AAAA, el mismo formato que el resto de la app. */
 function fecha(iso: string): string {
   const d = new Date(iso);
@@ -67,6 +68,10 @@ export default function BannersAdminScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [eliminando, setEliminando] = useState<string | null>(null);
+  /** En qué banner está el carrusel: lo que se ve debajo es de ESE banner. */
+  const [indice, setIndice] = useState(0);
+  /** Ancho real de una página, medido del contenedor. */
+  const [ancho, setAncho] = useState(0);
   // El tiempo restante se redibuja cada segundo: es una cuenta atrás, y
   // congelada no dice nada.
   const [, setTic] = useState(0);
@@ -111,6 +116,8 @@ export default function BannersAdminScreen() {
             try {
               await eliminarBanner(banner.id);
               setBanners((list) => list.filter((b) => b.id !== banner.id));
+              // Si se borró el último, el carrusel se queda sin esa página.
+              setIndice((i) => Math.max(0, Math.min(i, banners.length - 2)));
             } catch (err) {
               setError(getErrorMessage(err, 'No se pudo eliminar el banner.'));
             } finally {
@@ -121,6 +128,21 @@ export default function BannersAdminScreen() {
       ],
     );
   }
+
+  function medirAncho(e: LayoutChangeEvent) {
+    setAncho(Math.round(e.nativeEvent.layout.width));
+  }
+
+  function alDeslizar(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (ancho <= 0) return;
+    const nuevo = Math.max(0, Math.min(banners.length - 1, Math.round(e.nativeEvent.contentOffset.x / ancho)));
+    setIndice((anterior) => (anterior === nuevo ? anterior : nuevo));
+  }
+
+  /** El banner que se está mirando: de él son todos los datos de la tarjeta. */
+  const actual = banners[Math.min(indice, banners.length - 1)];
+  /** Cuánto del carrusel se lleva recorrido: un tramo por banner, entero en el último. */
+  const avance = banners.length > 0 ? Math.min(1, (indice + 1) / banners.length) : 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -136,60 +158,88 @@ export default function BannersAdminScreen() {
         <EmptyState title="No hay banners activos" message="Cuando haya banners mostrándose en la app, aparecerán acá." />
       )}
 
-      {!loading && !error && banners.length > 0 && (
-        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Spacing.six + insets.bottom }]}>
-          {banners.map((banner) => (
-            <View key={banner.id} style={styles.card}>
-              <Image source={{ uri: banner.imagen_url }} style={styles.imagen} contentFit="cover" />
-              {/* Cuántos espacios del carrusel están ocupados. */}
-              <Text style={[styles.cupo, banners.length >= CUPO_BANNERS && styles.cupoLleno]}>
-                {banners.length}/{CUPO_BANNERS}
-              </Text>
+      {/* Lo único que se desliza es la IMAGEN: los datos —el lugar en el
+          cupo, el tiempo, las métricas y el pie— se quedan quietos en su
+          sitio y pasan a ser los del banner que se está mirando. */}
+      {!loading && !error && banners.length > 0 && actual && (
+        <View style={styles.carrusel} onLayout={medirAncho}>
+          <View style={styles.card}>
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onScroll={alDeslizar}
+              onMomentumScrollEnd={alDeslizar}
+              scrollEventThrottle={16}
+              style={styles.tiraImagenes}>
+              {banners.map((banner) => (
+                <Image
+                  key={banner.id}
+                  source={{ uri: banner.imagen_url }}
+                  style={[styles.imagen, { width: ancho }]}
+                  contentFit="cover"
+                />
+              ))}
+            </ScrollView>
 
-              {/* La barra: cuánto corrió ya del tiempo contratado. */}
-              <View style={styles.barra}>
-                <View style={[styles.barraLlena, { flex: progreso(banner.fecha_inicio, banner.fecha_fin) }]} />
-                <View style={{ flex: 1 - progreso(banner.fecha_inicio, banner.fecha_fin) }} />
-              </View>
+            {/* En qué lugar del cupo va el que se está viendo: "2/5" es el
+                segundo de los cinco espacios del carrusel. */}
+            <Text style={[styles.cupo, banners.length >= CUPO_BANNERS && styles.cupoLleno]}>
+              {indice + 1}/{CUPO_BANNERS}
+            </Text>
 
-              <Text style={styles.cuentaAtras} numberOfLines={1}>
-                {restante(banner.fecha_inicio, banner.fecha_fin)}
-              </Text>
-
-              {/* Lo que quiere saber quien lo pagó. */}
-              <View style={styles.metricas}>
-                <Text style={styles.metricaEtiqueta}>
-                  Vistas <Text style={styles.metricaValor}>{banner.vistas.toLocaleString('es-CL')}</Text>
-                </Text>
-                {banner.enlace ? (
-                  <Text style={styles.metricaEtiqueta}>
-                    Enlace <Text style={styles.metricaValor}>{banner.clics.toLocaleString('es-CL')}</Text>
-                  </Text>
-                ) : (
-                  <Text style={styles.sinEnlace}>Sin enlace</Text>
-                )}
-              </View>
-
-              <View style={styles.pieCard}>
-                <Text style={styles.detalle} numberOfLines={1}>
-                  {(banner.autor?.nombre ?? 'Banner del sistema') +
-                    ' · ' +
-                    (banner.comuna?.nombre ?? 'Todas las comunas') +
-                    (banner.fecha_fin ? ` · hasta el ${fecha(banner.fecha_fin)}` : '')}
-                </Text>
-                <Pressable
-                  onPress={() => handleEliminar(banner)}
-                  disabled={eliminando === banner.id}
-                  style={({ pressed }) => [styles.eliminarBtn, pressed && styles.pressed]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Eliminar banner">
-                  <Text style={styles.eliminarLabel}>{eliminando === banner.id ? 'Eliminando…' : 'Eliminar'}</Text>
-                </Pressable>
-              </View>
+            {/* La barra dice por dónde va el carrusel: se llena un tramo por
+                banner y queda entera roja en el último. */}
+            <View style={styles.barra}>
+              <View style={[styles.barraLlena, { flex: avance }]} />
+              {avance < 1 && <View style={{ flex: 1 - avance }} />}
             </View>
-          ))}
-        </ScrollView>
+
+            <Text style={styles.cuentaAtras} numberOfLines={1}>
+              {restante(actual.fecha_inicio, actual.fecha_fin)}
+            </Text>
+
+            {/* Lo que quiere saber quien lo pagó. */}
+            <View style={styles.metricas}>
+              <Text style={styles.metricaEtiqueta}>
+                Vistas <Text style={styles.metricaValor}>{actual.vistas.toLocaleString('es-CL')}</Text>
+              </Text>
+              {actual.enlace ? (
+                <Text style={styles.metricaEtiqueta}>
+                  Enlace <Text style={styles.metricaValor}>{actual.clics.toLocaleString('es-CL')}</Text>
+                </Text>
+              ) : (
+                <Text style={styles.sinEnlace}>Sin enlace</Text>
+              )}
+            </View>
+
+            <View style={styles.pieCard}>
+              {/* En dos líneas: en una sola, la fecha se cortaba con puntos
+                  suspensivos y era justo lo que había que saber. */}
+              <View style={styles.detalleBloque}>
+                <Text style={styles.detalle}>
+                  {(actual.autor?.nombre ?? 'Banner del sistema') +
+                    ' · ' +
+                    (actual.comuna?.nombre ?? 'Todas las comunas')}
+                </Text>
+                {actual.fecha_fin && <Text style={styles.detalle}>Hasta el {fecha(actual.fecha_fin)}</Text>}
+              </View>
+              <Pressable
+                onPress={() => handleEliminar(actual)}
+                disabled={eliminando === actual.id}
+                style={({ pressed }) => [styles.eliminarBtn, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Eliminar banner">
+                <Text style={styles.eliminarLabel}>{eliminando === actual.id ? 'Eliminando…' : 'Eliminar'}</Text>
+              </Pressable>
+            </View>
+          </View>
+
+        </View>
       )}
+
+      {/* Espacio libre: el botón va DEBAJO de la tarjeta, nunca encima. */}
+      <View style={styles.hueco} />
 
       {/* El botón queda abajo, al alcance del pulgar y después de ver lo que
           ya hay publicado (documento EDIT APP). */}
@@ -264,6 +314,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.three,
   },
+  carrusel: {
+    marginHorizontal: u(REJILLA.margenLateral),
+    marginTop: Spacing.three,
+  },
+  hueco: {
+    flex: 1,
+  },
   publicar: {
     marginHorizontal: u(REJILLA.margenLateral),
     paddingVertical: Spacing.four,
@@ -317,11 +374,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.surfaceBorder,
     overflow: 'hidden',
-    marginBottom: Spacing.three,
+  },
+  tiraImagenes: {
+    // Sin esto, la tira de imágenes se estira al alto de la tarjeta entera.
+    flexGrow: 0,
   },
   imagen: {
     // El mismo alto que en el catálogo: el admin lo ve como lo ven todos.
-    width: '100%',
     height: u(REJILLA.bannerAlto),
     backgroundColor: Colors.backgroundAlt,
   },
@@ -339,9 +398,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.text,
   },
-  detalle: {
+  detalleBloque: {
     // Sin `flex`, el texto empuja "Eliminar" fuera de la tarjeta.
     flex: 1,
+    gap: 2,
+  },
+  detalle: {
     fontFamily: Fonts.light,
     fontSize: 12,
     color: Colors.textMuted,

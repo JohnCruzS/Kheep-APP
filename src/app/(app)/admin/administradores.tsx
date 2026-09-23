@@ -9,11 +9,10 @@ import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { AdminZona, PERMISOS_ZONA, listarAdminsZona } from '@/lib/administradores';
 import { getErrorMessage } from '@/lib/errors';
 import { REJILLA, u } from '@/lib/rejilla';
+import { compararRegiones, nombreRegion } from '@/lib/regiones';
 
 /** "Región de Los Lagos" → "Los Lagos": en una lista corta se lee mejor. */
-function sinPrefijo(region: string): string {
-  return region.replace(/^Regi[oó]n (de |del |de la )?/i, '');
-}
+const sinPrefijo = nombreRegion;
 
 /**
  * Los administradores de zona: cuentas que administran solo algunas comunas o
@@ -179,3 +178,4 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 });
+

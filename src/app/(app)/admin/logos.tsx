@@ -1,26 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
 import { ControlMedida } from '@/components/ui/ControlMedida';
 import { Guias, VistaPreviaTitulo } from '@/components/ui/VistaPreviaTitulo';
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { REJILLA, u } from '@/lib/rejilla';
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import {
@@ -94,7 +85,7 @@ const mismasMedidas = (a: MedidasLogo, b: MedidasLogo) =>
  * medida tiene además un interruptor que enciende su guía en la maqueta.
  */
 export default function LogosAdminScreen() {
-  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [logos, setLogos] = useState<LogoTematico[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -206,36 +197,28 @@ export default function LogosAdminScreen() {
   const enDefecto = mismasMedidas(guardadas, MEDIDAS_POR_DEFECTO);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.backLabel}>‹ Volver</Text>
-        </Pressable>
-        <Text style={styles.topTitle}>Título de la app</Text>
-        {faltaMigracion ? (
-          <View style={{ width: 70 }} />
-        ) : (
-          <Pressable onPress={() => setCreando(true)} hitSlop={12}>
-            <Text style={styles.addLabel}>+ Nuevo</Text>
-          </Pressable>
-        )}
-      </View>
+      {/* Sin barra de "Volver" ni "+ Nuevo" (documento EDIT APP): arriba va
+          directamente la maqueta del inicio, desde el borde de la pantalla,
+          con el perímetro fijo de 340, la comuna y la silueta del banner. Para
+          subir un logo nuevo se toca el título; para salir, el botón atrás
+          del teléfono. La maqueta queda fija: lo que se desplaza son los
+          controles, así el resultado siempre está a la vista. */}
+      <VistaPreviaTitulo
+        key={vigente?.id ?? 'normal'}
+        medidas={medidas}
+        alto={medidas.alto}
+        url={vigente?.imagen_url ?? null}
+        guias={guias}
+        comuna="Valdivia"
+        recorteArriba={insets.top}
+        onCambiarImagen={faltaMigracion ? undefined : () => setCreando(true)}
+        onProporcion={setProporcion}
+      />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.previewBox}>
-          <VistaPreviaTitulo
-            key={vigente?.id ?? 'normal'}
-            medidas={medidas}
-            alto={medidas.alto}
-            url={vigente?.imagen_url ?? null}
-            guias={guias}
-            comuna="Valdivia"
-            onCambiarImagen={faltaMigracion ? undefined : () => setCreando(true)}
-            onProporcion={setProporcion}
-          />
-        </View>
 
         {loading && <LoadingState />}
         {error && <ErrorState message={error} onRetry={load} />}
@@ -283,42 +266,43 @@ export default function LogosAdminScreen() {
               onGuia={(ancho) => setGuias((g) => ({ ...g, ancho }))}
               min={ANCHO_MIN}
             />
-
-            <View style={styles.acciones}>
-              {hayCambios ? (
-                <>
-                  <Button
-                    label={guardando ? 'Guardando…' : 'Guardar'}
-                    onPress={handleGuardar}
-                    loading={guardando}
-                  />
-                  <Pressable onPress={() => setMedidas(guardadas)} hitSlop={8}>
-                    <Text style={styles.deshacer}>Deshacer</Text>
-                  </Pressable>
-                </>
-              ) : (
-                <Text style={styles.estadoMedidas}>Así lo ven todos los usuarios.</Text>
-              )}
-            </View>
-
-            {/* Siempre visible: es la salida de emergencia después de probar
-                medidas, y tener que adivinar si aparece o no la hace inútil.
-                Cuando ya está en el original queda apagado, para que se vea
-                que no hay nada que deshacer. */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.restablecerFila,
-                pressed && styles.restablecerPresionada,
-                enDefecto && styles.restablecerApagada,
-              ]}
-              onPress={handleRestablecer}
-              disabled={guardando || enDefecto}>
-              <Ionicons name="refresh-outline" size={17} color={enDefecto ? Colors.textMuted : Colors.text} />
-              <Text style={[styles.restablecerLabel, enDefecto && styles.restablecerLabelApagado]}>
-                {enDefecto ? 'Está en las medidas originales' : 'Volver a las medidas originales'}
-              </Text>
-            </Pressable>
           </View>
+        )}
+
+        {/* Guardar, al final de los controles: baja con la pantalla en vez de
+            flotar encima de ella. Gris mientras no haya nada nuevo que
+            guardar, porque el cambio lo ven todos los usuarios. */}
+        {!faltaMigracion && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.guardar,
+              !hayCambios && styles.guardarApagado,
+              pressed && hayCambios && styles.guardarPresionado,
+            ]}
+            onPress={handleGuardar}
+            disabled={!hayCambios || guardando}
+            accessibilityRole="button">
+            <Text style={styles.guardarLabel}>{guardando ? 'Guardando…' : 'Guardar'}</Text>
+          </Pressable>
+        )}
+
+        {/* Justo debajo de "Guardar": es la salida
+            de emergencia después de probar medidas, no algo que se toque
+            todos los días. Apagado cuando ya está en el original. */}
+        {!faltaMigracion && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.restablecerFila,
+              pressed && styles.restablecerPresionada,
+              enDefecto && styles.restablecerApagada,
+            ]}
+            onPress={handleRestablecer}
+            disabled={guardando || enDefecto}>
+            <Ionicons name="refresh-outline" size={17} color={enDefecto ? Colors.textMuted : Colors.text} />
+            <Text style={[styles.restablecerLabel, enDefecto && styles.restablecerLabelApagado]}>
+              {enDefecto ? 'Está en las medidas originales' : 'Volver a las medidas originales'}
+            </Text>
+          </Pressable>
         )}
 
         {logos.map((logo) => {
@@ -338,11 +322,9 @@ export default function LogosAdminScreen() {
                 </Text>
               </View>
               <View style={styles.rowActions}>
-                <Switch
+                <Interruptor
                   value={logo.activo}
                   onValueChange={() => handleToggle(logo)}
-                  trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                  thumbColor="#FFFFFF"
                 />
                 <Pressable onPress={() => handleEliminar(logo)} hitSlop={8}>
                   <Text style={styles.eliminar}>Eliminar</Text>
@@ -475,63 +457,31 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
-  },
-  backLabel: {
-    fontFamily: Fonts.medium,
-    color: Colors.text,
-    fontSize: 15,
-    width: 70,
-  },
-  topTitle: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.text,
-    fontSize: 15,
-  },
-  addLabel: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.accent,
-    fontSize: 14,
-    width: 70,
-    textAlign: 'right',
-  },
   content: {
-    padding: Spacing.three,
-    paddingBottom: Spacing.six,
-  },
-  previewBox: {
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.three,
-  },
-  previewNota: {
-    fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.textMuted,
-    textAlign: 'center',
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.four,
   },
   medidas: {
     marginTop: Spacing.two,
   },
-  acciones: {
+  guardar: {
+    marginHorizontal: u(REJILLA.margenLateral) - Spacing.three,
     marginTop: Spacing.five,
-    gap: Spacing.two,
+    paddingVertical: Spacing.four,
+    borderRadius: u(REJILLA.curvatura),
+    backgroundColor: Colors.accent,
     alignItems: 'center',
   },
-  estadoMedidas: {
-    fontFamily: Fonts.light,
-    fontSize: 12.5,
-    color: Colors.textMuted,
+  guardarApagado: {
+    backgroundColor: '#7F7F7F',
   },
-  deshacer: {
+  guardarPresionado: {
+    backgroundColor: Colors.accentPressed,
+  },
+  guardarLabel: {
     fontFamily: Fonts.medium,
-    fontSize: 13,
-    color: Colors.textMuted,
+    fontSize: 21,
+    color: '#FFFFFF',
   },
   restablecerFila: {
     flexDirection: 'row',

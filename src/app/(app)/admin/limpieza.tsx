@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Redirect, Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import {
   purgarPublicacionesBorradas,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { useSession } from '@/providers/SessionProvider';
 
 const ETIQUETA_BUCKET: Record<string, string> = {
   logos: 'Logos de comercios',
@@ -52,6 +53,7 @@ function fechaLegible(iso: string | null): string {
  */
 export default function LimpiezaScreen() {
   const router = useRouter();
+  const { permisos } = useSession();
   const [imagenes, setImagenes] = useState<ImagenHuerfana[]>([]);
   const [loading, setLoading] = useState(true);
   const [borrando, setBorrando] = useState(false);
@@ -59,6 +61,12 @@ export default function LimpiezaScreen() {
   const [resultado, setResultado] = useState<string | null>(null);
   const [purgables, setPurgables] = useState<Purgables | null>(null);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
+
+  // Solo el administrador general. Uno de zona ve nada más que lo de sus
+  // comunas, así que la mitad de las imágenes le parecerían sin usar y la
+  // limpieza borraría fotos que sí están publicadas. El panel ya no le ofrece
+  // esta pantalla; esto cierra también la entrada por enlace directo.
+  const esGeneral = permisos?.esGeneral ?? false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,6 +145,8 @@ export default function LimpiezaScreen() {
       ],
     );
   }
+
+  if (permisos && !esGeneral) return <Redirect href="/(app)/(tabs)/admin" />;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>

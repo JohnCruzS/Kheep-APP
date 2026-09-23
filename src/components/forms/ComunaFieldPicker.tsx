@@ -27,6 +27,9 @@ export function ComunaFieldPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
+  // Sin texto de ayuda mientras se escribe: centrado, en Android empuja el
+  // cursor al borde derecho.
+  const [escribiendo, setEscribiendo] = useState(false);
   const value = comunas.find((c) => c.id === selectedId)?.nombre ?? '';
 
   const filtradas = useMemo(() => {
@@ -59,7 +62,9 @@ export function ComunaFieldPicker({
             <TextInput
               value={busqueda}
               onChangeText={setBusqueda}
-              placeholder="Buscar comuna…"
+              placeholder={escribiendo ? undefined : 'Buscar comuna…'}
+              onFocus={() => setEscribiendo(true)}
+              onBlur={() => setEscribiendo(false)}
               placeholderTextColor={Colors.placeholder}
               style={styles.buscador}
               autoCorrect={false}

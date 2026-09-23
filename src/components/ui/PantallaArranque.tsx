@@ -1,20 +1,21 @@
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import marcaKheep from '../../../assets/images/marca-arranque.png';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 /**
- * Ancho de la marca, como proporción del ancho de la pantalla. La imagen va
- * recortada a la marca misma (sin el aire alrededor), así que este número es
- * lo que se ve de verdad.
+ * Ancho de la marca, en dp. La imagen va recortada a la marca misma (sin el
+ * aire alrededor), así que este número es lo que se ve de verdad.
  *
- * Es el mismo tamaño al que quedó el splash nativo de Android (38 % de su
- * lienzo de 288): el paso del splash a la app no se nota, y todo el arranque
- * se ve como UNA sola vista.
+ * Tiene que ser un tamaño FIJO, no un porcentaje de la pantalla: Android
+ * dibuja el splash nativo con su lienzo de 288 dp a escala 1:1 en cualquier
+ * teléfono, y la marca ocupa 328 de sus 864 px (xxhdpi) = 109,3 dp. Con el
+ * mismo número, el paso del splash a la app no se nota y todo el arranque se
+ * ve como UNA sola vista.
  */
-const PROPORCION_MARCA = 0.28;
+const ANCHO_MARCA = 328 / 3;
 /** Alto ÷ ancho de assets/images/marca-arranque.png (333 × 313). */
 const PROPORCION_IMAGEN_ALTO = 313 / 333;
 
@@ -26,19 +27,17 @@ const PROPORCION_IMAGEN_ALTO = 313 / 333;
  * reiniciara. Ahora todos los momentos de espera del arranque (fuentes,
  * sesión, comuna guardada, identificación por GPS) muestran exactamente esto.
  *
- * Sin barra de estado: durante el arranque no hay nada que mirar arriba, y la
- * hora y la batería encima del negro rompían la vista completa.
+ * La barra de estado se deja visible, igual que en el splash nativo: Android
+ * no deja ocultarla ahí, y si la app la escondía, desaparecía de golpe al
+ * pasar de uno a otro y se notaban dos pantallas.
  */
 export function PantallaArranque({ mensaje }: { mensaje?: string }) {
-  const { width } = useWindowDimensions();
-  const ancho = Math.round(width * PROPORCION_MARCA);
-
   return (
     <View style={styles.pantalla}>
-      <StatusBar hidden />
+      <StatusBar style="light" />
       <Image
         source={marcaKheep}
-        style={{ width: ancho, height: Math.round((ancho * PROPORCION_IMAGEN_ALTO)) }}
+        style={styles.marca}
         contentFit="contain"
         accessibilityRole="image"
         accessibilityLabel="Kheep"
@@ -55,6 +54,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  marca: {
+    width: ANCHO_MARCA,
+    height: ANCHO_MARCA * PROPORCION_IMAGEN_ALTO,
   },
   mensaje: {
     position: 'absolute',

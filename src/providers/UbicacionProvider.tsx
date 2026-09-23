@@ -25,6 +25,14 @@ type Valor = {
   /** Fija la comuna y la recuerda para las próximas aperturas. */
   elegirComuna: (comunaId: string | null) => void;
   /**
+   * El catálogo de la comuna ya está armado (comuna, categorías y comercios).
+   * Hasta entonces, sobre la app va la pantalla de arranque: así el inicio
+   * nunca se ve a medio cargar.
+   */
+  catalogoListo: boolean;
+  /** Lo avisa el inicio cuando terminó de cargar su primera tanda de datos. */
+  avisarCatalogoListo: () => void;
+  /**
    * El GPS dice que el usuario está en otra comuna distinta de la guardada.
    * Nunca se cambia solo: se le pregunta (documento EDIT APP, "ID GPS – Cfm
    * – Última").
@@ -55,6 +63,7 @@ export function UbicacionProvider({ children }: { children: ReactNode }) {
   const [estado, setEstado] = useState<EstadoArranque>('cargando');
   const [comunaId, setComunaId] = useState<string | null>(null);
   const [sugerencia, setSugerencia] = useState<{ id: string; nombre: string } | null>(null);
+  const [catalogoListo, setCatalogoListo] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -94,8 +103,12 @@ export function UbicacionProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const avisarCatalogoListo = useCallback(() => setCatalogoListo(true), []);
+
   const elegirComuna = useCallback((id: string | null) => {
     setComunaId(id);
+    // El catálogo de la comuna nueva se arma de cero.
+    setCatalogoListo(false);
     setSugerencia(null);
     void guardarComunaElegida(id);
 
@@ -107,8 +120,8 @@ export function UbicacionProvider({ children }: { children: ReactNode }) {
   const descartarSugerencia = useCallback(() => setSugerencia(null), []);
 
   const valor = useMemo<Valor>(
-    () => ({ estado, comunaId, elegirComuna, sugerencia, descartarSugerencia }),
-    [estado, comunaId, elegirComuna, sugerencia, descartarSugerencia],
+    () => ({ estado, comunaId, elegirComuna, sugerencia, descartarSugerencia, catalogoListo, avisarCatalogoListo }),
+    [estado, comunaId, elegirComuna, sugerencia, descartarSugerencia, catalogoListo, avisarCatalogoListo],
   );
 
   return <UbicacionContext.Provider value={valor}>{children}</UbicacionContext.Provider>;

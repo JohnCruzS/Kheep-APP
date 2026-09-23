@@ -11,6 +11,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { PantallaArranque } from '@/components/ui/PantallaArranque';
+import { Colors } from '@/constants/theme';
 import { SessionProvider, useSession } from '@/providers/SessionProvider';
 import { UbicacionProvider } from '@/providers/UbicacionProvider';
 
@@ -34,7 +35,20 @@ function RootNavigator() {
   return (
     <>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* Fondo negro en el navegador: por defecto es blanco, y al pasar de la
+          pantalla de arranque al inicio se veía un destello blanco, como si
+          apareciera otra pantalla en medio. */}
+      {/* Sin animación entre los grupos de pantallas: al pasar del arranque a
+          la app, la pantalla entraba deslizándose desde la derecha —dejando
+          una franja clara al costado— y, como el arranque y lo que venía
+          detrás son iguales, parecía que el inicio se mostraba dos veces. */}
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+          contentStyle: { backgroundColor: Colors.background },
+        }}
+      />
     </>
   );
 }

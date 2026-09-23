@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
@@ -9,6 +9,7 @@ import { ListaArrastrable } from '@/components/ui/ListaArrastrable';
 import { EditorCategoria } from '@/components/admin/EditorCategoria';
 import { MenuAcciones } from '@/components/admin/MenuAcciones';
 import { SelectorComuna } from '@/components/admin/SelectorComuna';
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   CategoriaDeComuna,
@@ -28,7 +29,7 @@ import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
-const ALTO_FILA = 62;
+const ALTO_FILA = 80;
 
 /**
  * El catálogo de UNA comuna: qué categorías muestra, en qué orden y con qué
@@ -257,11 +258,9 @@ export default function CategoriasDeComunaScreen() {
                   </Pressable>
 
                   {gestiona && (
-                    <Switch
+                    <Interruptor
                       value={categoria.visible}
                       onValueChange={() => handleToggle(categoria)}
-                      trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                      thumbColor="#FFFFFF"
                     />
                   )}
                 </View>
@@ -270,11 +269,6 @@ export default function CategoriasDeComunaScreen() {
           )}
         </View>
 
-        {gestiona && (
-          <Text style={styles.ayuda}>
-            Mantén apretada la flecha para cambiar el orden, y el nombre para editar, mover u ocultar la categoría.
-          </Text>
-        )}
       </ScrollView>
 
       {/* Fijo abajo, como el documento: no se desplaza con la lista. */}
@@ -393,6 +387,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     backgroundColor: Colors.surface,
     borderRadius: u(REJILLA.curvatura),
+    // Misma altura y borde que las tarjetas de región (documento EDIT APP).
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
     paddingHorizontal: Spacing.three,
     height: ALTO_FILA - 8,
   },
@@ -444,13 +441,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 21,
     color: '#FFFFFF',
-  },
-  ayuda: {
-    fontFamily: Fonts.light,
-    marginTop: Spacing.four,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.textMuted,
-    textAlign: 'center',
   },
 });

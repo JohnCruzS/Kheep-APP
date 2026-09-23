@@ -11,10 +11,14 @@ export function LoadingState() {
   );
 }
 
-export function EmptyState({ title, message }: { title: string; message: string }) {
+/**
+ * `sobreClaro`: el aviso va sobre el gris claro del catálogo, donde el título
+ * blanco de siempre no se leía.
+ */
+export function EmptyState({ title, message, sobreClaro }: { title: string; message: string; sobreClaro?: boolean }) {
   return (
     <View style={styles.center}>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={[styles.title, sobreClaro && styles.titleSobreClaro]}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
     </View>
   );
@@ -33,6 +37,9 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry: () 
 }
 
 const styles = StyleSheet.create({
+  titleSobreClaro: {
+    color: '#1A1A1A',
+  },
   center: {
     paddingVertical: Spacing.six,
     alignItems: 'center',

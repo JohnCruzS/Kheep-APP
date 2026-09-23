@@ -1,11 +1,11 @@
 import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
-import { SelectorComuna } from '@/components/admin/SelectorComuna';
+import { SelectorZonas } from '@/components/admin/SelectorZonas';
 import { Button } from '@/components/ui/Button';
 import { FormScroll } from '@/components/ui/FormScroll';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -15,13 +15,14 @@ import {
   PRECIO_BANNER_POR_DIA,
   CUPO_BANNERS,
   contarBannersVigentes,
-  crearBanner,
+  crearBanners,
   fetchComunas,
   fetchMisBanners,
   pagarBanner,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
+import { compararRegiones, nombreRegion } from '@/lib/regiones';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -42,12 +43,9 @@ export default function PublicarBannerScreen() {
   const [loadingList, setLoadingList] = useState(true);
 
   const [imagen, setImagen] = useState<PickedImage | null>(null);
-  // Tres estados distintos, y hacen falta los tres: `undefined` es que
-  // todavía no ha elegido, `null` es "todas las comunas" y un id es una
-  // comuna concreta. Con solo `null` no se podía saber si había elegido todas
-  // o si no había tocado el campo, y al elegir "todas" el botón seguía
-  // mostrando el texto de ayuda como si no se hubiera hecho nada.
-  const [comunaId, setComunaId] = useState<string | null | undefined>(undefined);
+  // Las comunas donde se muestra: se eligen por región o sueltas, con
+  // interruptores (documento EDIT APP).
+  const [elegidas, setElegidas] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dias, setDias] = useState(7);
   /** A dónde lleva tocar el banner. Opcional (documento EDIT APP). */
@@ -68,12 +66,26 @@ export default function PublicarBannerScreen() {
       const [banners, comunasData] = await Promise.all([fetchMisBanners(), fetchComunas()]);
       setMisBanners(banners);
       setComunas(comunasData);
+      // Los administradores parten con todo lo suyo prendido (el general, el
+      // país entero) y apagan donde no va; un comerciante parte de cero.
+      if (esAdmin) setElegidas(comunasData.map((c) => c.id));
+      else if (esZona) setElegidas(comunasData.filter((c) => permisos?.comunas.includes(c.id)).map((c) => c.id));
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudieron cargar tus banners.'));
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [esAdmin, esZona, permisos]);
+
+  // Solo lo que esta cuenta puede elegir: el de zona, sus comunas.
+  const disponibles = useMemo(
+    () => (esZona ? comunas.filter((c) => permisos?.comunas.includes(c.id)) : comunas),
+    [comunas, esZona, permisos],
+  );
+  // El general con todo prendido publica UN banner para todas las comunas
+  // (también las que se activen después), no uno por cada una.
+  const todoElPais = esAdmin && disponibles.length > 0 && elegidas.length === disponibles.length;
+  const destinos: (string | null)[] = todoElPais ? [null] : elegidas;
 
   useEffect(() => {
     if (session) cargar();
@@ -97,12 +109,8 @@ export default function PublicarBannerScreen() {
       return;
     }
 
-    // Un comerciante paga por aparecer en SU comuna: sin elegirla, el banner
-    // saldría en todo el país. El admin sí puede dejarlo en "todas".
-    if (!esAdmin && !comunaId) {
-      // Para un comerciante, ni "sin elegir" ni "todas" son válidos: paga por
-      // aparecer en su comuna.
-      setError('Elige la comuna donde quieres que se muestre.');
+    if (elegidas.length === 0) {
+      setError('Elige al menos una comuna donde se muestre.');
       return;
     }
 
@@ -122,10 +130,14 @@ export default function PublicarBannerScreen() {
     // El carrusel tiene cupo: con más banners de la cuenta, ninguno alcanza a
     // verse. Se comprueba antes de cobrar.
     try {
-      const ocupados = await contarBannersVigentes(comunaId ?? null);
-      if (ocupados >= CUPO_BANNERS) {
+      const ocupados = await Promise.all(destinos.map((id) => contarBannersVigentes(id)));
+      const llenas = destinos.filter((_, i) => ocupados[i] >= CUPO_BANNERS);
+      if (llenas.length > 0) {
+        const nombres = llenas.map((id) => (id ? (comunas.find((c) => c.id === id)?.nombre ?? '') : 'todas las comunas'));
         setError(
-          `Ya hay ${ocupados} de ${CUPO_BANNERS} banners mostrándose ahí. Espera a que termine alguno o elige otra comuna.`,
+          `Ya hay ${CUPO_BANNERS} banners mostrándose en ${nombres.slice(0, 3).join(', ')}` +
+            (nombres.length > 3 ? ` y ${nombres.length - 3} más` : '') +
+            '. Apágalas o espera a que termine alguno.',
         );
         return;
       }
@@ -138,9 +150,9 @@ export default function PublicarBannerScreen() {
     try {
       const { data: auth } = await supabase.auth.getUser();
       const imagenUrl = await uploadCompressedImage('banners', auth.user!.id, imagen, `banner-${Date.now()}`);
-      const bannerId = await crearBanner({
+      const ids = await crearBanners({
         imagenUrl,
-        comunaId: comunaId ?? null,
+        comunaIds: destinos,
         dias,
         enlace: enlaceLimpio || null,
         pagado: esAdmin || esZona,
@@ -148,14 +160,14 @@ export default function PublicarBannerScreen() {
       });
 
       if (!esAdmin && !esZona) {
-        await pagarBanner(bannerId);
-        setSuccess(`¡Listo! Pagaste $${(dias * PRECIO_BANNER_POR_DIA).toLocaleString('es-CL')} y tu banner ya está activo.`);
+        for (const id of ids) await pagarBanner(id);
+        setSuccess(`¡Listo! Pagaste $${precio.toLocaleString('es-CL')} y tu banner ya está activo.`);
       } else {
         setSuccess('¡Listo! Tu banner ya está activo.');
       }
 
       setImagen(null);
-      setComunaId(undefined);
+      if (!esAdmin && !esZona) setElegidas([]);
       setDias(7);
       setEnlace('');
       cargar();
@@ -166,13 +178,9 @@ export default function PublicarBannerScreen() {
     }
   }
 
-  const comunaElegida =
-    comunaId === undefined
-      ? ''
-      : comunaId === null
-        ? 'Todas las comunas'
-        : (comunas.find((c) => c.id === comunaId)?.nombre ?? '');
-  const precio = dias * PRECIO_BANNER_POR_DIA;
+  const comunaElegida = resumirZona(elegidas, disponibles, todoElPais);
+  // Un comerciante paga por cada comuna donde aparece.
+  const precio = dias * PRECIO_BANNER_POR_DIA * Math.max(1, elegidas.length);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -223,7 +231,7 @@ export default function PublicarBannerScreen() {
             style={({ pressed }) => [styles.selectorComuna, pressed && styles.selectorPresionado]}
             onPress={() => setPickerOpen(true)}>
             <Text style={[styles.selectorValor, !comunaElegida && styles.selectorPlaceholder]}>
-              {comunaElegida || (esAdmin ? 'Elige una comuna o todas' : 'Elige tu comuna')}
+              {comunaElegida || 'Elige región o comuna'}
             </Text>
             <Text style={styles.selectorFlecha}>▾</Text>
           </Pressable>
@@ -320,22 +328,40 @@ export default function PublicarBannerScreen() {
           )}
       </FormScroll>
 
-      {/* Solo el admin puede poner un banner en todo el país: un comerciante
-          paga por aparecer en su comuna. */}
-      <SelectorComuna
+      <SelectorZonas
         visible={pickerOpen}
-        titulo="¿Dónde se muestra?"
-        comunas={esZona ? comunas.filter((c) => permisos?.comunas.includes(c.id)) : comunas}
-        conTodas={esAdmin}
+        comunas={disponibles}
+        elegidas={elegidas}
         onClose={() => setPickerOpen(false)}
-        onElegir={(id) => {
-          setComunaId(id);
+        onListo={(ids) => {
+          setElegidas(ids);
           setPickerOpen(false);
         }}
       />
       </View>
     </SafeAreaView>
   );
+}
+
+/** Cómo se lee lo elegido en el campo: "Todas las comunas", regiones enteras o comunas. */
+function resumirZona(elegidas: string[], disponibles: Comuna[], todoElPais: boolean): string {
+  if (elegidas.length === 0) return '';
+  if (todoElPais) return 'Todas las comunas';
+  const set = new Set(elegidas);
+  const porRegion = new Map<string, Comuna[]>();
+  for (const c of disponibles) {
+    const lista = porRegion.get(c.region ?? '') ?? [];
+    lista.push(c);
+    porRegion.set(c.region ?? '', lista);
+  }
+  const partes: string[] = [];
+  for (const [region, lista] of [...porRegion.entries()].sort(([a], [b]) => compararRegiones(a, b))) {
+    const prendidas = lista.filter((c) => set.has(c.id));
+    if (prendidas.length === 0) continue;
+    if (prendidas.length === lista.length && lista.length > 1) partes.push(nombreRegion(region));
+    else partes.push(...prendidas.map((c) => c.nombre));
+  }
+  return partes.length <= 3 ? partes.join(', ') : `${partes.slice(0, 2).join(', ')} y ${partes.length - 2} más`;
 }
 
 function EstadoBanner({ banner }: { banner: MiBanner }) {

@@ -1,9 +1,10 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { BienvenidaUbicacion } from '@/components/onboarding/BienvenidaUbicacion';
 import { PantallaArranque } from '@/components/ui/PantallaArranque';
+import { Colors } from '@/constants/theme';
 import { useUbicacion } from '@/providers/UbicacionProvider';
 
 // El catálogo es la vitrina pública de Kheep: cualquiera lo navega sin
@@ -17,7 +18,7 @@ import { useUbicacion } from '@/providers/UbicacionProvider';
 // bienvenida (permiso de ubicación → detectar la comuna, o elegirla a mano);
 // después queda guardada y se entra directo.
 export default function AppLayout() {
-  const { estado } = useUbicacion();
+  const { estado, catalogoListo } = useUbicacion();
 
   // Mientras se lee la comuna guardada del teléfono (un parpadeo), la misma
   // vista de arranque: así no hay ni destello blanco ni cambio de pantalla.
@@ -37,7 +38,18 @@ export default function AppLayout() {
   return (
     <>
       <AvisoDeComuna />
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.background } }} />
+
+      {/* El inicio ya está montado y cargando DEBAJO; mientras tanto, la misma
+          pantalla de arranque tapa toda la app —barra de pestañas incluida—,
+          sin transición ni cambio de tamaño. Antes esta espera vivía dentro
+          del inicio y se veía como un segundo arranque que entraba desde el
+          costado y con la barra de abajo a la vista. */}
+      {!catalogoListo && (
+        <View style={StyleSheet.absoluteFill}>
+          <PantallaArranque />
+        </View>
+      )}
     </>
   );
 }

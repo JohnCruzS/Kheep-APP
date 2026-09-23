@@ -1,10 +1,11 @@
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { ComunaAdmin, actualizarComunaActiva, fetchComunasAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
@@ -50,7 +51,7 @@ export default function ComunasAdminScreen() {
       if (lista) lista.push(comuna);
       else porRegion.set(region, [comuna]);
     }
-    return [...porRegion.entries()];
+    return [...porRegion.entries()].sort(([a], [b]) => compararRegiones(a, b));
   }, [comunas]);
 
   async function handleToggle(comuna: ComunaAdmin) {
@@ -85,7 +86,7 @@ export default function ComunasAdminScreen() {
                   onPress={() => setRegionAbierta(abierta ? null : region)}
                   accessibilityRole="button">
                   <Text style={styles.region} numberOfLines={1}>
-                    {region.replace(/^Regi[oó]n (de |del |de la )?/i, '')}
+                    {nombreRegion(region)}
                   </Text>
                   <Text style={styles.contador}>{`${visibles}/${lista.length}`}</Text>
                   <Text style={[styles.flecha, abierta && styles.flechaAbierta]}>▼</Text>
@@ -104,11 +105,9 @@ export default function ComunasAdminScreen() {
                           {comuna.nombre}
                         </Text>
                       </Pressable>
-                      <Switch
+                      <Interruptor
                         value={comuna.activa}
                         onValueChange={() => handleToggle(comuna)}
-                        trackColor={{ false: Colors.surfaceBorder, true: Colors.accent }}
-                        thumbColor="#FFFFFF"
                       />
                     </View>
                   ))}
@@ -184,4 +183,5 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     opacity: 0.55,
   },
-});
+});import { compararRegiones, nombreRegion } from '@/lib/regiones';
+
