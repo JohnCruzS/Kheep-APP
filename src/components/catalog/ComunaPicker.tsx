@@ -15,6 +15,13 @@ type Props = {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   /**
+   * Se avisa al abrir el selector, para volver a pedir la lista: el
+   * administrador puede mostrar, ocultar o eliminar comunas mientras alguien
+   * tiene la app abierta, y quien solo mira el catálogo nunca cambia de
+   * pantalla, así que este es el único momento natural para refrescarla.
+   */
+  alAbrir?: () => void;
+  /**
    * Nombre de la comuna elegida, si ya se sabe. El inicio lo pide aparte —una
    * sola fila— para no esperar a que llegue la lista completa de comunas, que
    * solo hace falta al abrir este selector.
@@ -31,7 +38,7 @@ type Fila = { id: string | null; label: string };
  * virtualizada — mostrarlas todas de una en un View sin buscador se sentía
  * lento para abrir y ni siquiera se podía hacer scroll.
  */
-function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre }: Props) {
+function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre, alAbrir }: Props) {
   // El nombre escala con el ancho de la pantalla, en la misma rejilla que el
   // título (45 de 1000), para que el bloque completo se vea igual de
   // proporcionado en un teléfono chico y en una tablet. Los topes evitan los
@@ -83,7 +90,13 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre }: Props)
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} hitSlop={8} style={styles.trigger}>
+      <Pressable
+        onPress={() => {
+          alAbrir?.();
+          setOpen(true);
+        }}
+        hitSlop={8}
+        style={styles.trigger}>
         {/* Una sola línea: partido en dos, el nombre se metía en el banner.
             Si no cabe entero se recorta con puntos suspensivos, que es más
             limpio que empujar el resto del catálogo hacia abajo. */}

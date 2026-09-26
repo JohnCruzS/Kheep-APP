@@ -1,9 +1,8 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert } from 'react-native';
 
 import { BienvenidaUbicacion } from '@/components/onboarding/BienvenidaUbicacion';
-import { PantallaArranque } from '@/components/ui/PantallaArranque';
 import { Colors } from '@/constants/theme';
 import { useUbicacion } from '@/providers/UbicacionProvider';
 
@@ -18,38 +17,27 @@ import { useUbicacion } from '@/providers/UbicacionProvider';
 // bienvenida (permiso de ubicación → detectar la comuna, o elegirla a mano);
 // después queda guardada y se entra directo.
 export default function AppLayout() {
-  const { estado, catalogoListo } = useUbicacion();
+  const { estado } = useUbicacion();
 
-  // Mientras se lee la comuna guardada del teléfono (un parpadeo), la misma
-  // vista de arranque: así no hay ni destello blanco ni cambio de pantalla.
+  // Todavía no se sabe la comuna: no se monta nada, para no pedir un catálogo
+  // que habría que descartar. La pantalla de arranque, que vive en la raíz,
+  // está tapando la app mientras tanto.
   if (estado === 'cargando') {
-    return <PantallaArranque />;
-  }
-
-  // Carga intermedia entre elegir la comuna y ver su contenido.
-  if (estado === 'cambiando') {
-    return <PantallaArranque />;
+    return null;
   }
 
   if (estado === 'bienvenida') {
     return <BienvenidaUbicacion />;
   }
 
+  // Ojo: en la carga intermedia al cambiar de comuna NO se devuelve otra
+  // pantalla. Hacerlo desmontaba el navegador entero —pestañas incluidas— y
+  // ese desmontaje era el parpadeo más visible; ahora la app se queda montada
+  // recargando por detrás y el arranque de la raíz la tapa.
   return (
     <>
       <AvisoDeComuna />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.background } }} />
-
-      {/* El inicio ya está montado y cargando DEBAJO; mientras tanto, la misma
-          pantalla de arranque tapa toda la app —barra de pestañas incluida—,
-          sin transición ni cambio de tamaño. Antes esta espera vivía dentro
-          del inicio y se veía como un segundo arranque que entraba desde el
-          costado y con la barra de abajo a la vista. */}
-      {!catalogoListo && (
-        <View style={StyleSheet.absoluteFill}>
-          <PantallaArranque />
-        </View>
-      )}
     </>
   );
 }

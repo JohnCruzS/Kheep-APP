@@ -16,8 +16,8 @@ import { Colors, Fonts, Spacing } from '@/constants/theme';
  * ve como UNA sola vista.
  */
 const ANCHO_MARCA = 328 / 3;
-/** Alto ÷ ancho de assets/images/marca-arranque.png (333 × 313). */
-const PROPORCION_IMAGEN_ALTO = 313 / 333;
+/** Alto ÷ ancho de assets/images/marca-arranque.png (948 × 788). */
+const PROPORCION_IMAGEN_ALTO = 788 / 948;
 
 /**
  * La pantalla de arranque: fondo negro con la marca centrada y nada más.

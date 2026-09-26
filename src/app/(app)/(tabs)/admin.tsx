@@ -1,5 +1,5 @@
-import { Redirect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -48,9 +48,14 @@ export default function ComunasTabScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Al volver de la ficha de una comuna (o de crear una categoría) la lista
+  // se vuelve a pedir: así los contadores y lo que está visible reflejan lo
+  // que se acaba de cambiar, sin salir de la app.
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const regiones = useMemo(() => {
     const porRegion = new Map<string, ComunaAdmin[]>();

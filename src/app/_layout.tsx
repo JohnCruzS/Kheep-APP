@@ -9,14 +9,16 @@ import {
 } from '@expo-google-fonts/poppins';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { StyleSheet, View } from 'react-native';
 
 import { PantallaArranque } from '@/components/ui/PantallaArranque';
 import { Colors } from '@/constants/theme';
 import { SessionProvider, useSession } from '@/providers/SessionProvider';
-import { UbicacionProvider } from '@/providers/UbicacionProvider';
+import { UbicacionProvider, useUbicacion } from '@/providers/UbicacionProvider';
 
 function RootNavigator() {
   const { isLoading } = useSession();
+  const { estado, catalogoListo } = useUbicacion();
   const [fontsLoaded] = useFonts({
     Poppins_300Light,
     Poppins_400Regular,
@@ -26,11 +28,16 @@ function RootNavigator() {
     Poppins_800ExtraBold,
   });
 
-  // Misma vista que el splash nativo: el arranque no parpadea entre dos
-  // pantallas distintas (documento EDIT APP).
-  if (isLoading || !fontsLoaded) {
-    return <PantallaArranque />;
-  }
+  // La app puede dibujarse: hay sesión resuelta y tipografías.
+  const appLista = !isLoading && fontsLoaded;
+
+  /**
+   * Cuándo se ve el arranque: al abrir, mientras se lee la comuna guardada,
+   * en la carga intermedia al cambiar de comuna y hasta que el inicio tiene
+   * su contenido. En la bienvenida no, que es una pantalla propia.
+   */
+  const mostrarArranque =
+    !appLista || estado === 'cargando' || estado === 'cambiando' || (estado === 'listo' && !catalogoListo);
 
   return (
     <>
@@ -42,16 +49,35 @@ function RootNavigator() {
           la app, la pantalla entraba deslizándose desde la derecha —dejando
           una franja clara al costado— y, como el arranque y lo que venía
           detrás son iguales, parecía que el inicio se mostraba dos veces. */}
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: 'none',
-          contentStyle: { backgroundColor: Colors.background },
-        }}
-      />
+      {appLista && (
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            animation: 'none',
+            contentStyle: { backgroundColor: Colors.background },
+          }}
+        />
+      )}
+
+      {/* UNA sola pantalla de arranque en toda la app, montada desde el primer
+          dibujado y que nunca se desmonta: solo se muestra o se esconde. Antes
+          había tres —una en la raíz, otra mientras se leía la comuna y otra
+          encima del inicio— y en cada relevo el logo se volvía a cargar y se
+          veía un parpadeo en negro. */}
+      <View
+        style={[StyleSheet.absoluteFill, !mostrarArranque && styles.arranqueOculto]}
+        pointerEvents={mostrarArranque ? 'auto' : 'none'}>
+        <PantallaArranque />
+      </View>
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  arranqueOculto: {
+    opacity: 0,
+  },
+});
 
 export default function RootLayout() {
   return (

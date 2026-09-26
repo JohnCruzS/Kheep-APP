@@ -1,4 +1,4 @@
-import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { guardarComunaElegida, leerComunaGuardada } from '@/lib/arranque';
 import { fetchComunas } from '@/lib/catalog';
@@ -42,11 +42,17 @@ type Valor = {
 };
 
 /**
- * Cuánto dura la carga intermedia al elegir comuna. Tres segundos y no uno:
- * con una conexión lenta, el catálogo de la comuna nueva todavía viene en
- * camino, y entrar a una pantalla a medio cargar se ve peor que esperar.
+ * Mínimo que dura la carga intermedia al elegir comuna.
+ *
+ * Lo que de verdad manda es el catálogo: la pantalla de arranque se queda
+ * hasta que la comuna nueva tiene sus categorías y sus comercios (ver
+ * `catalogoListo`). Este mínimo solo evita que, cuando la respuesta llega
+ * muy rápido, la pantalla aparezca y desaparezca de golpe.
+ *
+ * Antes eran 3 segundos fijos y se esperaba de más aunque los datos ya
+ * estuvieran.
  */
-const CARGA_INTERMEDIA = 3000;
+const CARGA_INTERMEDIA = 400;
 
 const UbicacionContext = createContext<Valor | null>(null);
 
@@ -62,6 +68,8 @@ const UbicacionContext = createContext<Valor | null>(null);
 export function UbicacionProvider({ children }: { children: ReactNode }) {
   const [estado, setEstado] = useState<EstadoArranque>('cargando');
   const [comunaId, setComunaId] = useState<string | null>(null);
+  /** La comuna actual, para poder leerla dentro de callbacks sin recrearlos. */
+  const comunaIdRef = useRef<string | null>(null);
   const [sugerencia, setSugerencia] = useState<{ id: string; nombre: string } | null>(null);
   const [catalogoListo, setCatalogoListo] = useState(false);
 
@@ -106,6 +114,10 @@ export function UbicacionProvider({ children }: { children: ReactNode }) {
   const avisarCatalogoListo = useCallback(() => setCatalogoListo(true), []);
 
   const elegirComuna = useCallback((id: string | null) => {
+    // Elegir la que ya estaba no recarga nada: el catálogo es el mismo, y
+    // marcarlo como "por armar" dejaba la pantalla de arranque puesta
+    // esperando un aviso que nunca iba a llegar.
+    if (id === comunaIdRef.current) return;
     setComunaId(id);
     // El catálogo de la comuna nueva se arma de cero.
     setCatalogoListo(false);
@@ -123,6 +135,10 @@ export function UbicacionProvider({ children }: { children: ReactNode }) {
     () => ({ estado, comunaId, elegirComuna, sugerencia, descartarSugerencia, catalogoListo, avisarCatalogoListo }),
     [estado, comunaId, elegirComuna, sugerencia, descartarSugerencia, catalogoListo, avisarCatalogoListo],
   );
+
+  useEffect(() => {
+    comunaIdRef.current = comunaId;
+  }, [comunaId]);
 
   return <UbicacionContext.Provider value={valor}>{children}</UbicacionContext.Provider>;
 }

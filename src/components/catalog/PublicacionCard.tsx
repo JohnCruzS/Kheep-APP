@@ -146,12 +146,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  // Toda la línea del título lleva a WhatsApp, no solo las letras: apuntar a
+  // un texto corto con el dedo es incómodo (documento EDIT APP).
   titlePress: {
-    flexShrink: 1,
+    flex: 1,
+    paddingVertical: 4,
   },
+  // Solo la imagen, no la franja entera: antes el área tocable ocupaba todo
+  // el ancho y tocar AL LADO de la foto la abría igual, cuando ahí lo que
+  // corresponde es entrar a la publicación.
   imagePress: {
-    width: '100%',
+    width: '72%',
     height: '100%',
+    alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -174,10 +181,12 @@ const styles = StyleSheet.create({
     marginVertical: 6,
   },
   productImage: {
-    width: '72%',
+    width: '100%',
     height: '100%',
   },
   productImageFallback: {
+    width: '72%',
+    alignSelf: 'center',
     backgroundColor: Colors.surface,
     borderRadius: 6,
   },

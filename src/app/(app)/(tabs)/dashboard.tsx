@@ -72,11 +72,17 @@ export default function DashboardScreen() {
   const [deLaComuna, setDeLaComuna] = useState<PublicacionResumen[]>([]);
   /** Nombre de la comuna actual: llega solo, antes que la lista completa. */
   const [nombreComuna, setNombreComuna] = useState<string | null>(null);
+  /**
+   * De qué comuna son los comercios que hay cargados. Sirve para saber si lo
+   * que se está mostrando corresponde a la comuna elegida o todavía es lo de
+   * la anterior. `undefined` = aún no llegó nada.
+   */
+  const [comunaCargada, setComunaCargada] = useState<string | null | undefined>(undefined);
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   // La comuna no es estado de esta pantalla: se resolvió antes de entrar (en
   // la bienvenida) y queda guardada en el teléfono, así que al volver a abrir
   // la app el catálogo ya arranca en la comuna del usuario.
-  const { comunaId, elegirComuna, avisarCatalogoListo } = useUbicacion();
+  const { comunaId, elegirComuna, avisarCatalogoListo, catalogoListo } = useUbicacion();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -201,14 +207,20 @@ export default function DashboardScreen() {
   }, [comunaId]);
 
   // La lista completa, en segundo plano: es para cuando se abra el selector.
-  useEffect(() => {
+  //
+  // Se vuelve a pedir cada vez que se regresa a Inicio, igual que los banners
+  // y las categorías: el administrador puede mostrar, ocultar o eliminar una
+  // comuna mientras la pestaña sigue montada, y antes esos cambios no se veían
+  // hasta cerrar y volver a abrir la app.
+  const recargarComunas = useCallback(() => {
     fetchComunas()
       .then(setComunas)
       .catch(() => {
-        // El selector se queda vacío; no es motivo para tapar el catálogo con
-        // un error.
+        // El selector se queda con las que ya tenía; no es motivo para tapar
+        // el catálogo con un error.
       });
   }, []);
+  useFocusEffect(recargarComunas);
 
   // Publicaciones: se cargan de nuevo cada vez (y solo) que cambia un
   // filtro real — categoría, comuna o la búsqueda ya "asentada".
@@ -232,7 +244,9 @@ export default function DashboardScreen() {
       setError(null);
       try {
         setDeLaComuna(await fetchPublicaciones({ comunaId }));
+        setComunaCargada(comunaId);
       } catch (err) {
+        setComunaCargada(comunaId);
         setError(getErrorMessage(err, 'Error desconocido.'));
       } finally {
         isRefresh ? setRefreshing(false) : setLoading(false);
@@ -315,29 +329,29 @@ export default function DashboardScreen() {
 
   const keyExtractor = useCallback((item: PublicacionResumen) => item.id, []);
 
-  // Con el nombre de la comuna, la fila de categorías y la primera tanda de
-  // comercios ya en pantalla, se puede quitar el arranque. Si algo falló, se
-  // quita igual: el error se muestra dentro del catálogo y nadie se queda
-  // mirando el negro.
+  // Se puede quitar el arranque cuando las consultas DE ESTA COMUNA
+  // terminaron: su nombre, su fila de categorías y su tanda de comercios. Lo
+  // que importa es que hayan terminado, no que traigan resultados: antes se
+  // exigía que hubiera tarjetas y, si la categoría que quedaba elegida no
+  // tenía ninguna, el logo se quedaba puesto para siempre.
   const listoParaMostrar =
     !!error ||
-    ((!comunaId || !!nombreComuna) &&
-      categoriasListas &&
-      !loading &&
-      // Y con las tarjetas ya en la mano: si no, se alcanzaba a ver el inicio
-      // con el hueco gris y la ruedita. Una comuna sin comercios, o sin
-      // categorías, no tiene nada que esperar.
-      (publicaciones.length > 0 || comunaVacia || categorias.length === 0));
+    ((!comunaId || !!nombreComuna) && categoriasListas && !loading && comunaCargada === comunaId);
+  // `catalogoListo` entra en las dependencias a propósito: si el aviso solo
+  // se mandara cuando cambia `listoParaMostrar`, bastaba con que la pantalla
+  // ya estuviera lista antes (por ejemplo al reelegir la misma comuna) para
+  // que nadie volviera a avisar y el arranque se quedara puesto.
   useEffect(() => {
-    if (listoParaMostrar) avisarCatalogoListo();
-  }, [listoParaMostrar, avisarCatalogoListo]);
+    if (listoParaMostrar && !catalogoListo) avisarCatalogoListo();
+  }, [listoParaMostrar, catalogoListo, avisarCatalogoListo]);
 
-  // Tope de seguridad: pase lo que pase, la app se muestra. Sin esto, una
-  // consulta que nunca responde dejaría al usuario mirando el negro.
+  // Tope de seguridad, y se rearma en cada comuna: pase lo que pase, la app se
+  // muestra a los 8 segundos. Sin esto, una consulta que no responde dejaría a
+  // la persona mirando el negro.
   useEffect(() => {
     const id = setTimeout(avisarCatalogoListo, 8000);
     return () => clearTimeout(id);
-  }, [avisarCatalogoListo]);
+  }, [avisarCatalogoListo, comunaId, catalogoListo]);
 
   // El solape solo tiene sentido si hay tarjetas; con la lista cargando,
   // vacía o con error, el negro termina normal y no tapa esos mensajes.
@@ -369,7 +383,13 @@ export default function DashboardScreen() {
             medidas={{ centroX, ancho: anchoTitulo, alto: altoTitulo, centroY }}
             url={urlTitulo}
             debajo={
-              <ComunaPicker comunas={comunas} selectedId={comunaId} onSelect={elegirComuna} nombre={nombreComuna} />
+              <ComunaPicker
+                comunas={comunas}
+                selectedId={comunaId}
+                onSelect={elegirComuna}
+                nombre={nombreComuna}
+                alAbrir={recargarComunas}
+              />
             }
           />
           {/* Sin sesión, el LOGO es el acceso a la cuenta —no hay barra
@@ -415,8 +435,15 @@ export default function DashboardScreen() {
               // quedar por encima de los botones del sistema al terminar el scroll.
               !session && { paddingBottom: Spacing.five + insets.bottom },
             ]}
+            // Tirar hacia abajo refresca TODO lo que el administrador puede
+            // haber cambiado mientras tanto: comercios, banners, categorías y
+            // la lista de comunas. Quien solo mira el catálogo nunca cambia de
+            // pantalla, así que este gesto es su forma de ponerse al día sin
+            // cerrar la app.
             onRefresh={() => {
               recargarBanners();
+              recargarCategorias();
+              recargarComunas();
               loadPublicaciones({ isRefresh: true });
             }}
             refreshing={refreshing}
