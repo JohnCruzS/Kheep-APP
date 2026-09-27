@@ -117,8 +117,10 @@ export default function ComunasTabScreen() {
                         style={styles.zonaNombre}
                         onPress={() => router.push({ pathname: '/(app)/admin/comuna/[id]', params: { id: comuna.id } })}
                         accessibilityRole="button">
-                        <Text style={[styles.comuna, !comuna.activa && styles.comunaOculta]} numberOfLines={1}>
-                          {'-  '}
+                        {/* Todas en blanco, como la maqueta: lo que dice si la
+                            comuna se ve en la app es el interruptor, no el
+                            color del nombre. */}
+                        <Text style={styles.comuna} numberOfLines={1}>
                           {comuna.nombre}
                         </Text>
                       </Pressable>
@@ -149,37 +151,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: u(REJILLA.margenLateral),
     paddingBottom: Spacing.six,
   },
+  // Negra con un borde tenue, como la maqueta del cliente: el relleno gris de
+  // antes tapaba el borde y la tarjeta se leía como un bloque plomo.
   tarjeta: {
-    backgroundColor: Colors.surface,
+    backgroundColor: '#000000',
     borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+    borderColor: 'rgba(255,255,255,0.14)',
     marginBottom: Spacing.two,
     overflow: 'hidden',
   },
+  // Medidas tomadas de la maqueta del cliente: la fila de la región ocupa el
+  // 21 % del ancho de la pantalla y su nombre entra a un 10,4 % del borde.
   cabecera: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
+    paddingHorizontal: 31,
+    paddingVertical: 22,
   },
   region: {
     fontFamily: Fonts.medium,
     flex: 1,
-    fontSize: 23,
+    fontSize: 27.5,
     color: Colors.text,
   },
+  // Gris, no rojo: es un dato al margen —cuántas comunas de la región se ven
+  // en la app—, no una alerta ni una acción.
   contador: {
     fontFamily: Fonts.medium,
-    fontSize: 17,
-    color: Colors.accent,
+    fontSize: 21,
+    color: Colors.textMuted,
   },
+  // Las comunas entran más adentro que el nombre de la región (14,2 % del
+  // ancho, contra 10,4 %), como en la maqueta.
   filaComuna: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: Spacing.five,
-    paddingRight: Spacing.four,
+    paddingLeft: 47,
+    paddingRight: 31,
     paddingVertical: Spacing.two,
   },
   zonaNombre: {
@@ -188,11 +198,7 @@ const styles = StyleSheet.create({
   },
   comuna: {
     fontFamily: Fonts.light,
-    fontSize: 21,
+    fontSize: 27,
     color: Colors.text,
-  },
-  comunaOculta: {
-    color: Colors.textMuted,
-    opacity: 0.55,
   },
 });

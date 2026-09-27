@@ -3,8 +3,9 @@ import { Animated, Pressable, StyleSheet } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 
-const ANCHO = 55;
-const ALTO = 28;
+// Medidas de la maqueta del cliente: 45 x 27 (proporción 1,67).
+const ANCHO = 45;
+const ALTO = 27;
 /** Aire entre el círculo y el borde de la cápsula: el círculo no llena el alto. */
 const AIRE = 3.5;
 const CIRCULO = ALTO - AIRE * 2;

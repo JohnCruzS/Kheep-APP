@@ -17,10 +17,10 @@ import { supabase } from '@/lib/supabase';
  * métricas. Lo que sí depende de la comuna (categorías y perfiles) vive en la
  * pestaña de Comunas.
  *
- * Es una lista de tarjetas grandes con el nombre en rojo, sin iconos ni
- * descripciones: son cuatro destinos y el nombre basta, así se toca sin
- * apuntar. Debajo, en gris, lo secundario: limpieza, la propia cuenta y
- * cerrar sesión.
+ * Es una lista de tarjetas negras con borde tenue y el nombre en blanco, sin
+ * iconos ni descripciones: los nombres son cortos y bastan para saber a dónde
+ * lleva cada una. Al final, "Salir" en rojo y sin tarjeta, porque no es un
+ * destino sino una acción. Medidas tomadas de la maqueta del cliente.
  */
 export function PanelGeneral() {
   const router = useRouter();
@@ -76,17 +76,20 @@ export function PanelGeneral() {
             <Opcion label="Métricas" onPress={() => router.push('/(app)/admin/metricas')} />
           </>
         )}
-        {esGeneral && <Opcion label="Administradores" onPress={() => router.push('/(app)/admin/administradores')} />}
+        {esGeneral && <Opcion label="Admins" onPress={() => router.push('/(app)/admin/administradores')} />}
 
-        {esGeneral && <Opcion label="Limpieza" tenue onPress={() => router.push('/(app)/admin/limpieza')} />}
+        {/* "Datos": las imágenes que ya no usa nadie y el contenido vencido. */}
+        {esGeneral && <Opcion label="Datos" onPress={() => router.push('/(app)/admin/limpieza')} />}
 
         {/* La cuenta del propio admin: al pasar esta pestaña a ser el panel,
             "Editar perfil" y "Cerrar sesión" se quedaban sin ningún camino. */}
-        <Opcion label="Mi cuenta" tenue onPress={() => router.push('/(app)/perfil/cuenta')} />
+        <Opcion label="Cuenta" onPress={() => router.push('/(app)/perfil/cuenta')} />
 
-        {/* A la vista, no escondido dentro de "Mi cuenta": el admin comparte
+        {/* A la vista, no escondido dentro de "Cuenta": el admin comparte
             teléfono o entra desde otro y tiene que poder salir sin buscar. */}
-        <Opcion label="Cerrar sesión" tenue onPress={confirmarCierre} />
+        <Pressable style={styles.salir} onPress={confirmarCierre} accessibilityRole="button">
+          <Text style={styles.salirLabel}>Salir</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -95,18 +98,15 @@ export function PanelGeneral() {
 function Opcion({
   label,
   insignia,
-  tenue,
   onPress,
 }: {
   label: string;
   insignia?: number;
-  /** Para lo secundario, que no compita con las cuatro opciones de trabajo. */
-  tenue?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable style={({ pressed }) => [styles.tarjeta, pressed && styles.tarjetaPresionada]} onPress={onPress}>
-      <Text style={[styles.label, tenue && styles.labelTenue]}>{label}</Text>
+      <Text style={styles.label}>{label}</Text>
       {insignia !== undefined && (
         <View style={styles.insignia}>
           <Text style={styles.insigniaLabel}>{insignia}</Text>
@@ -125,16 +125,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: u(REJILLA.margenLateral),
     paddingBottom: Spacing.six,
   },
+  // Maqueta del cliente: tarjeta negra con borde tenue, de un 21 % del ancho
+  // de la pantalla de alto, y el nombre a un 11,6 % del borde.
   tarjeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: '#000000',
     borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.five,
-    marginBottom: Spacing.two,
+    borderColor: 'rgba(255,255,255,0.14)',
+    // Un 15 % más compacto que la maqueta: ahí el panel ocupa toda la
+    // pantalla, y acá abajo está la barra de pestañas. Así las siete
+    // opciones y "Salir" entran sin tener que desplazar.
+    paddingHorizontal: 34,
+    paddingVertical: 16,
+    marginBottom: 9,
   },
   tarjetaPresionada: {
     backgroundColor: Colors.backgroundAlt,
@@ -143,11 +148,17 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.light,
     flex: 1,
     fontSize: 25,
-    color: Colors.accent,
+    color: Colors.text,
   },
-  labelTenue: {
-    fontSize: 21,
-    color: Colors.textMuted,
+  salir: {
+    alignItems: 'center',
+    marginTop: 16,
+    paddingVertical: 10,
+  },
+  salirLabel: {
+    fontFamily: Fonts.light,
+    fontSize: 25,
+    color: Colors.accent,
   },
   insignia: {
     backgroundColor: Colors.accent,

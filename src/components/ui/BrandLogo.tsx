@@ -97,6 +97,15 @@ export function TituloPosicionado({
    */
   recorteArriba?: number;
 }) {
+  /**
+   * Lo que mide lo que acompaña al título (el nombre de la comuna). Se mide
+   * al dibujarlo y se descuenta del tope: el logo y el nombre bajan juntos y
+   * se frenan juntos, así el nombre nunca se sale del perímetro. Antes solo
+   * se limitaba el logo y, con el título abajo, el nombre quedaba fuera y
+   * desaparecía: parecía que no acompañaba al logo.
+   */
+  const [altoDebajo, setAltoDebajo] = useState(0);
+
   // El alto y el ancho son medidas independientes (documento EDIT APP): la
   // imagen se estira a cada lado por separado, así que `contentFit="fill"`.
   const anchoLogo = Math.round(medidas.ancho * unidad);
@@ -111,7 +120,8 @@ export function TituloPosicionado({
     // el logo: así entra entero, pase lo que pase con las medidas guardadas.
     // `floor`: con `round`, el píxel que se gana al redondear dejaba el logo
     // asomando justo por encima del banner.
-    const tope = Math.max(0, Math.floor(altoPerimetro * unidad) - altoLogo);
+    const separacion = debajo !== undefined ? Math.round(SEPARACION_DEBAJO * unidad) + altoDebajo : 0;
+    const tope = Math.max(0, Math.floor(altoPerimetro * unidad) - altoLogo - separacion);
     arribaSinRecorte = Math.min(tope, Math.max(0, arribaSinRecorte));
   }
   const arriba = Math.max(0, Math.round(arribaSinRecorte - recorteArriba));
@@ -143,7 +153,11 @@ export function TituloPosicionado({
               top: arriba + altoLogo + Math.round(SEPARACION_DEBAJO * unidad),
               transform: [{ translateX: Math.round((medidas.centroX - 500) * unidad) }],
             },
-          ]}>
+          ]}
+          onLayout={(e) => {
+            const alto = Math.round(e.nativeEvent.layout.height);
+            setAltoDebajo((anterior) => (anterior === alto ? anterior : alto));
+          }}>
           {debajo}
         </View>
       )}

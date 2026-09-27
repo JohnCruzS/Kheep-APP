@@ -1,3 +1,5 @@
+// SOLO PARA EL PANEL: se llega desde la ficha de un usuario, para revisar
+// lo que publicó. El catálogo ya no entra acá.
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';

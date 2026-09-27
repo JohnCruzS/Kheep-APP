@@ -29,7 +29,7 @@ import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
-const ALTO_FILA = 80;
+const ALTO_FILA = 93;
 
 /**
  * El catálogo de UNA comuna: qué categorías muestra, en qué orden y con qué
@@ -252,7 +252,7 @@ export default function CategoriasDeComunaScreen() {
                     // la fila, que el documento no tiene.
                     onLongPress={gestiona ? () => setAcciones(categoria) : undefined}
                     delayLongPress={300}>
-                    <Text style={[styles.nombre, !categoria.visible && styles.nombreOculto]} numberOfLines={1}>
+                    <Text style={styles.nombre} numberOfLines={1}>
                       {categoria.nombre}
                     </Text>
                   </Pressable>
@@ -381,28 +381,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing.four,
   },
+  // Mismas medidas y colores que la maqueta del cliente: negra con un borde
+  // tenue —el relleno gris tapaba el borde y se leía como un bloque plomo—,
+  // la fila ocupa el 20 % del ancho de la pantalla y la flecha entra a un 11 %.
   fila: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    backgroundColor: Colors.surface,
+    backgroundColor: '#000000',
     borderRadius: u(REJILLA.curvatura),
-    // Misma altura y borde que las tarjetas de región (documento EDIT APP).
     borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    paddingHorizontal: Spacing.three,
-    height: ALTO_FILA - 8,
+    borderColor: 'rgba(255,255,255,0.14)',
+    paddingHorizontal: 19,
+    height: ALTO_FILA - 11,
   },
   filaArrastrando: {
     backgroundColor: Colors.backgroundAlt,
   },
   asa: {
-    paddingHorizontal: Spacing.two,
+    paddingHorizontal: 12,
     paddingVertical: Spacing.two,
   },
   asaIcono: {
     fontFamily: Fonts.light,
-    fontSize: 17,
+    fontSize: 22,
     color: Colors.textMuted,
   },
   zonaNombre: {
@@ -411,12 +413,8 @@ const styles = StyleSheet.create({
   },
   nombre: {
     fontFamily: Fonts.light,
-    fontSize: 19,
+    fontSize: 26,
     color: Colors.text,
-  },
-  nombreOculto: {
-    color: Colors.textMuted,
-    opacity: 0.55,
   },
   masBoton: {
     paddingHorizontal: Spacing.two,

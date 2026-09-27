@@ -7,7 +7,7 @@ import {
   Poppins_800ExtraBold,
   useFonts,
 } from '@expo-google-fonts/poppins';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
 
@@ -19,6 +19,11 @@ import { UbicacionProvider, useUbicacion } from '@/providers/UbicacionProvider';
 function RootNavigator() {
   const { isLoading } = useSession();
   const { estado, catalogoListo } = useUbicacion();
+  // En qué pantalla está la app. Solo el inicio avisa cuando su catálogo está
+  // armado; si se entra directo a otra (un enlace al panel, por ejemplo), ese
+  // aviso no llega nunca y sin esto el arranque se quedaba puesto para siempre.
+  const ruta = usePathname();
+  const enElInicio = ruta === '/' || ruta === '/dashboard';
   const [fontsLoaded] = useFonts({
     Poppins_300Light,
     Poppins_400Regular,
@@ -37,7 +42,10 @@ function RootNavigator() {
    * su contenido. En la bienvenida no, que es una pantalla propia.
    */
   const mostrarArranque =
-    !appLista || estado === 'cargando' || estado === 'cambiando' || (estado === 'listo' && !catalogoListo);
+    !appLista ||
+    estado === 'cargando' ||
+    estado === 'cambiando' ||
+    (enElInicio && estado === 'listo' && !catalogoListo);
 
   return (
     <>

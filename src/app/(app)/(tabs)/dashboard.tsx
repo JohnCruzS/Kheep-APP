@@ -88,7 +88,6 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const publicacionesRef = useRef<PublicacionResumen[]>([]);
   /** Foto que se está viendo completa desde una tarjeta, si hay alguna. */
   const [fotoAbierta, setFotoAbierta] = useState<string | null>(null);
 
@@ -273,10 +272,6 @@ export default function DashboardScreen() {
     return ordenarCatalogo(visibles, categoriasVisibles ?? [], categoriaId);
   }, [deLaComuna, categoriaId, categoriasVisibles]);
 
-  useEffect(() => {
-    publicacionesRef.current = publicaciones;
-  }, [publicaciones]);
-
   // Al volver a Inicio se vuelven a pedir: mientras la pestaña estaba
   // montada pudo aparecer una publicación nueva (recién aprobada, por
   // ejemplo) y antes no se veía hasta cambiar de filtro o de comuna.
@@ -289,17 +284,6 @@ export default function DashboardScreen() {
       }
       loadPublicaciones();
     }, [loadPublicaciones]),
-  );
-
-  // Abrir una publicación también cuenta como interés en su categoría. Se
-  // busca en una ref (no en el estado) para que este callback no cambie con
-  // cada carga y las tarjetas memoizadas no se vuelvan a dibujar.
-  const handleOpenPublicacion = useCallback(
-    (id: string) => {
-      registrarUsoCategoria(publicacionesRef.current.find((p) => p.id === id)?.categoria_id);
-      router.push({ pathname: '/(app)/publicacion/[id]', params: { id } });
-    },
-    [router],
   );
 
   const handleSeleccionarCategoria = useCallback((id: string | null) => {
@@ -317,14 +301,9 @@ export default function DashboardScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: PublicacionResumen }) => (
-      <PublicacionCard
-        publicacion={item}
-        onPress={handleOpenPublicacion}
-        onContactar={handleContactar}
-        onVerFoto={setFotoAbierta}
-      />
+      <PublicacionCard publicacion={item} onContactar={handleContactar} onVerFoto={setFotoAbierta} />
     ),
-    [handleOpenPublicacion, handleContactar],
+    [handleContactar],
   );
 
   const keyExtractor = useCallback((item: PublicacionResumen) => item.id, []);

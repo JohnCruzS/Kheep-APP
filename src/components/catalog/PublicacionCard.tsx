@@ -1,17 +1,30 @@
 import { Image } from 'expo-image';
-import { memo, useCallback, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Colors, Fonts } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
 import type { PublicacionResumen } from '@/lib/catalog';
 
+/** Cada cuánto pasa solo al siguiente producto. */
+const AUTOPASO_MS = 3000;
+/** Tras deslizar con el dedo, cuánto se espera antes de retomar el automático. */
+const PAUSA_TRAS_TOCAR_MS = 6000;
+
 type Props = {
   publicacion: PublicacionResumen;
-  onPress: (id: string) => void;
   /** Tocar el título contacta directo por WhatsApp (documento EDIT APP). */
   onContactar: (publicacion: PublicacionResumen) => void;
-  /** Tocar la foto la abre completa, sin entrar a la publicación. */
+  /** Tocar la foto la abre completa. */
   onVerFoto: (url: string) => void;
 };
 
@@ -19,24 +32,69 @@ type Props = {
  * Envuelta en `memo`: en una lista de 20-30 comercios, sin esto React vuelve
  * a renderizar TODAS las tarjetas cada vez que cambia algo arriba (tocar una
  * categoría, abrir el selector de comuna) aunque sus datos no hayan cambiado.
- * `onPress` en el padre está memoizado con useCallback para que la
+ * Los callbacks del padre están memoizados con useCallback para que la
  * comparación funcione de verdad.
  *
  * Layout según la plantilla del cliente: una sola tarjeta de esquinas
- * redondeadas, con un panel blanco angosto a la izquierda — el ícono de la
- * categoría arriba (no centrado) con una sombra suave debajo, como si
- * flotara — y el panel negro con título, foto del producto al centro y
- * nombre + precio abajo, todo en Poppins.
+ * redondeadas con un panel blanco angosto a la izquierda —la foto del
+ * comercio arriba, con una sombra suave debajo, como si flotara— y, a la
+ * derecha, la foto del producto ocupando TODO el panel, apenas oscurecida,
+ * con el nombre del comercio arriba y el del producto y su precio abajo,
+ * sombreados para que se lean sobre cualquier foto.
  */
-function PublicacionCardComponent({ publicacion, onPress, onContactar, onVerFoto }: Props) {
-  const producto = useMemo(
-    () => [...publicacion.productos].sort((a, b) => a.orden - b.orden)[0],
+function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props) {
+  const productos = useMemo(
+    () => [...publicacion.productos].sort((a, b) => a.orden - b.orden),
     [publicacion.productos],
   );
-  const handlePress = useCallback(() => onPress(publicacion.id), [onPress, publicacion.id]);
+  // Los productos son una galería: pasan solos cada 3 segundos, se pueden
+  // deslizar con el dedo, y el nombre y el precio de abajo son siempre los
+  // del que se está viendo.
+  const [indice, setIndice] = useState(0);
+  const [ancho, setAncho] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  /** Momento hasta el cual no avanza solo, porque la persona acaba de tocar. */
+  const pausaHasta = useRef(0);
+  /** Si el desplazamiento que terminó lo hizo el dedo y no el avance automático. */
+  const loMovioElDedo = useRef(false);
+  /** El índice, para leerlo dentro del temporizador sin recrearlo. */
+  const indiceRef = useRef(0);
+  const producto = productos[Math.min(indice, productos.length - 1)];
+
+  function medir(e: LayoutChangeEvent) {
+    setAncho(Math.round(e.nativeEvent.layout.width));
+  }
+
+  function alDeslizar(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (ancho <= 0) return;
+    const visible = Math.max(0, Math.min(productos.length - 1, Math.round(e.nativeEvent.contentOffset.x / ancho)));
+    indiceRef.current = visible;
+    setIndice((anterior) => (anterior === visible ? anterior : visible));
+  }
+
+  useEffect(() => {
+    if (productos.length < 2 || ancho <= 0) return;
+    const id = setInterval(() => {
+      if (Date.now() < pausaHasta.current) return;
+      // Solo se mueve la galería: el nombre y el precio los cambia el propio
+      // desplazamiento (`alDeslizar`). Si acá se adelantara el índice, el
+      // texto cambiaba antes que la foto y por un instante no correspondían.
+      const siguiente = (indiceRef.current + 1) % productos.length;
+      scrollRef.current?.scrollTo({ x: siguiente * ancho, animated: true });
+    }, AUTOPASO_MS);
+    return () => clearInterval(id);
+  }, [productos.length, ancho]);
+
+  function pausar() {
+    loMovioElDedo.current = true;
+    pausaHasta.current = Date.now() + PAUSA_TRAS_TOCAR_MS;
+  }
 
   return (
-    <Pressable onPress={handlePress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+    /* La tarjeta no lleva a ninguna pantalla: tiene todo lo que hace falta.
+       Sus acciones son la foto del comercio y la del producto (se abren
+       completas) y el nombre, que contacta por WhatsApp. */
+    <View style={styles.row}>
       {/* La foto del comercio, no un icono: se toca para verla completa
           (documento EDIT APP). */}
       <View style={styles.iconPanel}>
@@ -54,52 +112,93 @@ function PublicacionCardComponent({ publicacion, onPress, onContactar, onVerFoto
         <View style={styles.iconShadow} />
       </View>
 
-      <View style={styles.contentPanel}>
-        <View style={styles.titleRow}>
-          {/* El título es el atajo a WhatsApp; el resto de la tarjeta abre la
-              publicación. Por eso el toque se detiene acá. */}
-          <Pressable
-            style={styles.titlePress}
-            onPress={() => onContactar(publicacion)}
-            accessibilityRole="button"
-            accessibilityLabel={`Contactar a ${publicacion.titulo} por WhatsApp`}>
-            <Text style={styles.title} numberOfLines={1}>
-              {publicacion.titulo}
-            </Text>
-          </Pressable>
-          {publicacion.destacado && <Text style={styles.destacado}>★</Text>}
-        </View>
-
-        <View style={styles.imageWrap}>
-          {producto?.imagen_url ? (
+      <View style={styles.contentPanel} onLayout={medir}>
+        {/* La galería llena el panel entero, por debajo de los textos. */}
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEnabled={productos.length > 1}
+          onScroll={alDeslizar}
+          // El dedo tocando la galería ya cuenta como "la está mirando": desde
+          // ahí no avanza sola. `onScrollBeginDrag` no siempre llega (un
+          // deslizamiento corto no lo dispara), por eso también el toque.
+          onTouchStart={pausar}
+          onScrollBeginDrag={pausar}
+          onMomentumScrollEnd={(e) => {
+            // La pausa es solo para quien desliza con el dedo. Si se aplicara
+            // también al terminar el avance automático, la galería pasaría un
+            // producto y se quedaría quieta.
+            if (loMovioElDedo.current) {
+              loMovioElDedo.current = false;
+              pausaHasta.current = Date.now() + PAUSA_TRAS_TOCAR_MS;
+            }
+            alDeslizar(e);
+          }}
+          scrollEventThrottle={16}
+          style={StyleSheet.absoluteFill}>
+          {productos.map((p) => (
             <Pressable
-              style={styles.imagePress}
-              onPress={() => onVerFoto(producto.imagen_url!)}
+              key={p.imagen_url ?? p.nombre}
+              style={[styles.pagina, { width: ancho }]}
+              onPress={() => p.imagen_url && onVerFoto(p.imagen_url)}
+              disabled={!p.imagen_url}
               accessibilityRole="imagebutton"
-              accessibilityLabel={`Ver foto de ${producto.nombre}`}>
-              <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="contain" />
+              accessibilityLabel={`Ver foto de ${p.nombre}`}>
+              {p.imagen_url ? (
+                <Image source={{ uri: p.imagen_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+              ) : (
+                <View style={[StyleSheet.absoluteFill, styles.sinFoto]} />
+              )}
             </Pressable>
-          ) : (
-            <View style={[styles.productImage, styles.productImageFallback]} />
+          ))}
+        </ScrollView>
+
+        {/* Semioscurecido: la foto se ve entera, pero el texto encima se lee
+            aunque la imagen sea clara. */}
+        <View style={styles.velo} pointerEvents="none" />
+
+        {/* Los textos van encima de la foto. `box-none` deja pasar el dedo a la
+            galería en todo lo que no sea el propio título. */}
+        <View style={styles.textos} pointerEvents="box-none">
+          <View style={styles.titleRow} pointerEvents="box-none">
+            <Pressable
+              style={styles.titlePress}
+              onPress={() => onContactar(publicacion)}
+              accessibilityRole="button"
+              accessibilityLabel={`Contactar a ${publicacion.titulo} por WhatsApp`}>
+              <Text style={styles.title} numberOfLines={1}>
+                {publicacion.titulo}
+              </Text>
+            </Pressable>
+            {publicacion.destacado && <Text style={styles.destacado}>★</Text>}
+          </View>
+
+          {producto && (
+            <View style={styles.bottomRow} pointerEvents="none">
+              <Text style={styles.productName} numberOfLines={1}>
+                {producto.nombre}
+              </Text>
+              {producto.precio > 0 && (
+                <Text style={styles.price}>$ {producto.precio.toLocaleString('es-CL')}</Text>
+              )}
+            </View>
           )}
         </View>
-
-        {producto && (
-          <View style={styles.bottomRow}>
-            <Text style={styles.productName} numberOfLines={1}>
-              {producto.nombre}
-            </Text>
-            {producto.precio > 0 && (
-              <Text style={styles.price}>$ {producto.precio.toLocaleString('es-CL')}</Text>
-            )}
-          </View>
-        )}
       </View>
-    </Pressable>
+    </View>
   );
 }
 
 export const PublicacionCard = memo(PublicacionCardComponent);
+
+/** Sombra de los textos sobre la foto, para que se lean siempre. */
+const SOMBRA = {
+  textShadowColor: 'rgba(0,0,0,0.85)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 6,
+} as const;
 
 const styles = StyleSheet.create({
   row: {
@@ -108,9 +207,6 @@ const styles = StyleSheet.create({
     borderRadius: u(REJILLA.curvatura),
     overflow: 'hidden',
     backgroundColor: '#0D0D0D',
-  },
-  pressed: {
-    opacity: 0.9,
   },
   iconPanel: {
     width: '23%',
@@ -136,6 +232,29 @@ const styles = StyleSheet.create({
   },
   contentPanel: {
     flex: 1,
+    overflow: 'hidden',
+  },
+  pagina: {
+    height: '100%',
+  },
+  sinFoto: {
+    backgroundColor: Colors.surface,
+  },
+  velo: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  textos: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'space-between',
     paddingTop: 18,
     paddingLeft: 19,
     paddingRight: 12,
@@ -152,43 +271,19 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 4,
   },
-  // Solo la imagen, no la franja entera: antes el área tocable ocupaba todo
-  // el ancho y tocar AL LADO de la foto la abría igual, cuando ahí lo que
-  // corresponde es entrar a la publicación.
-  imagePress: {
-    width: '72%',
-    height: '100%',
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   title: {
     flexShrink: 1,
     fontFamily: Fonts.medium,
     fontSize: 24,
     lineHeight: 32,
     color: Colors.text,
+    ...SOMBRA,
   },
   destacado: {
     fontFamily: Fonts.light,
     fontSize: 14,
     color: Colors.accent,
-  },
-  imageWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 6,
-  },
-  productImage: {
-    width: '100%',
-    height: '100%',
-  },
-  productImageFallback: {
-    width: '72%',
-    alignSelf: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 6,
+    ...SOMBRA,
   },
   bottomRow: {
     flexDirection: 'row',
@@ -201,6 +296,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: Colors.text,
+    ...SOMBRA,
   },
   price: {
     marginLeft: 8,
@@ -208,5 +304,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: Colors.text,
+    ...SOMBRA,
   },
 });
