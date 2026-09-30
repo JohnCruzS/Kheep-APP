@@ -9,16 +9,17 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { EmptyState, ErrorState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { BannerAdmin, CUPO_BANNERS, eliminarBanner, fetchBannersActivosAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { bannersEnMemoria, precargarBanners } from '@/lib/cacheAdmin';
 import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
@@ -64,8 +65,19 @@ export default function BannersAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { permisos } = useSession();
-  const [banners, setBanners] = useState<BannerAdmin[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Lo que dejó precargado el panel: se muestra al tiro, sin ruedita, y por
+  // detrás se vuelve a pedir.
+  const filtrar = useCallback(
+    (todos: BannerAdmin[]) =>
+      // El de zona administra los banners de sus comunas; los de "todas las
+      // comunas" son del administrador general.
+      permisos?.esGeneral ? todos : todos.filter((b) => b.comuna_id && permisos?.comunas.includes(b.comuna_id)),
+    [permisos],
+  );
+  const precargados = bannersEnMemoria();
+  const [banners, setBanners] = useState<BannerAdmin[]>(precargados ? filtrar(precargados) : []);
+  /** Solo la primera vez que no hay nada en memoria. */
+  const [loading, setLoading] = useState(precargados === null);
   const [error, setError] = useState<string | null>(null);
   const [eliminando, setEliminando] = useState<string | null>(null);
   /** En qué banner está el carrusel: lo que se ve debajo es de ESE banner. */
@@ -81,21 +93,15 @@ export default function BannersAdminScreen() {
   }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
-      const todos = await fetchBannersActivosAdmin();
-      // El de zona administra los banners de sus comunas; los de "todas las
-      // comunas" son del administrador general.
-      setBanners(
-        permisos?.esGeneral ? todos : todos.filter((b) => b.comuna_id && permisos?.comunas.includes(b.comuna_id)),
-      );
+      setBanners(filtrar(await precargarBanners()));
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
       setLoading(false);
     }
-  }, [permisos]);
+  }, [filtrar]);
 
   useEffect(() => {
     load();
@@ -152,7 +158,11 @@ export default function BannersAdminScreen() {
           de lo mismo y separarlas obligaba a salir y volver a entrar. */}
       <EncabezadoMarca subtitulo="Banners" onVolver={() => router.back()} />
 
-      {loading && <LoadingState />}
+      {loading && (
+        <View style={styles.carrusel}>
+          <View style={[styles.card, styles.silueta]} />
+        </View>
+      )}
       {error && <ErrorState message={error} onRetry={load} />}
       {!loading && !error && banners.length === 0 && (
         <EmptyState title="No hay banners activos" message="Cuando haya banners mostrándose en la app, aparecerán acá." />
@@ -317,6 +327,9 @@ const styles = StyleSheet.create({
   carrusel: {
     marginHorizontal: u(REJILLA.margenLateral),
     marginTop: Spacing.three,
+  },
+  silueta: {
+    height: u(REJILLA.bannerAlto) + 260,
   },
   hueco: {
     flex: 1,

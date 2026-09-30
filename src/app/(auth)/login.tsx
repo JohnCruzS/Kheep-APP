@@ -1,6 +1,7 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import { AuthCard } from '@/components/ui/AuthCard';
 import { Button } from '@/components/ui/Button';

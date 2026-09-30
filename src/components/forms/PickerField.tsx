@@ -1,5 +1,7 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
+import { useTarjetaClara } from '@/components/ui/TarjetaClara';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 type Option = { id: string; label: string };
@@ -25,11 +27,20 @@ export function PickerField({
   options: Option[];
   onSelect: (id: string) => void;
 }) {
+  // Sobre la tarjeta blanca (publicar) va como los campos de texto: una línea
+  // debajo, sin cápsula ni flecha.
+  const claro = useTarjetaClara();
   return (
     <View style={styles.container}>
-      <Pressable onPress={onToggle} style={styles.row}>
-        <Text style={value ? styles.value : styles.placeholder}>{value || label}</Text>
-        <Text style={styles.chevron}>{open ? '︿' : '﹀'}</Text>
+      <Pressable onPress={onToggle} style={[styles.row, claro && styles.rowClaro]}>
+        <Text
+          style={[
+            value ? styles.value : styles.placeholder,
+            claro && (value ? styles.valueClaro : styles.placeholderClaro),
+          ]}>
+          {value || label}
+        </Text>
+        {!claro && <Text style={styles.chevron}>{open ? '︿' : '﹀'}</Text>}
       </Pressable>
 
       {open && (
@@ -66,6 +77,27 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     fontFamily: Fonts.light,
+    fontSize: 18,
+    color: Colors.placeholder,
+  },
+  rowClaro: {
+    marginTop: -Spacing.two,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    height: undefined,
+    // Mismo alto que un campo de texto sobre la tarjeta: el TextInput trae su
+    // propio relleno arriba y abajo, y un texto suelto no.
+    paddingTop: 10,
+    paddingBottom: 18,
+  },
+  valueClaro: {
+    fontSize: 18,
+    color: Colors.cardText,
+  },
+  placeholderClaro: {
     fontSize: 18,
     color: Colors.placeholder,
   },

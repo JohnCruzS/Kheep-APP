@@ -1,9 +1,10 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PanelGeneral } from '@/components/admin/PanelGeneral';
 import { VistaCuenta } from '@/components/perfil/VistaCuenta';
-import { BrandLogo } from '@/components/ui/BrandLogo';
+import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Button } from '@/components/ui/Button';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { useSession } from '@/providers/SessionProvider';
@@ -53,10 +54,7 @@ export default function PerfilScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.header}>
-        <BrandLogo height={29} />
-        <Text style={styles.eyebrow}>Perfil</Text>
-      </View>
+      <EncabezadoMarca subtitulo="Perfil" />
 
       {/* Desplazable: en pantallas más chicas el contenido no cabe entero y
           el botón de cerrar sesión quedaba cortado bajo la barra de abajo. */}
@@ -95,17 +93,6 @@ const styles = StyleSheet.create({
   reintentar: {
     alignSelf: 'stretch',
     marginTop: Spacing.three,
-  },
-  header: {
-    alignItems: 'center',
-    paddingTop: Spacing.four,
-    paddingBottom: Spacing.four,
-  },
-  eyebrow: {
-    fontFamily: Fonts.light,
-    marginTop: 2,
-    fontSize: 13,
-    color: Colors.textMuted,
   },
   card: {
     flex: 1,

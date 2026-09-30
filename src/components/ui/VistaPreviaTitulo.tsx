@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import { TituloPosicionado } from '@/components/ui/BrandLogo';
 import { Colors, Fonts } from '@/constants/theme';

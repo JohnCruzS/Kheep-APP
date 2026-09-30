@@ -3,6 +3,8 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@expo-google-fonts/arimo": "^0.4.3",
+    "@expo-google-fonts/montserrat": "^0.4.2",
     "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/ui": "~57.0.14",
     "@expo/vector-icons": "^15.0.2",

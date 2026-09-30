@@ -312,6 +312,11 @@ type NuevaPublicacion = {
   categoriaId: string | null;
   comunaId: string | null;
   logoUrl: string | null;
+  /**
+   * A dónde escriben los interesados. Si no viene, se usa el del perfil: un
+   * comercio puede atender en otro número sin cambiar el de la cuenta.
+   */
+  telefono?: string | null;
   productos: NuevoProducto[];
 };
 
@@ -338,8 +343,9 @@ export async function crearPublicacion(input: NuevaPublicacion): Promise<string>
     .single();
 
   if (perfilError) throw perfilError;
-  if (!perfil?.telefono_contacto) {
-    throw new Error('Agrega un teléfono de contacto en tu perfil antes de publicar.');
+  const telefono = input.telefono?.trim() || perfil?.telefono_contacto;
+  if (!telefono) {
+    throw new Error('Escribe el teléfono al que quieres que te escriban.');
   }
 
   const { data: publicacion, error } = await supabase
@@ -347,7 +353,7 @@ export async function crearPublicacion(input: NuevaPublicacion): Promise<string>
     .insert({
       usuario_id: auth.user.id,
       titulo: input.titulo,
-      telefono: perfil.telefono_contacto,
+      telefono,
       categoria_id: input.categoriaId,
       comuna_id: input.comunaId,
       logo_url: input.logoUrl,
@@ -401,6 +407,8 @@ type EditarPublicacion = {
   categoriaId: string | null;
   comunaId: string | null;
   logoUrl: string | null;
+  /** A dónde escriben los interesados; si no viene, no se cambia. */
+  telefono?: string;
 };
 
 /**
@@ -417,6 +425,7 @@ export async function actualizarPublicacion(id: string, input: EditarPublicacion
       categoria_id: input.categoriaId,
       comuna_id: input.comunaId,
       logo_url: input.logoUrl,
+      ...(input.telefono ? { telefono: input.telefono } : {}),
     })
     .eq('id', id);
 

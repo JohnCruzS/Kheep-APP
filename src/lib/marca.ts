@@ -327,7 +327,36 @@ export async function crearLogo(input: {
     fecha_fin: input.fechaFin,
   });
   if (error) throw error;
+  await limpiarLogosSobrantes();
   invalidarMarca();
+}
+
+/**
+ * Deja un solo logo "de siempre" (sin fechas): el último subido reemplaza al
+ * anterior. Los con fechas son temporales —mientras duran le ganan al de
+ * siempre y al vencer la app vuelve a él— y se borran una vez vencidos.
+ * Si algo falla no se interrumpe nada: lo sobrante nunca se muestra igual,
+ * porque gana el más nuevo.
+ */
+export async function limpiarLogosSobrantes(): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from('logos_tematicos')
+      .select('id, fecha_inicio, fecha_fin')
+      .order('created_at', { ascending: false });
+    const filas = (data as Pick<LogoTematico, 'id' | 'fecha_inicio' | 'fecha_fin'>[] | null) ?? [];
+    const hoy = hoyISO();
+    const deSiempre = filas.filter((l) => !l.fecha_inicio && !l.fecha_fin);
+    const sobrantes = [
+      ...deSiempre.slice(1).map((l) => l.id),
+      ...filas.filter((l) => l.fecha_fin && l.fecha_fin < hoy).map((l) => l.id),
+    ];
+    if (sobrantes.length === 0) return;
+    await supabase.from('logos_tematicos').delete().in('id', sobrantes);
+    invalidarMarca();
+  } catch {
+    // Sin conexión o sin permiso: se reintenta la próxima vez.
+  }
 }
 
 /** Las medidas actuales del título, para editarlas en el panel. */

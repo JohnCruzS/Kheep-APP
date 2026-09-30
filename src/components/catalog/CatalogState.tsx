@@ -1,4 +1,5 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import { Button } from '@/components/ui/Button';
 import { Colors, Fonts, Spacing } from '@/constants/theme';

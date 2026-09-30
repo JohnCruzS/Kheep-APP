@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Stack } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { ErrorState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
 import { ControlMedida } from '@/components/ui/ControlMedida';
 import { Guias, VistaPreviaTitulo } from '@/components/ui/VistaPreviaTitulo';
-import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
 import { getErrorMessage } from '@/lib/errors';
@@ -17,38 +17,19 @@ import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/
 import {
   ANCHO_MIN,
   PERIMETRO_ALTO,
-  EstadoLogo,
   LogoTematico,
   MEDIDAS_POR_DEFECTO,
   MedidasLogo,
-  actualizarLogoActivo,
   crearLogo,
-  eliminarLogo,
   esErrorMigracionFaltante,
   estadoLogo,
-  fetchLogosAdmin,
-  fetchMedidasLogo,
-  formatearFecha,
   guardarMedidasLogo,
+  limpiarLogosSobrantes,
   parseFecha,
   restablecerMedidasPorDefecto,
 } from '@/lib/marca';
 import { supabase } from '@/lib/supabase';
-
-const ETIQUETA_ESTADO: Record<EstadoLogo, string> = {
-  vigente: 'Vigente hoy',
-  programado: 'Programado',
-  vencido: 'Vencido',
-  inactivo: 'Desactivado',
-};
-
-function rangoFechas(logo: LogoTematico): string {
-  const { fecha_inicio: ini, fecha_fin: fin } = logo;
-  if (ini && fin) return `Del ${formatearFecha(ini)} al ${formatearFecha(fin)}`;
-  if (ini) return `Desde el ${formatearFecha(ini)}`;
-  if (fin) return `Hasta el ${formatearFecha(fin)}`;
-  return 'Siempre (sin fechas)';
-}
+import { precargarTitulo, recordarMedidasTitulo, tituloEnMemoria } from '@/lib/cacheAdmin';
 
 /**
  * El logo que la app está mostrando hoy, con el mismo criterio de desempate
@@ -86,8 +67,10 @@ const mismasMedidas = (a: MedidasLogo, b: MedidasLogo) =>
  */
 export default function LogosAdminScreen() {
   const insets = useSafeAreaInsets();
-  const [logos, setLogos] = useState<LogoTematico[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Lo que el panel ya dejó precargado: la pantalla aparece completa y con
+  // las medidas reales al instante, sin ruedita. Por detrás se vuelve a pedir.
+  const precargado = tituloEnMemoria();
+  const [logos, setLogos] = useState<LogoTematico[]>(precargado?.logos ?? []);
   const [error, setError] = useState<string | null>(null);
   const [faltaMigracion, setFaltaMigracion] = useState(false);
   const [creando, setCreando] = useState(false);
@@ -95,28 +78,36 @@ export default function LogosAdminScreen() {
   // `guardadas` es lo que hoy ven los usuarios y `medidas` lo que el admin
   // está probando: mientras difieran aparece el botón de guardar, porque el
   // cambio afecta a todo el mundo y no debe aplicarse por tocar un "+".
-  const [medidas, setMedidas] = useState<MedidasLogo>(MEDIDAS_POR_DEFECTO);
-  const [guardadas, setGuardadas] = useState<MedidasLogo>(MEDIDAS_POR_DEFECTO);
+  const [medidas, setMedidas] = useState<MedidasLogo>(precargado?.medidas ?? MEDIDAS_POR_DEFECTO);
+  const [guardadas, setGuardadas] = useState<MedidasLogo>(precargado?.medidas ?? MEDIDAS_POR_DEFECTO);
+  /** Lo guardado, para compararlo dentro del refresco sin recrearlo. */
+  const guardadasRef = useRef(guardadas);
+  useEffect(() => {
+    guardadasRef.current = guardadas;
+  }, [guardadas]);
   const [guardando, setGuardando] = useState(false);
   const [guias, setGuias] = useState<Guias>({ centro: false, alto: false, ancho: false });
   // Forma de la imagen que se está mostrando (ancho ÷ alto). La avisa la
   // vista previa al cargarla, y de ella sale el "Alto" del título.
   const [, setProporcion] = useState(483 / 143);
 
+  // Refresca por detrás. Si el administrador ya empezó a mover algo, sus
+  // cambios sin guardar no se pisan: solo se actualiza lo guardado.
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     setFaltaMigracion(false);
     try {
-      const [lista, actuales] = await Promise.all([fetchLogosAdmin(), fetchMedidasLogo()]);
+      // Borra los logos que ya no corresponden (los "de siempre" reemplazados
+      // y los con fecha vencidos) antes de leer la lista.
+      await limpiarLogosSobrantes();
+      const { logos: lista, medidas: actuales } = await precargarTitulo();
       setLogos(lista);
-      setMedidas(actuales);
+      const antes = guardadasRef.current;
+      setMedidas((m) => (m.centroY === antes.centroY && m.alto === antes.alto && m.ancho === antes.ancho ? actuales : m));
       setGuardadas(actuales);
     } catch (err) {
       if (esErrorMigracionFaltante(err)) setFaltaMigracion(true);
       else setError(getErrorMessage(err, 'Error desconocido.'));
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -130,6 +121,7 @@ export default function LogosAdminScreen() {
     try {
       await guardarMedidasLogo(medidas);
       setGuardadas(medidas);
+      recordarMedidasTitulo(medidas);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudieron guardar las medidas.'));
     } finally {
@@ -163,35 +155,6 @@ export default function LogosAdminScreen() {
     );
   }
 
-  async function handleToggle(logo: LogoTematico) {
-    const nuevo = !logo.activo;
-    setLogos((list) => list.map((l) => (l.id === logo.id ? { ...l, activo: nuevo } : l)));
-    try {
-      await actualizarLogoActivo(logo.id, nuevo);
-    } catch (err) {
-      setLogos((list) => list.map((l) => (l.id === logo.id ? { ...l, activo: logo.activo } : l)));
-      setError(getErrorMessage(err, 'No se pudo actualizar el logo.'));
-    }
-  }
-
-  function handleEliminar(logo: LogoTematico) {
-    Alert.alert('Eliminar logo', `¿Eliminar "${logo.nombre}"? Si estaba vigente, la app vuelve al logo normal.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await eliminarLogo(logo.id);
-            load();
-          } catch (err) {
-            setError(getErrorMessage(err, 'No se pudo eliminar el logo.'));
-          }
-        },
-      },
-    ]);
-  }
-
   const vigente = logoDeHoy(logos);
   const hayCambios = !mismasMedidas(medidas, guardadas);
   const enDefecto = mismasMedidas(guardadas, MEDIDAS_POR_DEFECTO);
@@ -220,7 +183,6 @@ export default function LogosAdminScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-        {loading && <LoadingState />}
         {error && <ErrorState message={error} onRetry={load} />}
 
         {faltaMigracion && (
@@ -305,34 +267,6 @@ export default function LogosAdminScreen() {
           </Pressable>
         )}
 
-        {logos.map((logo) => {
-          const estado = estadoLogo(logo);
-          return (
-            <View key={logo.id} style={styles.row}>
-              <View style={styles.thumb}>
-                <Image source={{ uri: logo.imagen_url }} style={styles.thumbImg} contentFit="contain" />
-              </View>
-              <View style={styles.rowInfo}>
-                <Text style={styles.nombre} numberOfLines={1}>
-                  {logo.nombre}
-                </Text>
-                <Text style={styles.fechas}>{rangoFechas(logo)}</Text>
-                <Text style={[styles.estado, estado === 'vigente' && styles.estadoVigente]}>
-                  {ETIQUETA_ESTADO[estado]}
-                </Text>
-              </View>
-              <View style={styles.rowActions}>
-                <Interruptor
-                  value={logo.activo}
-                  onValueChange={() => handleToggle(logo)}
-                />
-                <Pressable onPress={() => handleEliminar(logo)} hitSlop={8}>
-                  <Text style={styles.eliminar}>Eliminar</Text>
-                </Pressable>
-              </View>
-            </View>
-          );
-        })}
       </ScrollView>
 
       <NuevoLogoModal visible={creando} onClose={() => setCreando(false)} onSaved={load} />
@@ -437,7 +371,7 @@ function NuevoLogoModal({ visible, onClose, onSaved }: { visible: boolean; onClo
                 style={[styles.input, styles.inputFecha]}
               />
             </View>
-            <Text style={styles.fechasHint}>Deja las fechas vacías para que quede siempre.</Text>
+            <Text style={styles.fechasHint}>Sin fechas, reemplaza al logo actual. Con fechas, se muestra solo esos días y después vuelve el actual.</Text>
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -540,61 +474,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: Spacing.four,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: Spacing.three,
-    marginBottom: Spacing.two,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-  },
-  thumb: {
-    width: 84,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: Colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thumbImg: {
-    width: '90%',
-    height: '80%',
-  },
-  rowInfo: {
-    flex: 1,
-  },
-  nombre: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  fechas: {
-    fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  estado: {
-    fontFamily: Fonts.medium,
-    fontSize: 11.5,
-    color: Colors.textMuted,
-    marginTop: 4,
-  },
-  estadoVigente: {
-    color: Colors.success,
-  },
-  rowActions: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  eliminar: {
-    fontFamily: Fonts.medium,
-    fontSize: 12,
-    color: Colors.danger,
   },
   backdrop: {
     flex: 1,

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Tabs, type BottomTabBarButtonProps } from 'expo-router/js-tabs';
+import { useEffect } from 'react';
 import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors, Fonts } from '@/constants/theme';
+import { precargarComunas } from '@/lib/cacheAdmin';
 import { useSession } from '@/providers/SessionProvider';
 
 /**
@@ -26,6 +28,12 @@ export default function TabsLayout() {
   // General o de zona: los dos tienen las pestañas de administración; lo
   // que ve cada uno adentro depende de sus permisos.
   const isAdmin = profile?.rol === 'admin' || profile?.rol === 'admin_zona';
+
+  // Las ~346 comunas del panel se piden en segundo plano apenas entra un
+  // administrador: al tocar la pestaña ya están y aparecen al instante.
+  useEffect(() => {
+    if (isAdmin) void precargarComunas().catch(() => {});
+  }, [isAdmin]);
 
   return (
     <Tabs

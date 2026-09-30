@@ -1,4 +1,5 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import { useTarjetaClara } from '@/components/ui/TarjetaClara';
 import { Colors, Fonts, Spacing } from '@/constants/theme';

@@ -168,7 +168,9 @@ export const BannerCarousel = memo(BannerCarouselComponent);
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginBottom: 22,
+    // Sin margen abajo: la fila de categorías empieza justo donde termina el
+    // banner (maqueta: 340 + 450 + 185 + 577).
+    marginBottom: 0,
     overflow: 'hidden',
     borderRadius: u(REJILLA.curvatura),
   },

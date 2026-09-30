@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { Pressable, StyleProp, StyleSheet, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import { useTarjetaClara } from '@/components/ui/TarjetaClara';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
@@ -11,6 +12,8 @@ type TextFieldProps = TextInputProps & {
   error?: string;
   /** Texto de ayuda con el formato esperado, se muestra debajo mientras no haya error. */
   hint?: string;
+  /** Ajustes del bloque completo (por ejemplo, su separación con el de arriba). */
+  estiloContenedor?: StyleProp<ViewStyle>;
 };
 
 export function TextField({
@@ -21,6 +24,7 @@ export function TextField({
   style,
   onFocus,
   onBlur,
+  estiloContenedor,
   ...inputProps
 }: TextFieldProps) {
   // Dentro de la tarjeta blanca del acceso el campo es una línea; fuera, una
@@ -36,7 +40,7 @@ export function TextField({
   const { registrarCampo, soltarCampo } = useCampoVisible();
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, estiloContenedor]}>
       <View style={[styles.inputRow, claro && styles.inputRowClaro]}>
         <TextInput
           ref={inputRef}

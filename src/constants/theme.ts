@@ -54,13 +54,19 @@ export const Radius = {
  * de `fontWeight` — mezclar ambos en Android puede hacer que caiga a la
  * fuente del sistema.
  */
+/**
+ * Todas las letras de la app en Poppins Light (pedido del cliente). Se
+ * conservan los nombres de las variantes para no tocar cada pantalla, pero
+ * todas apuntan a la misma fuente. Los números y la barra "/" tienen fuentes
+ * propias: ver components/ui/Texto.tsx.
+ */
 export const Fonts = {
   light: 'Poppins_300Light',
-  regular: 'Poppins_400Regular',
-  medium: 'Poppins_500Medium',
-  semiBold: 'Poppins_600SemiBold',
-  bold: 'Poppins_700Bold',
-  extraBold: 'Poppins_800ExtraBold',
+  regular: 'Poppins_300Light',
+  medium: 'Poppins_300Light',
+  semiBold: 'Poppins_300Light',
+  bold: 'Poppins_300Light',
+  extraBold: 'Poppins_300Light',
 } as const;
 
 /**

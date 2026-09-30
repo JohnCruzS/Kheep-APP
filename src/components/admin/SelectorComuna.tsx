@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TituloPosicionado } from '@/components/ui/BrandLogo';

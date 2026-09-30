@@ -7,9 +7,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import { Colors, Fonts } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';

@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
@@ -8,6 +9,7 @@ import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { puede } from '@/lib/administradores';
 import { useSession } from '@/providers/SessionProvider';
 import { fetchPublicacionesPendientes } from '@/lib/catalog';
+import { precargarBanners, precargarTitulo } from '@/lib/cacheAdmin';
 import { REJILLA, u } from '@/lib/rejilla';
 import { supabase } from '@/lib/supabase';
 
@@ -32,13 +34,17 @@ export function PanelGeneral() {
   useFocusEffect(
     useCallback(() => {
       let activo = true;
+      // En segundo plano: cuando se toque "Título" o "Banners", sus datos ya
+      // van a estar y la pantalla aparece completa, sin ruedita de carga.
+      if (esGeneral) void precargarTitulo().catch(() => {});
+      void precargarBanners().catch(() => {});
       fetchPublicacionesPendientes()
         .then((lista) => activo && setPendientes(lista.length))
         .catch(() => activo && setPendientes(null));
       return () => {
         activo = false;
       };
-    }, []),
+    }, [esGeneral]),
   );
 
   function confirmarCierre() {
@@ -138,8 +144,8 @@ const styles = StyleSheet.create({
     // pantalla, y acá abajo está la barra de pestañas. Así las siete
     // opciones y "Salir" entran sin tener que desplazar.
     paddingHorizontal: 34,
-    paddingVertical: 16,
-    marginBottom: 9,
+    paddingVertical: 15,
+    marginBottom: 10,
   },
   tarjetaPresionada: {
     backgroundColor: Colors.backgroundAlt,

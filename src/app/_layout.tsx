@@ -1,12 +1,6 @@
-import {
-  Poppins_300Light,
-  Poppins_400Regular,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-  Poppins_800ExtraBold,
-  useFonts,
-} from '@expo-google-fonts/poppins';
+import { Arimo_400Regular } from '@expo-google-fonts/arimo';
+import { Montserrat_500Medium } from '@expo-google-fonts/montserrat';
+import { Poppins_300Light, useFonts } from '@expo-google-fonts/poppins';
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View } from 'react-native';
@@ -24,13 +18,12 @@ function RootNavigator() {
   // aviso no llega nunca y sin esto el arranque se quedaba puesto para siempre.
   const ruta = usePathname();
   const enElInicio = ruta === '/' || ruta === '/dashboard';
+  // Las tres fuentes de la app: Poppins Light para las letras, Arimo (el
+  // equivalente de Arial) para los números y Montserrat Medium para la "/".
   const [fontsLoaded] = useFonts({
     Poppins_300Light,
-    Poppins_400Regular,
-    Poppins_500Medium,
-    Poppins_600SemiBold,
-    Poppins_700Bold,
-    Poppins_800ExtraBold,
+    Arimo_400Regular,
+    Montserrat_500Medium,
   });
 
   // La app puede dibujarse: hay sesión resuelta y tipografías.

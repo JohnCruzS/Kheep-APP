@@ -1,13 +1,15 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
-import { ComunaAdmin, actualizarComunaActiva, fetchComunasAdmin } from '@/lib/catalog';
+import { ComunaAdmin, actualizarComunaActiva } from '@/lib/catalog';
+import { comunasEnMemoria, precargarComunas, recordarComunas } from '@/lib/cacheAdmin';
 import { getErrorMessage } from '@/lib/errors';
 import { compararRegiones, nombreRegion } from '@/lib/regiones';
 import { REJILLA, u } from '@/lib/rejilla';
@@ -31,16 +33,18 @@ export default function ComunasTabScreen() {
   const esGeneral = permisos?.esGeneral ?? false;
   const router = useRouter();
 
-  const [comunas, setComunas] = useState<ComunaAdmin[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Lo último que se trajo queda en memoria: al volver a la pestaña la lista
+  // aparece al tiro y se refresca por detrás, sin ruedita. La ruedita sale
+  // solo la primera vez, si todavía no llegó nada.
+  const [comunas, setComunas] = useState<ComunaAdmin[]>(() => comunasEnMemoria() ?? []);
+  const [loading, setLoading] = useState(() => comunasEnMemoria() === null);
   const [error, setError] = useState<string | null>(null);
   const [regionAbierta, setRegionAbierta] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
-      setComunas(await fetchComunasAdmin());
+      setComunas(await precargarComunas());
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
@@ -71,11 +75,19 @@ export default function ComunasTabScreen() {
 
   async function handleToggle(comuna: ComunaAdmin) {
     const nuevo = !comuna.activa;
-    setComunas((list) => list.map((c) => (c.id === comuna.id ? { ...c, activa: nuevo } : c)));
+    setComunas((list) => {
+      const nueva = list.map((c) => (c.id === comuna.id ? { ...c, activa: nuevo } : c));
+      recordarComunas(nueva);
+      return nueva;
+    });
     try {
       await actualizarComunaActiva(comuna.id, nuevo);
     } catch (err) {
-      setComunas((list) => list.map((c) => (c.id === comuna.id ? { ...c, activa: comuna.activa } : c)));
+      setComunas((list) => {
+        const vuelta = list.map((c) => (c.id === comuna.id ? { ...c, activa: comuna.activa } : c));
+        recordarComunas(vuelta);
+        return vuelta;
+      });
       setError(getErrorMessage(err, 'No se pudo actualizar la comuna.'));
     }
   }

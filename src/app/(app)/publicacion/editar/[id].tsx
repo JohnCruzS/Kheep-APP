@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
@@ -9,9 +10,9 @@ import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
 import { PickerField } from '@/components/forms/PickerField';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
-import { FormScroll } from '@/components/ui/FormScroll';
+import { LienzoPublicacion, useMedidaProducto } from '@/components/forms/LienzoPublicacion';
 import { TextField } from '@/components/ui/TextField';
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
   Categoria,
   Comuna,
@@ -70,6 +71,23 @@ export default function EditarPublicacionScreen() {
     load();
   }, [load]);
 
+  // Con la publicación cargada, el mismo diseño que publicar: negro arriba,
+  // tarjeta blanca y la foto montada sobre su borde.
+  if (!loading && !error && publicacion) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <EditarForm
+          publicacion={publicacion}
+          comunas={comunas}
+          categorias={categorias}
+          onDeleted={() => router.back()}
+          onVolver={() => router.back()}
+        />
+      </>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -81,16 +99,6 @@ export default function EditarPublicacionScreen() {
       {!loading && !error && !publicacion && (
         <EmptyState title="No encontramos esta publicación" message="Puede que ya no exista." />
       )}
-      {!loading && !error && publicacion && (
-        <View style={styles.card}>
-          <EditarForm
-            publicacion={publicacion}
-            comunas={comunas}
-            categorias={categorias}
-            onDeleted={() => router.back()}
-          />
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -100,14 +108,17 @@ function EditarForm({
   comunas,
   categorias,
   onDeleted,
+  onVolver,
 }: {
   publicacion: PublicacionDetalle;
   comunas: Comuna[];
   categorias: Categoria[];
   onDeleted: () => void;
+  onVolver: () => void;
 }) {
-  const router = useRouter();
+  const medidaProducto = useMedidaProducto();
   const [titulo, setTitulo] = useState(publicacion.titulo);
+  const [telefono, setTelefono] = useState(publicacion.telefono);
   const [logo, setLogo] = useState<PickedImage | null>(null);
   const [logoUrl, setLogoUrl] = useState(publicacion.logo_url);
 
@@ -205,6 +216,12 @@ function EditarForm({
       setError('Ponle un nombre a tu negocio.');
       return;
     }
+    // Mismo formato que exige la base (migración 0007): +569 y ocho dígitos.
+    const telefonoLimpio = telefono.replace(/[^\d+]/g, '');
+    if (!/^\+569\d{8}$/.test(telefonoLimpio)) {
+      setError('El teléfono tiene que ser +569 y ocho dígitos, por ejemplo +56912345678.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -217,6 +234,7 @@ function EditarForm({
         categoriaId,
         comunaId,
         logoUrl: finalLogoUrl,
+        telefono: telefonoLimpio,
       });
 
       setLogoUrl(finalLogoUrl);
@@ -251,21 +269,16 @@ function EditarForm({
     );
   }
 
-  // `FormScroll` resuelve el teclado igual que en toda la app: reserva su
-  // alto y corre el formulario si el campo enfocado quedaría tapado.
   return (
-    <FormScroll contentContainerStyle={styles.formContent}>
-      <Pressable onPress={handlePickLogo} style={styles.avatarWrapper}>
-        {logo ? (
-          <Image source={{ uri: logo.uri }} style={styles.avatarImage} contentFit="cover" />
-        ) : logoUrl ? (
-          <Image source={{ uri: logoUrl }} style={styles.avatarImage} contentFit="cover" />
-        ) : (
-          <View style={styles.avatarPlaceholder} />
-        )}
-      </Pressable>
-
-      <TextField label="Nombre" value={titulo} onChangeText={setTitulo} autoCapitalize="words" />
+    <LienzoPublicacion fotoUri={logo?.uri ?? logoUrl ?? null} onElegirFoto={handlePickLogo} onVolver={onVolver}>
+      <TextField
+        label="Nombre"
+        value={titulo}
+        onChangeText={setTitulo}
+        autoCapitalize="words"
+        style={styles.nombre}
+        estiloContenedor={styles.filaCampo}
+      />
 
       <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
@@ -281,75 +294,72 @@ function EditarForm({
         }}
       />
 
-      <Pressable onPress={() => router.push('/(app)/perfil/editar')}>
-        <Text style={styles.telefonoNota}>
-          Los interesados te van a escribir al{' '}
-          <Text style={styles.telefonoNotaFuerte}>{publicacion.telefono}</Text> de tu perfil. ¿Cambió? Edítalo ahí →
-        </Text>
-      </Pressable>
+      <TextField
+        label="Teléfono"
+        value={telefono}
+        onChangeText={setTelefono}
+        keyboardType="phone-pad"
+        autoComplete="tel"
+        estiloContenedor={styles.filaCampo}
+      />
 
-      <Text style={styles.sectionLabel}>PRODUCTOS ({productos.length}/5)</Text>
-
+      {/* Los productos que ya tiene. */}
       {productos.map((producto) => (
-        <View key={producto.id} style={styles.productoRow}>
+        <View key={producto.id} style={styles.productoFila}>
           {producto.imagen_url ? (
-            <Image source={{ uri: producto.imagen_url }} style={styles.productoThumb} contentFit="cover" />
+            <Image source={{ uri: producto.imagen_url }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
           ) : (
-            <View style={[styles.productoThumb, styles.productoThumbEmpty]} />
+            <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
           )}
-          <View style={styles.productoInfo}>
+          <View style={styles.productoTextos}>
             <Text style={styles.productoNombre} numberOfLines={1}>
-              {producto.nombre}
+              {producto.nombre || 'Producto'}
             </Text>
-            {producto.precio > 0 && (
-              <Text style={styles.productoPrecio}>${producto.precio.toLocaleString('es-CL')}</Text>
-            )}
+            <Text style={styles.productoPrecio}>
+              {producto.precio > 0 ? `$${producto.precio.toLocaleString('es-CL')}` : 'Sin precio'}
+            </Text>
           </View>
           <Pressable onPress={() => handleQuitarExistente(producto.id)} hitSlop={8}>
-            <Text style={styles.productoQuitar}>Quitar</Text>
+            <Text style={styles.quitar}>Quitar</Text>
           </Pressable>
         </View>
       ))}
 
+      {/* Uno nuevo: foto, nombre y precio. */}
       {productos.length < 5 && (
-        <View style={styles.productoRow}>
+        <View style={styles.productoFila}>
           <Pressable onPress={handlePickProductoImage}>
             {draft.image ? (
-              <Image source={{ uri: draft.image.uri }} style={styles.productoThumb} contentFit="cover" />
+              <Image source={{ uri: draft.image.uri }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
             ) : (
-              <View style={[styles.productoThumb, styles.productoThumbEmpty]} />
+              <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
             )}
           </Pressable>
-          <View style={styles.productoInfo}>
+          <View style={styles.productoTextos}>
             <TextInput
               placeholder="Producto"
-              placeholderTextColor={Colors.placeholder}
+              placeholderTextColor={Colors.cardText}
               value={draft.nombre}
               onChangeText={(text) => setDraft((d) => ({ ...d, nombre: text.slice(0, MAX_NOMBRE_PRODUCTO) }))}
               maxLength={MAX_NOMBRE_PRODUCTO}
-              style={styles.productoInput}
+              style={styles.productoNombreInput}
             />
-            {/* El tope se ve mientras se escribe: si no, el campo simplemente
-                deja de aceptar letras y parece que falla. */}
-            <Text style={styles.contador}>
-              {draft.nombre.length}/{MAX_NOMBRE_PRODUCTO}
-            </Text>
             <TextInput
-              placeholder="Precio (opcional)"
-              placeholderTextColor={Colors.placeholder}
+              placeholder="Precio"
+              placeholderTextColor={Colors.cardText}
               value={draft.precio}
               onChangeText={(text) =>
                 setDraft((d) => ({ ...d, precio: text.replace(/[^0-9]/g, '').slice(0, MAX_DIGITOS_PRECIO) }))
               }
               keyboardType="number-pad"
               maxLength={MAX_DIGITOS_PRECIO}
-              style={[styles.productoInput, styles.productoInputMuted]}
+              style={styles.productoPrecioInput}
             />
           </View>
         </View>
       )}
 
-      <Button label="Agregar producto" onPress={handleAgregarProducto} />
+      <Button label="Agregar" onPress={handleAgregarProducto} />
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {success ? <Text style={styles.successText}>{success}</Text> : null}
@@ -357,13 +367,13 @@ function EditarForm({
       {saving ? (
         <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.three }} />
       ) : (
-        <Button label="Guardar cambios" variant="secondary" onPress={handleGuardar} />
+        <Button label="Guardar" variant="secondary" onPress={handleGuardar} />
       )}
 
-      <Pressable onPress={handleEliminarPublicacion} style={styles.deleteRow}>
-        <Text style={styles.deleteLabel}>Eliminar publicación</Text>
+      <Pressable onPress={handleEliminarPublicacion} style={styles.eliminar}>
+        <Text style={styles.eliminarLabel}>Eliminar publicación</Text>
       </Pressable>
-    </FormScroll>
+    </LienzoPublicacion>
   );
 }
 
@@ -372,123 +382,54 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  topBar: {
+  nombre: {
+    textAlign: 'center',
+  },
+  // Todas las filas a la misma distancia, como la maqueta.
+  filaCampo: {
+    marginTop: Spacing.three,
+  },
+  productoFila: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
+    gap: Spacing.three,
+    marginTop: Spacing.one,
   },
-  backLabel: {
-    fontFamily: Fonts.medium,
-    color: Colors.text,
-    fontSize: 15,
-    width: 70,
+  productoFoto: {
+    borderRadius: 8,
   },
-  topTitle: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.text,
-    fontSize: 15,
+  productoFotoVacia: {
+    backgroundColor: '#B3B3B3',
   },
-  card: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-  },
-  formContent: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.five,
-    paddingBottom: Spacing.six,
-  },
-  avatarWrapper: {
-    alignSelf: 'center',
-    marginBottom: Spacing.two,
-  },
-  avatarPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.avatar,
-    backgroundColor: '#D9D9D9',
-  },
-  avatarImage: {
-    width: 72,
-    height: 72,
-    borderRadius: Radius.avatar,
-  },
-  sectionLabel: {
-    fontFamily: Fonts.semiBold,
-    marginTop: Spacing.five,
-    marginBottom: Spacing.two,
-    fontSize: 11,
-    letterSpacing: 0.6,
-    color: Colors.textMuted,
-  },
-  telefonoNota: {
-    fontFamily: Fonts.light,
-    marginTop: Spacing.four,
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
-  telefonoNotaFuerte: {
-    fontFamily: Fonts.semiBold,
-
-    color: Colors.text,
-  },
-  productoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two + 4,
-    marginBottom: Spacing.three,
-  },
-  productoThumb: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
-  },
-  productoThumbEmpty: {
-    backgroundColor: '#E4E4E4',
-  },
-  productoInfo: {
+  productoTextos: {
     flex: 1,
   },
   productoNombre: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 15,
-    color: Colors.text,
+    fontFamily: Fonts.light,
+    fontSize: 21,
+    color: Colors.cardText,
   },
   productoPrecio: {
     fontFamily: Fonts.light,
-    fontSize: 13,
-    color: Colors.textMuted,
     marginTop: 2,
+    fontSize: 17,
+    color: Colors.cardTextMuted,
   },
-  productoInput: {
-    // Mismo trato que el resto de los campos: fondo propio y esquinas.
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+  productoNombreInput: {
     fontFamily: Fonts.light,
-    fontSize: 15,
-    color: Colors.text,
+    fontSize: 21,
+    color: Colors.cardText,
+    paddingVertical: 2,
   },
-  contador: {
+  productoPrecioInput: {
     fontFamily: Fonts.light,
-    fontSize: 11,
-    color: Colors.textMuted,
-    alignSelf: 'flex-end',
-    marginTop: 2,
-    marginBottom: 4,
+    fontSize: 17,
+    color: Colors.cardText,
+    paddingVertical: 2,
   },
-  productoInputMuted: {
+  quitar: {
     fontFamily: Fonts.light,
     fontSize: 13,
-    color: Colors.textMuted,
-  },
-  productoQuitar: {
-    fontFamily: Fonts.medium,
-    fontSize: 12,
     color: Colors.danger,
   },
   errorText: {
@@ -503,13 +444,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.success,
   },
-  deleteRow: {
-    marginTop: Spacing.five,
+  eliminar: {
+    marginTop: Spacing.four,
     alignItems: 'center',
+    paddingVertical: Spacing.two,
   },
-  deleteLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
+  eliminarLabel: {
+    fontFamily: Fonts.light,
+    fontSize: 15,
     color: Colors.danger,
   },
 });

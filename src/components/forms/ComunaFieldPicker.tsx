@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
+import { useTarjetaClara } from '@/components/ui/TarjetaClara';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
 import { normalizarTexto } from '@/lib/text';
@@ -42,11 +44,21 @@ export function ComunaFieldPicker({
     setBusqueda('');
   }
 
+  // Sobre la tarjeta blanca (publicar) va como los campos de texto: una línea
+  // debajo, sin cápsula ni flecha.
+  const claro = useTarjetaClara();
+
   return (
     <View style={styles.container}>
-      <Pressable onPress={() => setOpen(true)} style={styles.row}>
-        <Text style={value ? styles.value : styles.placeholder}>{value || label}</Text>
-        <Text style={styles.chevron}>﹀</Text>
+      <Pressable onPress={() => setOpen(true)} style={[styles.row, claro && styles.rowClaro]}>
+        <Text
+          style={[
+            value ? styles.value : styles.placeholder,
+            claro && (value ? styles.valueClaro : styles.placeholderClaro),
+          ]}>
+          {value || label}
+        </Text>
+        {!claro && <Text style={styles.chevron}>﹀</Text>}
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={handleClose}>
@@ -123,6 +135,27 @@ const styles = StyleSheet.create({
   placeholder: {
     fontFamily: Fonts.light,
     fontSize: 16,
+    color: Colors.placeholder,
+  },
+  rowClaro: {
+    marginTop: -Spacing.two,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    height: undefined,
+    // Mismo alto que un campo de texto sobre la tarjeta: el TextInput trae su
+    // propio relleno arriba y abajo, y un texto suelto no.
+    paddingTop: 10,
+    paddingBottom: 18,
+  },
+  valueClaro: {
+    fontSize: 18,
+    color: Colors.cardText,
+  },
+  placeholderClaro: {
+    fontSize: 18,
     color: Colors.placeholder,
   },
   chevron: {

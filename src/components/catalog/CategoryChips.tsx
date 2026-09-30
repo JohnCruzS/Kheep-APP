@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import { Colors, Fonts } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
@@ -12,7 +13,7 @@ type Props = {
 };
 
 /**
- * Alto de la fila (95 de 1000, documento EDIT APP). Se usa también para el
+ * Alto de la fila (185 de 1000, documento EDIT APP). Se usa también para el
  * hueco que se deja mientras las categorías todavía no llegan, así el
  * catálogo no da un salto cuando la lista llega.
  */
@@ -63,12 +64,14 @@ const styles = StyleSheet.create({
   cargando: {
     height: ALTO_FILA,
   },
+  // Maqueta del cliente (rejilla de 1000): la primera categoría entra a 70
+  // del borde de la pantalla —el contenedor del catálogo ya aporta 25— y
+  // entre una y otra hay 64. El texto va centrado en la fila de 185: unos 70
+  // arriba y 70 abajo.
   container: {
-    gap: 24,
-    // Sin sangría propia: el contenedor del catálogo ya aplica el margen
-    // lateral de la rejilla (30 de 400), y las categorías deben alinearse
-    // con el borde del banner y de las tarjetas.
-    paddingHorizontal: 0,
+    gap: u(64),
+    paddingLeft: u(70 - REJILLA.margenLateral),
+    paddingRight: u(REJILLA.margenLateral),
     alignItems: 'center',
   },
   label: {

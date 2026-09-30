@@ -38,7 +38,7 @@ import { contactarPorWhatsApp } from '@/lib/whatsapp';
  */
 const SOLAPE_TARJETA = 41;
 /** Espacio entre la fila de categorías y el borde superior de la tarjeta. */
-const ESPACIO_CATEGORIAS_TARJETA = 24;
+const ESPACIO_CATEGORIAS_TARJETA = 0;
 
 export default function DashboardScreen() {
   const router = useRouter();

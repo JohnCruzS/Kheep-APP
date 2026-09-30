@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/components/ui/Texto';
 
 import marcaKheep from '../../../assets/images/marca-arranque.png';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
