@@ -171,6 +171,24 @@ export async function fetchCategorias(comunaId?: string | null): Promise<Categor
 }
 
 /**
+ * La categoría "Otro" tal como está, sin crearla ni tocarla (eso lo hace el
+ * panel con `obtenerCategoriaOtro`). El catálogo la usa para las
+ * publicaciones que quedaron sin una categoría visible: sin "Todas", ahí es
+ * donde se pueden encontrar.
+ */
+export async function fetchCategoriaOtro(): Promise<Categoria | null> {
+  const { data, error } = await supabase
+    .from('categorias')
+    .select('id, nombre, icono, orden')
+    .eq('activa', true)
+    .ilike('nombre', CATEGORIA_OTRO)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Categoria | null) ?? null;
+}
+
+/**
  * Las categorías que hoy tienen al menos un comercio visible en esa comuna.
  *
  * El inicio solo muestra esas: una categoría vacía manda a un catálogo sin
@@ -445,9 +463,14 @@ export async function eliminarPublicacion(id: string): Promise<void> {
 export async function crearProducto(
   publicacionId: string,
   input: { nombre: string; precio: number; imagen_url: string | null; orden: number },
-): Promise<void> {
-  const { error } = await supabase.from('productos').insert({ publicacion_id: publicacionId, ...input });
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('productos')
+    .insert({ publicacion_id: publicacionId, ...input })
+    .select('id')
+    .single();
   if (error) throw error;
+  return data.id as string;
 }
 
 export async function actualizarProducto(
@@ -514,6 +537,19 @@ export async function actualizarPerfil(input: EditarPerfil): Promise<void> {
     .eq('id', auth.user.id);
 
   if (error) throw error;
+
+  // El nombre de sus publicaciones es el de su perfil: si cambió, se cambia
+  // también en ellas (igual que el teléfono, que lo hace la base).
+  const nombre = input.nombre.trim();
+  if (nombre) {
+    const { error: errorPublicaciones } = await supabase
+      .from('publicaciones')
+      .update({ titulo: nombre })
+      .eq('usuario_id', auth.user.id)
+      .is('deleted_at', null)
+      .neq('titulo', nombre);
+    if (errorPublicaciones) throw errorPublicaciones;
+  }
 }
 
 /**

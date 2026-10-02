@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   comuna: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     color: '#8A8A8A',
   },
   banner: {

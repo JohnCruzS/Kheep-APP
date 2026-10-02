@@ -5,7 +5,7 @@ import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import { puede } from '@/lib/administradores';
 import { useSession } from '@/providers/SessionProvider';
 import { fetchPublicacionesPendientes } from '@/lib/catalog';
@@ -136,24 +136,24 @@ const styles = StyleSheet.create({
   tarjeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    // Igual que las tarjetas de las regiones (pedido del cliente): mismo
+    // alto, misma sangría y mismo texto.
+    backgroundColor: TarjetaLista.fondo,
     borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    // Un 15 % más compacto que la maqueta: ahí el panel ocupa toda la
-    // pantalla, y acá abajo está la barra de pestañas. Así las siete
-    // opciones y "Salir" entran sin tener que desplazar.
-    paddingHorizontal: 34,
-    paddingVertical: 15,
-    marginBottom: 10,
+    borderColor: TarjetaLista.borde,
+    paddingHorizontal: TarjetaLista.sangria,
+    paddingVertical: TarjetaLista.aireVertical,
+    marginBottom: TarjetaLista.separacion,
   },
   tarjetaPresionada: {
     backgroundColor: Colors.backgroundAlt,
   },
   label: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.tarjeta,
     flex: 1,
-    fontSize: 25,
+    fontSize: TarjetaLista.tamanoTexto,
+    lineHeight: TarjetaLista.altoLinea,
     color: Colors.text,
   },
   salir: {

@@ -49,6 +49,7 @@ export default function LoginScreen() {
   return (
     <AuthCard eyebrow="Acceso">
       <TextField
+        style={{ fontFamily: Fonts.delgada }}
         label="Correo electrónico"
         value={email}
         onChangeText={setEmail}
@@ -57,6 +58,7 @@ export default function LoginScreen() {
         autoComplete="email"
       />
       <TextField
+        style={{ fontFamily: Fonts.delgada }}
         label="Contraseña"
         value={password}
         onChangeText={setPassword}
@@ -76,7 +78,7 @@ export default function LoginScreen() {
 
       <Link href="/(auth)/forgot-password" asChild>
         <Pressable style={{ marginTop: Spacing.four, alignItems: 'center' }}>
-          <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: Colors.textMuted }}>
+          <Text style={{ fontFamily: Fonts.delgada, fontSize: 15, color: Colors.textMuted }}>
             Olvidaste tu contraseña
           </Text>
         </Pressable>
@@ -88,7 +90,7 @@ export default function LoginScreen() {
       <Pressable
         onPress={() => router.replace('/(app)/(tabs)/dashboard')}
         style={{ marginTop: Spacing.three, alignItems: 'center' }}>
-        <Text style={{ fontFamily: Fonts.light, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
+        <Text style={{ fontFamily: Fonts.delgada, fontSize: 15, color: Colors.textMuted }}>Volver</Text>
       </Pressable>
     </AuthCard>
   );

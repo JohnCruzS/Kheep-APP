@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   subtitulo: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     color: '#8A8A8A',
     maxWidth: '70%',
     textAlign: 'center',

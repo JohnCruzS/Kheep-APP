@@ -37,7 +37,12 @@ export default function AppLayout() {
   return (
     <>
       <AvisoDeComuna />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.background } }} />
+      {/* Sin animación al abrir o cerrar una pantalla (Título, Banners, una
+          comuna...): aparece en su lugar, igual que al cambiar de pestaña,
+          sin el deslizamiento lateral de Android (pedido del cliente). */}
+      <Stack
+        screenOptions={{ headerShown: false, animation: 'none', contentStyle: { backgroundColor: Colors.background } }}
+      />
     </>
   );
 }

@@ -9,7 +9,7 @@ import type { Categoria } from '@/lib/catalog';
 type Props = {
   categorias: Categoria[];
   selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string) => void;
 };
 
 /**
@@ -26,9 +26,7 @@ const ALTO_FILA = u(REJILLA.categoriasAlto);
  */
 function CategoryChipsComponent({ categorias, selectedId, onSelect }: Props) {
   // Mientras se cargan las categorías no se dibuja nada, solo se reserva el
-  // alto de la fila. Antes se veía un "Todas" suelto y en rojo durante esos
-  // segundos —el único chip que no viene del servidor—, que parecía un error
-  // de la app. El hueco evita además que el catálogo dé un salto cuando la
+  // alto de la fila. El hueco evita además que el catálogo dé un salto cuando la
   // lista llega.
   if (categorias.length === 0) {
     return <View style={styles.cargando} />;
@@ -44,8 +42,6 @@ function CategoryChipsComponent({ categorias, selectedId, onSelect }: Props) {
           onPress={() => onSelect(categoria.id)}
         />
       ))}
-      {/* "Todas" va al final de la fila, no al principio (pedido del cliente). */}
-      <Tab label="Todas" active={selectedId === null} onPress={() => onSelect(null)} />
     </ScrollView>
   );
 }
@@ -75,13 +71,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   label: {
-    fontFamily: Fonts.light,
-    fontSize: 21,
+    fontFamily: Fonts.delgada,
+    fontSize: 24,
     lineHeight: ALTO_FILA,
     color: Colors.text,
   },
   labelActive: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     color: Colors.accent,
   },
 });

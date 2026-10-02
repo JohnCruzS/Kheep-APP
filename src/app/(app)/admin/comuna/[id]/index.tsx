@@ -5,19 +5,21 @@ import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { comunasEnMemoria } from '@/lib/cacheAdmin';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { ListaArrastrable } from '@/components/ui/ListaArrastrable';
 import { EditorCategoria } from '@/components/admin/EditorCategoria';
 import { MenuAcciones } from '@/components/admin/MenuAcciones';
 import { SelectorComuna } from '@/components/admin/SelectorComuna';
 import { Interruptor } from '@/components/ui/Interruptor';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { ALTO_TARJETA_LISTA, Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import {
   CategoriaDeComuna,
   Comuna,
   actualizarVisibilidadCategoriaComuna,
   agregarCategoriaATodasLasComunas,
   eliminarCategoria,
+  fetchComuna,
   fetchComunas,
   fetchConfigCategoriasComuna,
   guardarOrdenCategoriasComuna,
@@ -30,7 +32,7 @@ import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
-const ALTO_FILA = 93;
+const ALTO_FILA = ALTO_TARJETA_LISTA + TarjetaLista.separacion;
 
 /**
  * El catálogo de UNA comuna: qué categorías muestra, en qué orden y con qué
@@ -50,7 +52,13 @@ export default function CategoriasDeComunaScreen() {
   /** Puede tocar las categorías de ESTA comuna. */
   const gestiona = puede(permisos, 'categorias', comunaId);
 
-  const [nombreComuna, setNombreComuna] = useState('');
+  // El nombre sale al instante de la lista que ya tiene el panel; después se
+  // confirma con la base. Se busca la comuna directo (no en la lista de las
+  // visibles): una comuna oculta también se administra y antes salía
+  // "Comuna" en vez de su nombre.
+  const [nombreComuna, setNombreComuna] = useState(
+    () => comunasEnMemoria()?.find((c) => c.id === comunaId)?.nombre ?? '',
+  );
   const [comunas, setComunas] = useState<Comuna[]>([]);
   const [categorias, setCategorias] = useState<CategoriaDeComuna[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,10 +73,14 @@ export default function CategoriasDeComunaScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [config, lista] = await Promise.all([fetchConfigCategoriasComuna(comunaId), fetchComunas()]);
+      const [config, lista, comuna] = await Promise.all([
+        fetchConfigCategoriasComuna(comunaId),
+        fetchComunas(),
+        fetchComuna(comunaId),
+      ]);
       setCategorias(config.categorias);
       setComunas(lista);
-      setNombreComuna(lista.find((c) => c.id === comunaId)?.nombre ?? 'Comuna');
+      setNombreComuna(comuna?.nombre ?? 'Comuna');
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
     } finally {
@@ -389,12 +401,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    backgroundColor: '#000000',
+    backgroundColor: TarjetaLista.fondo,
     borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: TarjetaLista.borde,
     paddingHorizontal: 19,
-    height: ALTO_FILA - 11,
+    height: ALTO_FILA - TarjetaLista.separacion,
   },
   filaArrastrando: {
     backgroundColor: Colors.backgroundAlt,
@@ -413,8 +425,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   nombre: {
-    fontFamily: Fonts.light,
-    fontSize: 26,
+    fontFamily: Fonts.tarjeta,
+    fontSize: TarjetaLista.tamanoTexto,
+    lineHeight: TarjetaLista.altoLinea,
     color: Colors.text,
   },
   masBoton: {

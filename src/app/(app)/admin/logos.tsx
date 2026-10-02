@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -41,6 +41,11 @@ function logoDeHoy(logos: LogoTematico[]): LogoTematico | null {
   if (vigentes.length === 0) return null;
   return [...vigentes].sort((a, b) => (b.fecha_inicio ?? '').localeCompare(a.fecha_inicio ?? ''))[0];
 }
+
+/** Aire entre el texto de debajo del título y el banner (rejilla de 1000): 0 = pueden quedar justo al borde, nunca encimados. */
+const AIRE_BANNER = 0;
+/** Distancia del logo al texto de debajo: la misma del inicio y los encabezados. */
+const SEPARACION_TEXTO = 8;
 
 const mismasMedidas = (a: MedidasLogo, b: MedidasLogo) =>
   a.centroX === b.centroX && a.ancho === b.ancho && a.centroY === b.centroY;
@@ -155,12 +160,31 @@ export default function LogosAdminScreen() {
     );
   }
 
+  // Márgenes del título, en la rejilla de 1000 y para ESTA pantalla: ni el
+  // logo ni el texto de debajo (la comuna, "Chile", "Admin"...) pueden tocar
+  // lo que los rodea — la barra de arriba, el banner o los bordes. Se mide
+  // con el mismo tamaño de texto que usan el inicio y los encabezados.
+  const { width: anchoPantalla } = useWindowDimensions();
+  const unidad = anchoPantalla / 1000;
+  const tamanoTexto = Math.min(26, Math.max(14, Math.round((anchoPantalla * 45) / 1000)));
+  const altoTexto = Math.round(tamanoTexto * 1.3) / unidad;
+  const arribaMin = Math.ceil(insets.top / unidad);
+  const abajoMax = Math.floor(PERIMETRO_ALTO - AIRE_BANNER - SEPARACION_TEXTO - altoTexto);
+  const margenCentro = {
+    min: Math.ceil(arribaMin + medidas.alto / 2),
+    max: Math.floor(abajoMax - medidas.alto / 2),
+  };
+  const margenAlto = {
+    max: Math.floor(2 * Math.min(medidas.centroY - arribaMin, abajoMax - medidas.centroY)),
+  };
+  const margenAncho = { max: 1000 - 2 * REJILLA.margenLateral };
+
   const vigente = logoDeHoy(logos);
   const hayCambios = !mismasMedidas(medidas, guardadas);
   const enDefecto = mismasMedidas(guardadas, MEDIDAS_POR_DEFECTO);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       {/* Sin barra de "Volver" ni "+ Nuevo" (documento EDIT APP): arriba va
@@ -208,6 +232,7 @@ export default function LogosAdminScreen() {
               guia={guias.centro}
               onGuia={(centro) => setGuias((g) => ({ ...g, centro }))}
               max={PERIMETRO_ALTO}
+              margen={margenCentro}
             />
             {/* Alto y Ancho son independientes: cada uno estira la imagen
                 por su lado (documento EDIT APP). */}
@@ -219,6 +244,7 @@ export default function LogosAdminScreen() {
               onGuia={(altoGuia) => setGuias((g) => ({ ...g, alto: altoGuia }))}
               min={10}
               max={PERIMETRO_ALTO}
+              margen={margenAlto}
             />
             <ControlMedida
               etiqueta="Ancho"
@@ -227,6 +253,7 @@ export default function LogosAdminScreen() {
               guia={guias.ancho}
               onGuia={(ancho) => setGuias((g) => ({ ...g, ancho }))}
               min={ANCHO_MIN}
+              margen={margenAncho}
             />
           </View>
         )}

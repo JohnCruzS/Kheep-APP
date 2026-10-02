@@ -26,6 +26,7 @@ import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/
 import { compararRegiones, nombreRegion } from '@/lib/regiones';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
+import { FORMATO_RECORTE } from '@/lib/rejilla';
 
 const OPCIONES_DIAS = [3, 7, 15, 30];
 /** Tope de la duración a medida: un año. Más que eso es un error de tecleo. */
@@ -94,7 +95,7 @@ export default function PublicarBannerScreen() {
 
   async function handlePickImagen() {
     try {
-      const image = await pickAndCompressImage({ aspect: [2, 1], uso: 'banner' });
+      const image = await pickAndCompressImage({ uso: 'banner' });
       if (image) setImagen(image);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
@@ -473,12 +474,12 @@ const styles = StyleSheet.create({
   },
   imagePreview: {
     width: '100%',
-    aspectRatio: 2,
+    aspectRatio: FORMATO_RECORTE.banner[0] / FORMATO_RECORTE.banner[1],
     borderRadius: 14,
   },
   imagePlaceholder: {
     width: '100%',
-    aspectRatio: 2,
+    aspectRatio: FORMATO_RECORTE.banner[0] / FORMATO_RECORTE.banner[1],
     borderRadius: 14,
     // Sobre negro: el gris claro de antes era un parche blanco en la
     // pantalla.

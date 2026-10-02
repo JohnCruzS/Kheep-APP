@@ -7,6 +7,7 @@ import { FormScroll } from '@/components/ui/FormScroll';
 import { TarjetaClaraProvider } from '@/components/ui/TarjetaClara';
 import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { FORMATO_RECORTE } from '@/lib/rejilla';
 
 /**
  * Proporciones de la maqueta del cliente para publicar y editar una
@@ -27,7 +28,8 @@ const PROPORCION = {
    * la maqueta no muestra, y así "Guardar" entra sin desplazar.
    */
   productoAncho: 0.34,
-  productoAlto: 0.28,
+  // Misma forma que el recorte y que la foto en la tarjeta (19:15).
+  productoAlto: (0.34 * FORMATO_RECORTE.producto[1]) / FORMATO_RECORTE.producto[0],
 };
 /** Gris claro de la maqueta, por debajo de la tarjeta. */
 const GRIS_FONDO = '#D8D8D8';

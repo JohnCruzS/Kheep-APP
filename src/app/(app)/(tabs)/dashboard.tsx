@@ -21,6 +21,7 @@ import {
   fetchCategorias,
   fetchCategoriasConContenido,
   fetchComuna,
+  fetchCategoriaOtro,
   fetchComunas,
   fetchPublicaciones,
 } from '@/lib/catalog';
@@ -125,8 +126,14 @@ export default function DashboardScreen() {
     // Sin cuenta, las categorías sin ningún comercio no se muestran: solo
     // llevan a un catálogo vacío. Con cuenta se ven todas — el comerciante
     // necesita saber dónde puede publicar y el admin, qué hay montado.
-    Promise.all([fetchCategorias(comunaId), leerUsoCategorias(), fetchCategoriasConContenido(comunaId)])
-      .then(([todas, uso, conContenido]) => {
+    Promise.all([
+      fetchCategorias(comunaId),
+      leerUsoCategorias(),
+      fetchCategoriasConContenido(comunaId),
+      fetchCategoriaOtro().catch(() => null),
+    ])
+      .then(([todas, uso, conContenido, otro]) => {
+        setCategoriaOtro(otro);
         const conComercios = todas.filter((c) => conContenido.has(c.id));
         const categoriasData = session ? todas : conComercios;
         setComunaVacia(conComercios.length === 0);
@@ -179,6 +186,7 @@ export default function DashboardScreen() {
     ordenMostrado.current = null;
     sinElegir.current = true;
     setCategoriasVisibles(null);
+    setCategorias([]);
     setCategoriaId(null);
     setCategoriasListas(false);
     recargarCategorias();
@@ -229,6 +237,8 @@ export default function DashboardScreen() {
   const [categoriasVisibles, setCategoriasVisibles] = useState<string[] | null>(null);
   /** Ninguna categoría de esta comuna tiene comercios todavía. */
   const [comunaVacia, setComunaVacia] = useState(false);
+  /** "Otro": ahí van las publicaciones que no tienen una categoría visible. */
+  const [categoriaOtro, setCategoriaOtro] = useState<Categoria | null>(null);
   /** Ya se resolvió la fila de categorías, aunque haya quedado vacía. */
   const [categoriasListas, setCategoriasListas] = useState(false);
 
@@ -258,19 +268,39 @@ export default function DashboardScreen() {
     loadPublicaciones();
   }, [loadPublicaciones]);
 
-  // Lo que se muestra: la categoría elegida o, en "Todas", solo lo que cuelga
-  // de una categoría visible en esta comuna. Dentro de una categoría va al
-  // azar y en "Todas" agrupado por el orden del admin (ver ordenCatalogo.ts);
-  // el orden se recalcula solo cuando cambia algo de verdad, no en cada
-  // dibujado, para que las tarjetas no salten solas.
+  // Sin "Todas" (pedido del cliente), una publicación sin categoría o de una
+  // categoría que esta comuna no muestra no tendría dónde aparecer: se
+  // muestra en "Otro", como si fuera suya.
+  const esHuerfana = useCallback(
+    (p: PublicacionResumen) => !!categoriasVisibles && (!p.categoria_id || !categoriasVisibles.includes(p.categoria_id)),
+    [categoriasVisibles],
+  );
+  const hayHuerfanas = useMemo(() => deLaComuna.some(esHuerfana), [deLaComuna, esHuerfana]);
+
+  // La fila de categorías: si hay huérfanas y "Otro" no está (la comuna no la
+  // tiene, o sin cuenta se escondió por no tener comercios propios), se suma
+  // al final para que se puedan encontrar.
+  const chips = useMemo(() => {
+    if (!categoriaOtro || !hayHuerfanas || categorias.some((c) => c.id === categoriaOtro.id)) return categorias;
+    return [...categorias, categoriaOtro];
+  }, [categorias, categoriaOtro, hayHuerfanas]);
+
+  // Siempre hay una categoría elegida: si todavía no hay ninguna (o la que
+  // estaba ya no existe), la primera de la fila.
+  useEffect(() => {
+    if (chips.length === 0) return;
+    if (!categoriaId || !chips.some((c) => c.id === categoriaId)) setCategoriaId(chips[0].id);
+  }, [chips, categoriaId]);
+
+  // Lo que se muestra: lo de la categoría elegida, al azar (ver
+  // ordenCatalogo.ts). El orden se recalcula solo cuando cambia algo de
+  // verdad, no en cada dibujado, para que las tarjetas no salten solas.
   const publicaciones = useMemo(() => {
-    const visibles = categoriaId
-      ? deLaComuna.filter((p) => p.categoria_id === categoriaId)
-      : categoriasVisibles
-        ? deLaComuna.filter((p) => p.categoria_id && categoriasVisibles.includes(p.categoria_id))
-        : deLaComuna;
+    if (!categoriaId) return [];
+    const esOtro = categoriaOtro?.id === categoriaId;
+    const visibles = deLaComuna.filter((p) => p.categoria_id === categoriaId || (esOtro && esHuerfana(p)));
     return ordenarCatalogo(visibles, categoriasVisibles ?? [], categoriaId);
-  }, [deLaComuna, categoriaId, categoriasVisibles]);
+  }, [deLaComuna, categoriaId, categoriasVisibles, categoriaOtro, esHuerfana]);
 
   // Al volver a Inicio se vuelven a pedir: mientras la pestaña estaba
   // montada pudo aparecer una publicación nueva (recién aprobada, por
@@ -286,7 +316,7 @@ export default function DashboardScreen() {
     }, [loadPublicaciones]),
   );
 
-  const handleSeleccionarCategoria = useCallback((id: string | null) => {
+  const handleSeleccionarCategoria = useCallback((id: string) => {
     sinElegir.current = false;
     registrarUsoCategoria(id);
     setCategoriaId(id);
@@ -390,8 +420,8 @@ export default function DashboardScreen() {
         <BannerCarousel key={banners.map((b) => b.id).join(',')} banners={banners} />
         {/* La fila solo desaparece para quien mira sin cuenta y no hay nada
             que filtrar; con cuenta se ven todas las categorías. */}
-        {(session || !comunaVacia) && (
-          <CategoryChips categorias={categorias} selectedId={categoriaId} onSelect={handleSeleccionarCategoria} />
+        {(session || !comunaVacia || hayHuerfanas) && (
+          <CategoryChips categorias={chips} selectedId={categoriaId} onSelect={handleSeleccionarCategoria} />
         )}
       </SafeAreaView>
 
@@ -436,7 +466,7 @@ export default function DashboardScreen() {
             removeClippedSubviews
             ItemSeparatorComponent={ItemSeparator}
             ListEmptyComponent={
-              comunaVacia ? (
+              comunaVacia && !hayHuerfanas ? (
                 <EmptyState
                   sobreClaro
                   title="Todavía no hay comercios en esta comuna"

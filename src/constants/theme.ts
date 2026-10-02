@@ -55,19 +55,47 @@ export const Radius = {
  * fuente del sistema.
  */
 /**
- * Todas las letras de la app en Poppins Light (pedido del cliente). Se
- * conservan los nombres de las variantes para no tocar cada pantalla, pero
- * todas apuntan a la misma fuente. Los números y la barra "/" tienen fuentes
- * propias: ver components/ui/Texto.tsx.
+ * Todas las letras de la app en Poppins Medium (pedido del cliente; antes
+ * era Light). Se conservan los nombres de las variantes para no tocar cada
+ * pantalla, pero todas apuntan a la misma fuente. Los números y la barra "/"
+ * tienen fuentes propias: ver components/ui/Texto.tsx.
  */
 export const Fonts = {
-  light: 'Poppins_300Light',
-  regular: 'Poppins_300Light',
-  medium: 'Poppins_300Light',
-  semiBold: 'Poppins_300Light',
-  bold: 'Poppins_300Light',
-  extraBold: 'Poppins_300Light',
+  light: 'Poppins_500Medium',
+  regular: 'Poppins_500Medium',
+  medium: 'Poppins_500Medium',
+  semiBold: 'Poppins_500Medium',
+  bold: 'Poppins_500Medium',
+  extraBold: 'Poppins_500Medium',
+  /** Las tarjetas de lista del panel (regiones, categorías, opciones de Admin). */
+  tarjeta: 'Poppins_500Medium',
+  /**
+   * Poppins Light, solo en los textos que el cliente marcó: el nombre de la
+   * comuna bajo el título (y el subtítulo de cada pantalla), las categorías
+   * del inicio, el nombre del producto en la tarjeta, las comunas dentro de
+   * cada región y los campos y enlaces del acceso.
+   */
+  delgada: 'Poppins_300Light',
 } as const;
+
+/**
+ * La tarjeta de lista del panel, igual en las tres vistas que la usan
+ * (regiones, categorías de una comuna y opciones de Admin): la de las
+ * regiones es el modelo. Negra con borde tenue, mismo alto y mismo texto.
+ */
+export const TarjetaLista = {
+  fondo: '#000000',
+  borde: 'rgba(255,255,255,0.14)',
+  sangria: 31,
+  aireVertical: 22,
+  separacion: 8,
+  tamanoTexto: 27.5,
+  /** Alto de la línea de texto, fijo: así el alto de la tarjeta es exacto en las tres. */
+  altoLinea: 44,
+} as const;
+
+/** Alto total de una tarjeta de lista (aire + línea + borde), sin la separación. */
+export const ALTO_TARJETA_LISTA = TarjetaLista.aireVertical * 2 + TarjetaLista.altoLinea + 2;
 
 /**
  * Distribución en la rejilla base 1000 del cliente: el ancho total de

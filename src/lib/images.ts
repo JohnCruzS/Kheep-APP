@@ -2,6 +2,7 @@ import { decode } from 'base64-arraybuffer';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
+import { FORMATO_RECORTE } from '@/lib/rejilla';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -66,15 +67,20 @@ type OpcionesImagen = {
  * usuario (que puede pesar 10-20MB en un celular moderno).
  */
 export async function pickAndCompressImage(
-  opciones: [number, number] | OpcionesImagen = [1, 1],
+  opciones: [number, number] | OpcionesImagen = {},
 ): Promise<PickedImage | null> {
   const {
-    aspect = [1, 1],
+    aspect: aspectPedido,
     recortar = true,
     formato = 'jpeg',
     uso = 'producto',
   } = Array.isArray(opciones) ? { aspect: opciones } : opciones;
   const anchoMaximo = ANCHO_MAXIMO[uso];
+  // Si no se pide una forma, la del lugar donde se va a mostrar (ver
+  // FORMATO_RECORTE): la tarjeta para un producto, el banner para un banner,
+  // cuadrada para la foto de perfil.
+  const formaPorUso = uso === 'producto' ? FORMATO_RECORTE.producto : uso === 'banner' ? FORMATO_RECORTE.banner : FORMATO_RECORTE.perfil;
+  const aspect: [number, number] = aspectPedido ?? [formaPorUso[0], formaPorUso[1]];
 
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {

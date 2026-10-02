@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Interruptor } from '@/components/ui/Interruptor';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import { ComunaAdmin, actualizarComunaActiva } from '@/lib/catalog';
 import { comunasEnMemoria, precargarComunas, recordarComunas } from '@/lib/cacheAdmin';
 import { getErrorMessage } from '@/lib/errors';
@@ -166,11 +166,11 @@ const styles = StyleSheet.create({
   // Negra con un borde tenue, como la maqueta del cliente: el relleno gris de
   // antes tapaba el borde y la tarjeta se leía como un bloque plomo.
   tarjeta: {
-    backgroundColor: '#000000',
+    backgroundColor: TarjetaLista.fondo,
     borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    marginBottom: Spacing.two,
+    borderColor: TarjetaLista.borde,
+    marginBottom: TarjetaLista.separacion,
     overflow: 'hidden',
   },
   // Medidas tomadas de la maqueta del cliente: la fila de la región ocupa el
@@ -179,13 +179,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingHorizontal: 31,
-    paddingVertical: 22,
+    paddingHorizontal: TarjetaLista.sangria,
+    paddingVertical: TarjetaLista.aireVertical,
   },
   region: {
-    fontFamily: Fonts.medium,
+    fontFamily: Fonts.tarjeta,
     flex: 1,
-    fontSize: 27.5,
+    fontSize: TarjetaLista.tamanoTexto,
+    lineHeight: TarjetaLista.altoLinea,
     color: Colors.text,
   },
   // Gris, no rojo: es un dato al margen —cuántas comunas de la región se ven
@@ -209,7 +210,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
   },
   comuna: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 27,
     color: Colors.text,
   },

@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   LayoutChangeEvent,
   NativeScrollEvent,
@@ -14,11 +14,6 @@ import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
 import type { PublicacionResumen } from '@/lib/catalog';
-
-/** Cada cuánto pasa solo al siguiente producto. */
-const AUTOPASO_MS = 3000;
-/** Tras deslizar con el dedo, cuánto se espera antes de retomar el automático. */
-const PAUSA_TRAS_TOCAR_MS = 6000;
 
 type Props = {
   publicacion: PublicacionResumen;
@@ -47,18 +42,11 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
     () => [...publicacion.productos].sort((a, b) => a.orden - b.orden),
     [publicacion.productos],
   );
-  // Los productos son una galería: pasan solos cada 3 segundos, se pueden
-  // deslizar con el dedo, y el nombre y el precio de abajo son siempre los
+  // Los productos son una galería que se pasa con el dedo (ya no avanza
+  // sola, pedido del cliente); el nombre y el precio de abajo son siempre los
   // del que se está viendo.
   const [indice, setIndice] = useState(0);
   const [ancho, setAncho] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
-  /** Momento hasta el cual no avanza solo, porque la persona acaba de tocar. */
-  const pausaHasta = useRef(0);
-  /** Si el desplazamiento que terminó lo hizo el dedo y no el avance automático. */
-  const loMovioElDedo = useRef(false);
-  /** El índice, para leerlo dentro del temporizador sin recrearlo. */
-  const indiceRef = useRef(0);
   const producto = productos[Math.min(indice, productos.length - 1)];
 
   function medir(e: LayoutChangeEvent) {
@@ -68,26 +56,7 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
   function alDeslizar(e: NativeSyntheticEvent<NativeScrollEvent>) {
     if (ancho <= 0) return;
     const visible = Math.max(0, Math.min(productos.length - 1, Math.round(e.nativeEvent.contentOffset.x / ancho)));
-    indiceRef.current = visible;
     setIndice((anterior) => (anterior === visible ? anterior : visible));
-  }
-
-  useEffect(() => {
-    if (productos.length < 2 || ancho <= 0) return;
-    const id = setInterval(() => {
-      if (Date.now() < pausaHasta.current) return;
-      // Solo se mueve la galería: el nombre y el precio los cambia el propio
-      // desplazamiento (`alDeslizar`). Si acá se adelantara el índice, el
-      // texto cambiaba antes que la foto y por un instante no correspondían.
-      const siguiente = (indiceRef.current + 1) % productos.length;
-      scrollRef.current?.scrollTo({ x: siguiente * ancho, animated: true });
-    }, AUTOPASO_MS);
-    return () => clearInterval(id);
-  }, [productos.length, ancho]);
-
-  function pausar() {
-    loMovioElDedo.current = true;
-    pausaHasta.current = Date.now() + PAUSA_TRAS_TOCAR_MS;
   }
 
   return (
@@ -115,27 +84,12 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
       <View style={styles.contentPanel} onLayout={medir}>
         {/* La galería llena el panel entero, por debajo de los textos. */}
         <ScrollView
-          ref={scrollRef}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           scrollEnabled={productos.length > 1}
           onScroll={alDeslizar}
-          // El dedo tocando la galería ya cuenta como "la está mirando": desde
-          // ahí no avanza sola. `onScrollBeginDrag` no siempre llega (un
-          // deslizamiento corto no lo dispara), por eso también el toque.
-          onTouchStart={pausar}
-          onScrollBeginDrag={pausar}
-          onMomentumScrollEnd={(e) => {
-            // La pausa es solo para quien desliza con el dedo. Si se aplicara
-            // también al terminar el avance automático, la galería pasaría un
-            // producto y se quedaría quieta.
-            if (loMovioElDedo.current) {
-              loMovioElDedo.current = false;
-              pausaHasta.current = Date.now() + PAUSA_TRAS_TOCAR_MS;
-            }
-            alDeslizar(e);
-          }}
+          onMomentumScrollEnd={alDeslizar}
           scrollEventThrottle={16}
           style={StyleSheet.absoluteFill}>
           {productos.map((p) => (
@@ -292,7 +246,7 @@ const styles = StyleSheet.create({
   },
   productName: {
     flexShrink: 1,
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 16,
     lineHeight: 22,
     color: Colors.text,

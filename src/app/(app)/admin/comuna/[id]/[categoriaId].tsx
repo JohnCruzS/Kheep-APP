@@ -6,6 +6,7 @@ import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { comunasEnMemoria } from '@/lib/cacheAdmin';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
@@ -15,7 +16,7 @@ import {
   eliminarPerfil,
   eliminarPublicacionesDePerfil,
   fetchCategoriasAdmin,
-  fetchComunas,
+  fetchComuna,
   fetchPerfilesDeCategoria,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
@@ -41,7 +42,11 @@ export default function PerfilesDeCategoriaScreen() {
   const esGeneral = permisos?.esGeneral ?? false;
 
   const [perfiles, setPerfiles] = useState<PerfilEnCategoria[]>([]);
-  const [comunaNombre, setComunaNombre] = useState('');
+  // Igual que en la lista de categorías: el nombre al instante desde la
+  // memoria y la comuna buscada directo, aunque esté oculta.
+  const [comunaNombre, setComunaNombre] = useState(
+    () => comunasEnMemoria()?.find((c) => c.id === comunaId)?.nombre ?? '',
+  );
   const [tituloCategoria, setTituloCategoria] = useState('Categoría');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,13 +55,13 @@ export default function PerfilesDeCategoriaScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [lista, comunas, categorias] = await Promise.all([
+      const [lista, comuna, categorias] = await Promise.all([
         fetchPerfilesDeCategoria(comunaId, categoriaId),
-        fetchComunas(),
+        fetchComuna(comunaId),
         fetchCategoriasAdmin(),
       ]);
       setPerfiles(lista);
-      setComunaNombre(comunas.find((c) => c.id === comunaId)?.nombre ?? 'Comuna');
+      setComunaNombre(comuna?.nombre ?? 'Comuna');
       setTituloCategoria(categorias.find((c) => c.id === categoriaId)?.nombre ?? 'Categoría');
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));

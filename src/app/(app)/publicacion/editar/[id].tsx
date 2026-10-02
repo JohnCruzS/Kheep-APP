@@ -19,6 +19,7 @@ import {
   Producto,
   PublicacionDetalle,
   actualizarPublicacion,
+  actualizarProducto,
   crearProducto,
   eliminarProducto,
   eliminarPublicacion,
@@ -29,9 +30,31 @@ import {
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
+import { useSession } from '@/providers/SessionProvider';
 
-type ProductoDraft = { nombre: string; precio: string; image: PickedImage | null };
-const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
+/**
+ * Un producto en el formulario. Todos se pueden editar en todo momento: los
+ * que ya estaban (con `id`) y los nuevos. `imagenUrl` es la foto que ya
+ * tiene; `image`, una foto nueva elegida y todavía sin subir.
+ */
+type FilaProducto = {
+  id: string | null;
+  nombre: string;
+  precio: string;
+  imagenUrl: string | null;
+  image: PickedImage | null;
+  cambiado: boolean;
+};
+const FILA_VACIA: FilaProducto = { id: null, nombre: '', precio: '', imagenUrl: null, image: null, cambiado: false };
+
+const aFila = (p: Producto): FilaProducto => ({
+  id: p.id,
+  nombre: p.nombre,
+  precio: p.precio > 0 ? String(p.precio) : '',
+  imagenUrl: p.imagen_url,
+  image: null,
+  cambiado: false,
+});
 
 /** Mismos topes que al publicar (documento EDIT APP). */
 const MAX_NOMBRE_PRODUCTO = 22;
@@ -117,7 +140,10 @@ function EditarForm({
   onVolver: () => void;
 }) {
   const medidaProducto = useMedidaProducto();
-  const [titulo, setTitulo] = useState(publicacion.titulo);
+  // El nombre es el del perfil (no se edita acá): al guardar se vuelve a
+  // tomar de ahí, por si la publicación tenía uno viejo.
+  const { profile } = useSession();
+  const titulo = profile?.nombre?.trim() || publicacion.titulo;
   const [telefono, setTelefono] = useState(publicacion.telefono);
   const [logo, setLogo] = useState<PickedImage | null>(null);
   const [logoUrl, setLogoUrl] = useState(publicacion.logo_url);
@@ -128,8 +154,10 @@ function EditarForm({
   const [categoriaId, setCategoriaId] = useState<string | null>(categoriaInicial);
   const [pickerOpen, setPickerOpen] = useState<'categoria' | null>(null);
 
-  const [productos, setProductos] = useState<Producto[]>(publicacion.productos);
-  const [draft, setDraft] = useState<ProductoDraft>(EMPTY_DRAFT);
+  const [productos, setProductos] = useState<FilaProducto[]>(() => {
+    const filas = [...publicacion.productos].sort((a, b) => a.orden - b.orden).map(aFila);
+    return filas.length > 0 ? filas : [FILA_VACIA];
+  });
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -146,16 +174,35 @@ function EditarForm({
     }
   }
 
-  async function handlePickProductoImage() {
+  const tieneAlgo = (p: FilaProducto) =>
+    p.nombre.trim().length > 0 || !!p.image || !!p.imagenUrl || p.precio.length > 0;
+
+  function cambiarProducto(index: number, cambio: Partial<FilaProducto>) {
+    setProductos((list) => list.map((p, i) => (i === index ? { ...p, ...cambio, cambiado: true } : p)));
+  }
+
+  async function handlePickProductoImage(index: number) {
     try {
       const image = await pickAndCompressImage({ uso: 'producto' });
-      if (image) setDraft((d) => ({ ...d, image }));
+      if (image) cambiarProducto(index, { image });
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
     }
   }
 
-  function handleQuitarExistente(productoId: string) {
+  /** Saca una fila; siempre queda al menos una para escribir. */
+  function sacarFila(cual: (p: FilaProducto, i: number) => boolean) {
+    setProductos((list) => {
+      const resto = list.filter((p, i) => !cual(p, i));
+      return resto.length > 0 ? resto : [FILA_VACIA];
+    });
+  }
+
+  function handleQuitarProducto(index: number) {
+    const fila = productos[index];
+    // Uno nuevo, todavía sin guardar: se saca y listo.
+    if (!fila.id) return sacarFila((_, i) => i === index);
+    const productoId = fila.id;
     Alert.alert('Quitar producto', '¿Seguro que quieres quitar este producto? No se puede deshacer.', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -164,7 +211,7 @@ function EditarForm({
         onPress: async () => {
           try {
             await eliminarProducto(productoId);
-            setProductos((list) => list.filter((p) => p.id !== productoId));
+            sacarFila((p) => p.id === productoId);
           } catch (err) {
             setError(getErrorMessage(err, 'No se pudo quitar el producto.'));
           }
@@ -173,39 +220,18 @@ function EditarForm({
     ]);
   }
 
-  async function handleAgregarProducto() {
+  function handleAgregarProducto() {
     setError(null);
-    const precioNumero = Number(draft.precio.replace(/[^\d]/g, '')) || 0;
-    // El precio es opcional: sin él se guarda en 0 y no se muestra.
-    if (draft.nombre.trim().length === 0 && !draft.image) {
-      setError('Ponle un nombre o una foto al producto antes de agregarlo.');
+    const ultimo = productos[productos.length - 1];
+    if (ultimo && !tieneAlgo(ultimo)) {
+      setError('Ponle un nombre o una foto al producto antes de agregar otro.');
       return;
     }
     if (productos.length >= 5) {
       setError('Máximo 5 productos por publicación.');
       return;
     }
-
-    setSaving(true);
-    try {
-      const { data: auth } = await supabase.auth.getUser();
-      const imagenUrl = draft.image ? await uploadCompressedImage('productos', auth.user!.id, draft.image, `producto-${Date.now()}`) : null;
-      await crearProducto(publicacion.id, {
-        nombre: draft.nombre,
-        precio: precioNumero,
-        imagen_url: imagenUrl,
-        orden: productos.length,
-      });
-      setProductos((list) => [
-        ...list,
-        { id: `${Date.now()}`, nombre: draft.nombre, descripcion: null, precio: precioNumero, imagen_url: imagenUrl, orden: list.length },
-      ]);
-      setDraft(EMPTY_DRAFT);
-    } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo agregar el producto.'));
-    } finally {
-      setSaving(false);
-    }
+    setProductos((list) => [...list, FILA_VACIA]);
   }
 
   async function handleGuardar() {
@@ -236,6 +262,23 @@ function EditarForm({
         logoUrl: finalLogoUrl,
         telefono: telefonoLimpio,
       });
+
+      // Los productos: se guardan los nuevos y los que cambiaron. Las filas
+      // vacías no se suben. El precio es opcional: sin él va en 0.
+      const guardados = await Promise.all(
+        productos.map(async (fila, orden): Promise<FilaProducto> => {
+          if (!tieneAlgo(fila) || (fila.id && !fila.cambiado)) return fila;
+          const imagenUrl = fila.image
+            ? await uploadCompressedImage('productos', userId, fila.image, `producto-${Date.now()}-${orden}`)
+            : fila.imagenUrl;
+          const datos = { nombre: fila.nombre.trim(), precio: Number(fila.precio) || 0, imagen_url: imagenUrl };
+          let id = fila.id;
+          if (id) await actualizarProducto(id, datos);
+          else id = await crearProducto(publicacion.id, { ...datos, orden });
+          return { ...fila, id, imagenUrl, image: null, cambiado: false };
+        }),
+      );
+      setProductos(guardados);
 
       setLogoUrl(finalLogoUrl);
       setLogo(null);
@@ -271,15 +314,6 @@ function EditarForm({
 
   return (
     <LienzoPublicacion fotoUri={logo?.uri ?? logoUrl ?? null} onElegirFoto={handlePickLogo} onVolver={onVolver}>
-      <TextField
-        label="Nombre"
-        value={titulo}
-        onChangeText={setTitulo}
-        autoCapitalize="words"
-        style={styles.nombre}
-        estiloContenedor={styles.filaCampo}
-      />
-
       <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
       <PickerField
@@ -303,61 +337,47 @@ function EditarForm({
         estiloContenedor={styles.filaCampo}
       />
 
-      {/* Los productos que ya tiene. */}
-      {productos.map((producto) => (
-        <View key={producto.id} style={styles.productoFila}>
-          {producto.imagen_url ? (
-            <Image source={{ uri: producto.imagen_url }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
-          ) : (
-            <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
-          )}
-          <View style={styles.productoTextos}>
-            <Text style={styles.productoNombre} numberOfLines={1}>
-              {producto.nombre || 'Producto'}
-            </Text>
-            <Text style={styles.productoPrecio}>
-              {producto.precio > 0 ? `$${producto.precio.toLocaleString('es-CL')}` : 'Sin precio'}
-            </Text>
-          </View>
-          <Pressable onPress={() => handleQuitarExistente(producto.id)} hitSlop={8}>
-            <Text style={styles.quitar}>Quitar</Text>
-          </Pressable>
-        </View>
-      ))}
-
-      {/* Uno nuevo: foto, nombre y precio. */}
-      {productos.length < 5 && (
-        <View style={styles.productoFila}>
-          <Pressable onPress={handlePickProductoImage}>
-            {draft.image ? (
-              <Image source={{ uri: draft.image.uri }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
-            ) : (
-              <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
+      {/* Los productos: todos editables siempre, también los que ya tenía. */}
+      {productos.map((producto, index) => {
+        const foto = producto.image?.uri ?? producto.imagenUrl;
+        return (
+          <View key={producto.id ?? `nuevo-${index}`} style={styles.productoFila}>
+            <Pressable onPress={() => handlePickProductoImage(index)}>
+              {foto ? (
+                <Image source={{ uri: foto }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
+              ) : (
+                <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
+              )}
+            </Pressable>
+            <View style={styles.productoTextos}>
+              <TextInput
+                placeholder="Producto"
+                placeholderTextColor={Colors.cardText}
+                value={producto.nombre}
+                onChangeText={(text) => cambiarProducto(index, { nombre: text.slice(0, MAX_NOMBRE_PRODUCTO) })}
+                maxLength={MAX_NOMBRE_PRODUCTO}
+                style={styles.productoNombreInput}
+              />
+              <TextInput
+                placeholder="Precio"
+                placeholderTextColor={Colors.cardText}
+                value={producto.precio}
+                onChangeText={(text) =>
+                  cambiarProducto(index, { precio: text.replace(/[^0-9]/g, '').slice(0, MAX_DIGITOS_PRECIO) })
+                }
+                keyboardType="number-pad"
+                maxLength={MAX_DIGITOS_PRECIO}
+                style={styles.productoPrecioInput}
+              />
+            </View>
+            {(productos.length > 1 || tieneAlgo(producto)) && (
+              <Pressable onPress={() => handleQuitarProducto(index)} hitSlop={8}>
+                <Text style={styles.quitar}>Quitar</Text>
+              </Pressable>
             )}
-          </Pressable>
-          <View style={styles.productoTextos}>
-            <TextInput
-              placeholder="Producto"
-              placeholderTextColor={Colors.cardText}
-              value={draft.nombre}
-              onChangeText={(text) => setDraft((d) => ({ ...d, nombre: text.slice(0, MAX_NOMBRE_PRODUCTO) }))}
-              maxLength={MAX_NOMBRE_PRODUCTO}
-              style={styles.productoNombreInput}
-            />
-            <TextInput
-              placeholder="Precio"
-              placeholderTextColor={Colors.cardText}
-              value={draft.precio}
-              onChangeText={(text) =>
-                setDraft((d) => ({ ...d, precio: text.replace(/[^0-9]/g, '').slice(0, MAX_DIGITOS_PRECIO) }))
-              }
-              keyboardType="number-pad"
-              maxLength={MAX_DIGITOS_PRECIO}
-              style={styles.productoPrecioInput}
-            />
           </View>
-        </View>
-      )}
+        );
+      })}
 
       <Button label="Agregar" onPress={handleAgregarProducto} />
 
@@ -381,9 +401,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  nombre: {
-    textAlign: 'center',
   },
   // Todas las filas a la misma distancia, como la maqueta.
   filaCampo: {

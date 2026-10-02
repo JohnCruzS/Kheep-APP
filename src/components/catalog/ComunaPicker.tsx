@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     maxWidth: '85%',
   },
   label: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 18,
     lineHeight: 24,
     color: '#8A8A8A',
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   pais: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 18,
     color: '#8A8A8A',
   },

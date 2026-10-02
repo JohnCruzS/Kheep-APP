@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 
@@ -30,6 +31,7 @@ export function ControlMedida({
   min = 0,
   max = MEDIDA_MAX,
   referencia = MEDIDA_MAX,
+  margen,
 }: {
   etiqueta: string;
   valor: number;
@@ -45,8 +47,46 @@ export function ControlMedida({
    * "175 de 1000" cuando el tope real es 340 confunde más que ayuda.
    */
   referencia?: number;
+  /**
+   * Hasta dónde se puede llevar la medida sin que el título o el texto de
+   * debajo toquen lo que los rodea (la barra de arriba, el banner, los
+   * bordes). Al llegar ahí el botón no avanza más y aparece un aviso corto.
+   */
+  margen?: { min?: number; max?: number };
 }) {
-  const mover = (paso: number) => onChange(Math.min(max, Math.max(min, valor + paso)));
+  const [aviso, setAviso] = useState(false);
+  const temporizador = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (temporizador.current) clearTimeout(temporizador.current);
+  }, []);
+
+  const tope = Math.min(max, margen?.max ?? max);
+  const piso = Math.max(min, margen?.min ?? min);
+
+  const avisar = () => {
+    setAviso(true);
+    if (temporizador.current) clearTimeout(temporizador.current);
+    temporizador.current = setTimeout(() => setAviso(false), 2500);
+  };
+
+  const mover = (paso: number) => {
+    const destino = valor + paso;
+    // Hacia afuera del margen no se pasa: se queda en el borde y, si el borde
+    // es el margen (no el tope duro de la medida), se avisa.
+    if (paso > 0 && destino > tope) {
+      if (valor < tope) onChange(tope);
+      if (tope < max) avisar();
+      return;
+    }
+    if (paso < 0 && destino < piso) {
+      if (valor > piso) onChange(piso);
+      if (piso > min) avisar();
+      return;
+    }
+    onChange(destino);
+  };
+  const enTope = valor >= tope;
+  const enPiso = valor <= piso;
 
   return (
     <View style={styles.bloque}>
@@ -68,7 +108,7 @@ export function ControlMedida({
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel={`Bajar ${etiqueta.toLowerCase()}`}>
-          <Text style={[styles.signo, valor <= min && styles.signoApagado]}>−</Text>
+          <Text style={[styles.signo, enPiso && styles.signoApagado]}>−</Text>
         </Pressable>
 
         <Text style={styles.valor}>
@@ -83,9 +123,11 @@ export function ControlMedida({
           hitSlop={6}
           accessibilityRole="button"
           accessibilityLabel={`Subir ${etiqueta.toLowerCase()}`}>
-          <Text style={[styles.signo, valor >= max && styles.signoApagado]}>+</Text>
+          <Text style={[styles.signo, enTope && styles.signoApagado]}>+</Text>
         </Pressable>
       </View>
+
+      {aviso && <Text style={styles.aviso}>Se recomienda no exceder más del margen</Text>}
     </View>
   );
 }
@@ -131,6 +173,13 @@ const styles = StyleSheet.create({
   signoApagado: {
     color: Colors.textMuted,
     opacity: 0.4,
+  },
+  aviso: {
+    fontFamily: Fonts.light,
+    fontSize: 13,
+    color: Colors.accent,
+    textAlign: 'center',
+    marginTop: Spacing.two,
   },
   valor: {
     fontFamily: Fonts.medium,

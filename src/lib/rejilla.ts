@@ -26,6 +26,22 @@ export const REJILLA = {
   galeriaAlto: 577,
 } as const;
 
+/**
+ * La forma en que se recorta cada foto al subirla: la misma del lugar donde
+ * se va a mostrar, así lo que la persona elige en el recorte es exactamente
+ * lo que se ve, sin que la tarjeta o el banner le corten los bordes.
+ *
+ *  - Producto: el panel de la foto en la tarjeta del inicio (el 77 % de los
+ *    950 de ancho de la tarjeta, por 577 de alto): 731 × 577 ≈ 19 : 15.
+ *  - Banner: 950 × 450 = 19 : 9.
+ *  - Foto de perfil del comercio: cuadrada.
+ */
+export const FORMATO_RECORTE = {
+  producto: [19, 15],
+  banner: [19, 9],
+  perfil: [1, 1],
+} as const satisfies Record<string, [number, number]>;
+
 /** Cuánto mide hoy una unidad de la rejilla, en píxeles. */
 export function unidad(): number {
   return Dimensions.get('window').width / MEDIDA_MAX;

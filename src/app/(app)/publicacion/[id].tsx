@@ -14,6 +14,7 @@ import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { PublicacionDetalle, fetchPublicacionDetalle } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { contactarPorWhatsApp } from '@/lib/whatsapp';
+import { FORMATO_RECORTE } from '@/lib/rejilla';
 
 export default function PublicacionDetalleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -228,7 +229,7 @@ const styles = StyleSheet.create({
   },
   productImage: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: FORMATO_RECORTE.producto[0] / FORMATO_RECORTE.producto[1],
     borderRadius: Radius.card - 12,
     marginBottom: 6,
   },

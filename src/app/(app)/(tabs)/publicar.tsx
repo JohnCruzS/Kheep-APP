@@ -44,10 +44,10 @@ const MAX_DIGITOS_PRECIO = 9;
 
 /**
  * Publicar un comercio, con el diseño de la maqueta del cliente: fondo gris
- * claro, una tarjeta blanca con los campos en líneas —nombre, comuna,
- * categoría y teléfono—, la foto del comercio redonda y montada sobre el
+ * claro, una tarjeta blanca con los campos en líneas —comuna, categoría y
+ * teléfono—, la foto del comercio redonda y montada sobre el
  * borde de la tarjeta, la fila del producto con su recuadro de foto, y abajo
- * los dos botones: "Agregar" en rojo y "Guardar" en negro.
+ * los dos botones: "Agregar" en rojo y "Subir" en negro.
  */
 export default function PublicarScreen() {
   const { session, profile } = useSession();
@@ -76,6 +76,7 @@ export default function PublicarScreen() {
   return (
     <LienzoPublicacion fotoUri={logo?.uri ?? null} onElegirFoto={elegirFoto}>
       <PublicarForm
+        nombrePerfil={profile?.nombre ?? ''}
         telefonoContacto={profile?.telefono_contacto ?? null}
         logo={logo}
         onLogoUsado={() => setLogo(null)}
@@ -98,10 +99,17 @@ function GuestGate() {
 }
 
 function PublicarForm({
+  nombrePerfil,
   telefonoContacto,
   logo,
   onLogoUsado,
 }: {
+  /**
+   * El nombre del comercio es el de su perfil: no se escribe de nuevo al
+   * publicar (pedido del cliente). Si cambia en el perfil, cambia en todas
+   * sus publicaciones.
+   */
+  nombrePerfil: string;
   telefonoContacto: string | null;
   logo: PickedImage | null;
   onLogoUsado: () => void;
@@ -128,7 +136,6 @@ function PublicarForm({
     }, []),
   );
 
-  const [nombre, setNombre] = useState('');
   /** Arranca con el del perfil, pero se puede cambiar solo para este comercio. */
   const [telefono, setTelefono] = useState(telefonoContacto ?? '');
 
@@ -138,8 +145,10 @@ function PublicarForm({
   const [categoriaId, setCategoriaId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState<'categoria' | null>(null);
 
-  const [draft, setDraft] = useState<ProductoDraft>(EMPTY_DRAFT);
-  const [productos, setProductos] = useState<ProductoDraft[]>([]);
+  // Todos los productos se pueden editar en todo momento, también los ya
+  // agregados: cada fila es foto, nombre y precio editables. "Agregar" suma
+  // una fila vacía debajo.
+  const [productos, setProductos] = useState<ProductoDraft[]>([EMPTY_DRAFT]);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -156,10 +165,16 @@ function PublicarForm({
 
   const categoriaNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
 
-  async function handlePickProductoImage() {
+  const tieneAlgo = (p: ProductoDraft) => p.nombre.trim().length > 0 || !!p.image || p.precio.length > 0;
+
+  function cambiarProducto(index: number, cambio: Partial<ProductoDraft>) {
+    setProductos((list) => list.map((p, i) => (i === index ? { ...p, ...cambio } : p)));
+  }
+
+  async function handlePickProductoImage(index: number) {
     try {
       const image = await pickAndCompressImage({ uso: 'producto' });
-      if (image) setDraft((d) => ({ ...d, image }));
+      if (image) cambiarProducto(index, { image });
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
     }
@@ -167,32 +182,32 @@ function PublicarForm({
 
   function handleAgregarProducto() {
     setError(null);
-    const precioNumero = Number(draft.precio.replace(/[^\d]/g, '')) || 0;
-    // El precio es opcional (documento EDIT APP): hay rubros que cotizan
-    // antes de dar un número. Sin precio se guarda en 0 y la tarjeta no
-    // muestra nada donde iría.
-    if (draft.nombre.trim().length === 0 && !draft.image) {
-      setError('Ponle un nombre o una foto al producto antes de agregarlo.');
+    const ultimo = productos[productos.length - 1];
+    if (ultimo && ultimo.nombre.trim().length === 0 && !ultimo.image) {
+      setError('Ponle un nombre o una foto al producto antes de agregar otro.');
       return;
     }
     if (productos.length >= 5) {
       setError('Máximo 5 productos por publicación.');
       return;
     }
-    setProductos((list) => [...list, { ...draft, precio: String(precioNumero) }]);
-    setDraft(EMPTY_DRAFT);
+    setProductos((list) => [...list, EMPTY_DRAFT]);
   }
 
   function handleQuitarProducto(index: number) {
-    setProductos((list) => list.filter((_, i) => i !== index));
+    // Siempre queda al menos una fila para escribir.
+    setProductos((list) => {
+      const resto = list.filter((_, i) => i !== index);
+      return resto.length > 0 ? resto : [EMPTY_DRAFT];
+    });
   }
 
   async function handleGuardar() {
     setError(null);
     setSuccess(null);
 
-    if (nombre.trim().length === 0) {
-      setError('Ponle un nombre a tu negocio.');
+    if (nombrePerfil.trim().length === 0) {
+      setError('Primero ponle nombre a tu perfil: es el que aparece en la publicación.');
       return;
     }
     // Mismo formato que exige la base (migración 0007): +569 y ocho dígitos.
@@ -209,16 +224,18 @@ function PublicarForm({
 
       const logoUrl = logo ? await uploadCompressedImage('logos', userId, logo, 'logo') : null;
 
+      // Las filas vacías no se suben. El precio es opcional (documento EDIT
+      // APP): sin precio va en 0 y la tarjeta no muestra nada donde iría.
       const productosConUrl = await Promise.all(
-        productos.map(async (producto, index) => ({
-          nombre: producto.nombre,
-          precio: Number(producto.precio),
+        productos.filter(tieneAlgo).map(async (producto, index) => ({
+          nombre: producto.nombre.trim(),
+          precio: Number(producto.precio) || 0,
           imagen_url: producto.image ? await uploadCompressedImage('productos', userId, producto.image, `producto-${index}`) : null,
         })),
       );
 
       await crearPublicacion({
-        titulo: nombre.trim(),
+        titulo: nombrePerfil.trim(),
         categoriaId,
         comunaId,
         logoUrl,
@@ -227,12 +244,10 @@ function PublicarForm({
       });
 
       setSuccess('¡Listo! Tu publicación fue creada. Si tu cuenta está en revisión, un admin la va a aprobar pronto.');
-      setNombre('');
       onLogoUsado();
       setComunaId(null);
       setCategoriaId(null);
-      setProductos([]);
-      setDraft(EMPTY_DRAFT);
+      setProductos([EMPTY_DRAFT]);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo guardar la publicación.'));
     } finally {
@@ -244,15 +259,6 @@ function PublicarForm({
   // alto y corre el formulario si el campo enfocado quedaría tapado.
   return (
     <>
-      <TextField
-        label="Nombre"
-        value={nombre}
-        onChangeText={setNombre}
-        autoCapitalize="words"
-        style={styles.nombre}
-        estiloContenedor={styles.filaCampo}
-      />
-
       <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
       <PickerField
@@ -276,34 +282,12 @@ function PublicarForm({
         estiloContenedor={styles.filaCampo}
       />
 
-      {/* Los productos ya agregados. */}
+      {/* Los productos: todos editables siempre, también los ya agregados. */}
       {productos.map((producto, index) => (
-        <View key={`${producto.nombre}-${index}`} style={styles.productoFila}>
-          {producto.image ? (
-            <Image source={{ uri: producto.image.uri }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
-          ) : (
-            <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
-          )}
-          <View style={styles.productoTextos}>
-            <Text style={styles.productoNombre} numberOfLines={1}>
-              {producto.nombre || 'Producto'}
-            </Text>
-            <Text style={styles.productoPrecio}>
-              {Number(producto.precio) > 0 ? `$${Number(producto.precio).toLocaleString('es-CL')}` : 'Sin precio'}
-            </Text>
-          </View>
-          <Pressable onPress={() => handleQuitarProducto(index)} hitSlop={8}>
-            <Text style={styles.quitar}>Quitar</Text>
-          </Pressable>
-        </View>
-      ))}
-
-      {/* El producto que se está escribiendo: foto, nombre y precio. */}
-      {productos.length < 5 && (
-        <View style={styles.productoFila}>
-          <Pressable onPress={handlePickProductoImage}>
-            {draft.image ? (
-              <Image source={{ uri: draft.image.uri }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
+        <View key={index} style={styles.productoFila}>
+          <Pressable onPress={() => handlePickProductoImage(index)}>
+            {producto.image ? (
+              <Image source={{ uri: producto.image.uri }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
             ) : (
               <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
             )}
@@ -312,25 +296,30 @@ function PublicarForm({
             <TextInput
               placeholder="Producto"
               placeholderTextColor={Colors.cardText}
-              value={draft.nombre}
-              onChangeText={(text) => setDraft((d) => ({ ...d, nombre: text.slice(0, MAX_NOMBRE_PRODUCTO) }))}
+              value={producto.nombre}
+              onChangeText={(text) => cambiarProducto(index, { nombre: text.slice(0, MAX_NOMBRE_PRODUCTO) })}
               maxLength={MAX_NOMBRE_PRODUCTO}
               style={styles.productoNombreInput}
             />
             <TextInput
               placeholder="Precio"
               placeholderTextColor={Colors.cardText}
-              value={draft.precio}
+              value={producto.precio}
               onChangeText={(text) =>
-                setDraft((d) => ({ ...d, precio: text.replace(/[^0-9]/g, '').slice(0, MAX_DIGITOS_PRECIO) }))
+                cambiarProducto(index, { precio: text.replace(/[^0-9]/g, '').slice(0, MAX_DIGITOS_PRECIO) })
               }
               keyboardType="number-pad"
               maxLength={MAX_DIGITOS_PRECIO}
               style={styles.productoPrecioInput}
             />
           </View>
+          {(productos.length > 1 || tieneAlgo(producto)) && (
+            <Pressable onPress={() => handleQuitarProducto(index)} hitSlop={8}>
+              <Text style={styles.quitar}>Quitar</Text>
+            </Pressable>
+          )}
         </View>
-      )}
+      ))}
 
       <Button label="Agregar" onPress={handleAgregarProducto} />
 
@@ -340,7 +329,7 @@ function PublicarForm({
       {saving ? (
         <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.three }} />
       ) : (
-        <Button label="Guardar" variant="secondary" onPress={handleGuardar} />
+        <Button label="Subir" variant="secondary" onPress={handleGuardar} />
       )}
 
       {/* Lo que ya está publicado, al final: acá se entra a editarlo. */}
@@ -399,9 +388,6 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     backgroundColor: '#B3B3B3',
-  },
-  nombre: {
-    textAlign: 'center',
   },
   // Todas las filas a la misma distancia, como la maqueta (un 17 % del ancho).
   filaCampo: {
