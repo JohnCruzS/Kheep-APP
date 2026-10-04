@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -171,7 +172,7 @@ function ListaComunas({ comunas, onElegir }: { comunas: Comuna[]; onElegir: (id:
           <ActivityIndicator color={Colors.accent} />
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={filas}
           keyExtractor={(item) => item.id}
           keyboardShouldPersistTaps="handled"

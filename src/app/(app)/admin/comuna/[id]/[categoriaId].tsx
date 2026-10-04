@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -22,6 +21,7 @@ import {
 import { getErrorMessage } from '@/lib/errors';
 import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 /**
  * Los perfiles que publican en una categoría dentro de una comuna.
@@ -160,7 +160,7 @@ export default function PerfilesDeCategoriaScreen() {
         {perfiles.map((perfil) => (
           <View key={perfil.id} style={styles.row}>
             {perfil.logo_url ? (
-              <Image source={{ uri: perfil.logo_url }} style={styles.avatar} contentFit="cover" />
+              <FotoRemota uri={perfil.logo_url} ancho={44} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarVacio]} />
             )}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 
 import { useTarjetaClara } from '@/components/ui/TarjetaClara';
@@ -83,13 +84,10 @@ export function ComunaFieldPicker({
               autoFocus
             />
 
-            <FlatList
+            <FlashList
               data={filtradas}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
-              initialNumToRender={16}
-              maxToRenderPerBatch={16}
-              windowSize={10}
               renderItem={({ item }) => (
                 <Pressable
                   onPress={() => {

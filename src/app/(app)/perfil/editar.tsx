@@ -18,6 +18,7 @@ import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/
 import { supabase } from '@/lib/supabase';
 import { isValidChileanPhone, normalizeChileanPhone } from '@/lib/validation';
 import { useSession } from '@/providers/SessionProvider';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 export default function EditarPerfilScreen() {
   const router = useRouter();
@@ -139,7 +140,7 @@ function EditarPerfilForm({
         {logo ? (
           <Image source={{ uri: logo.uri }} style={styles.avatarImage} contentFit="cover" />
         ) : logoUrl ? (
-          <Image source={{ uri: logoUrl }} style={styles.avatarImage} contentFit="cover" />
+          <FotoRemota uri={logoUrl} ancho={72} style={styles.avatarImage} />
         ) : (
           <View style={styles.avatarPlaceholder} />
         )}

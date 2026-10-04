@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +7,7 @@ import { TarjetaClaraProvider } from '@/components/ui/TarjetaClara';
 import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { FORMATO_RECORTE } from '@/lib/rejilla';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 /**
  * Proporciones de la maqueta del cliente para publicar y editar una
@@ -90,7 +90,7 @@ export function LienzoPublicacion({
           ]}>
           <Pressable onPress={onElegirFoto} disabled={!onElegirFoto} style={styles.foto}>
             {fotoUri ? (
-              <Image source={{ uri: fotoUri }} style={circulo} contentFit="cover" />
+              <FotoRemota uri={fotoUri} ancho={foto} style={circulo} />
             ) : (
               <View style={[circulo, styles.fotoVacia]} />
             )}

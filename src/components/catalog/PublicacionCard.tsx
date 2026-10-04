@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { memo, useMemo, useState } from 'react';
 import {
   LayoutChangeEvent,
@@ -14,6 +13,7 @@ import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
 import type { PublicacionResumen } from '@/lib/catalog';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 type Props = {
   publicacion: PublicacionResumen;
@@ -73,7 +73,7 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
           accessibilityRole="imagebutton"
           accessibilityLabel={`Ver la foto de ${publicacion.titulo}`}>
           {publicacion.logo_url ? (
-            <Image source={{ uri: publicacion.logo_url }} style={styles.fotoPerfil} contentFit="cover" />
+            <FotoRemota uri={publicacion.logo_url} ancho={58} style={styles.fotoPerfil} />
           ) : (
             <View style={[styles.fotoPerfil, styles.fotoPerfilVacia]} />
           )}
@@ -101,7 +101,7 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
               accessibilityRole="imagebutton"
               accessibilityLabel={`Ver foto de ${p.nombre}`}>
               {p.imagen_url ? (
-                <Image source={{ uri: p.imagen_url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                <FotoRemota uri={p.imagen_url} ancho={ancho || 300} style={StyleSheet.absoluteFill} />
               ) : (
                 <View style={[StyleSheet.absoluteFill, styles.sinFoto]} />
               )}

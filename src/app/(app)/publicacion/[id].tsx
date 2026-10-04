@@ -3,7 +3,7 @@
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -15,6 +15,7 @@ import { PublicacionDetalle, fetchPublicacionDetalle } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { contactarPorWhatsApp } from '@/lib/whatsapp';
 import { FORMATO_RECORTE } from '@/lib/rejilla';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 export default function PublicacionDetalleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -81,7 +82,7 @@ export default function PublicacionDetalleScreen() {
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}>
           {publicacion.logo_url ? (
             <Pressable onPress={() => setViewerIndex(0)}>
-              <Image source={{ uri: publicacion.logo_url }} style={styles.hero} contentFit="cover" />
+              <FotoRemota uri={publicacion.logo_url} ancho={Dimensions.get('window').width} style={styles.hero} />
             </Pressable>
           ) : (
             <View style={[styles.hero, styles.heroFallback]} />
@@ -107,7 +108,7 @@ export default function PublicacionDetalleScreen() {
                     <View key={producto.id} style={styles.productCard}>
                       {producto.imagen_url ? (
                         <Pressable onPress={() => setViewerIndex(galleryImages.indexOf(producto.imagen_url!))}>
-                          <Image source={{ uri: producto.imagen_url }} style={styles.productImage} contentFit="cover" />
+                          <FotoRemota uri={producto.imagen_url} ancho={Dimensions.get('window').width * 0.31} style={styles.productImage} />
                         </Pressable>
                       ) : (
                         <View style={[styles.productImage, styles.productImageFallback]} />

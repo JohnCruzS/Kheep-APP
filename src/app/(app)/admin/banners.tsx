@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -22,6 +21,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { bannersEnMemoria, precargarBanners } from '@/lib/cacheAdmin';
 import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 /**
  * Cuánto le queda al banner, como HH:MM:SS (documento EDIT APP). Pasado un
@@ -183,11 +183,11 @@ export default function BannersAdminScreen() {
               scrollEventThrottle={16}
               style={styles.tiraImagenes}>
               {banners.map((banner) => (
-                <Image
+                <FotoRemota
                   key={banner.id}
-                  source={{ uri: banner.imagen_url }}
+                  uri={banner.imagen_url}
+                  ancho={ancho}
                   style={[styles.imagen, { width: ancho }]}
-                  contentFit="cover"
                 />
               ))}
             </ScrollView>

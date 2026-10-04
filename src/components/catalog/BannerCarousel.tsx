@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { memo, useEffect, useRef, useState } from 'react';
 import {
   Dimensions,
@@ -16,6 +15,7 @@ import { Layout } from '@/constants/theme';
 import { registrarClicBanner, registrarVistaBanner } from '@/lib/catalog';
 import type { Banner } from '@/lib/catalog';
 import { REJILLA, u } from '@/lib/rejilla';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 /**
@@ -155,7 +155,7 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
               onPress={() => abrirEnlace(banner)}
               disabled={!banner.enlace}
               accessibilityRole={banner.enlace ? 'link' : 'image'}>
-              <Image source={{ uri: banner.imagen_url }} style={styles.image} contentFit="cover" transition={150} />
+              <FotoRemota uri={banner.imagen_url} ancho={Dimensions.get('window').width} style={styles.image} />
             </Pressable>
           </View>
         ))}

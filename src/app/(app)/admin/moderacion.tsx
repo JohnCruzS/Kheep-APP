@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -10,6 +9,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/Catal
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { PublicacionPendiente, aprobarPublicacion, fetchPublicacionesPendientes, rechazarPublicacion } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 export default function ModeracionScreen() {
   const router = useRouter();
@@ -86,7 +86,7 @@ export default function ModeracionScreen() {
             <View key={publicacion.id} style={styles.card}>
               <View style={styles.cardHeader}>
                 {publicacion.logo_url ? (
-                  <Image source={{ uri: publicacion.logo_url }} style={styles.thumb} contentFit="cover" />
+                  <FotoRemota uri={publicacion.logo_url} ancho={48} style={styles.thumb} />
                 ) : (
                   <View style={[styles.thumb, styles.thumbEmpty]} />
                 )}

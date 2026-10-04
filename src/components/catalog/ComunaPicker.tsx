@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TituloPosicionado } from '@/components/ui/BrandLogo';
@@ -132,13 +133,10 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre, alAbrir 
             autoCorrect={false}
           />
 
-          <FlatList
+          <FlashList
             data={filas}
             keyExtractor={(item) => item.id ?? ''}
             keyboardShouldPersistTaps="handled"
-            initialNumToRender={16}
-            maxToRenderPerBatch={16}
-            windowSize={10}
             contentContainerStyle={[styles.lista, { paddingBottom: Spacing.four + insets.bottom }]}
             renderItem={({ item }) => (
               <Option label={item.label} active={selectedId === item.id} onPress={() => handleSelect(item.id)} />

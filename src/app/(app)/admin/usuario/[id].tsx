@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { type ReactNode, useCallback, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -28,6 +27,7 @@ import { puede } from '@/lib/administradores';
 import { getErrorMessage } from '@/lib/errors';
 import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 /**
  * Todo lo de un usuario en un solo lugar: se llega tocándolo en la lista de
@@ -213,7 +213,7 @@ export default function FichaUsuarioScreen() {
             {/* Quién es */}
             <View style={styles.cabecera}>
               {ficha.logo_url ? (
-                <Image source={{ uri: ficha.logo_url }} style={styles.avatar} contentFit="cover" />
+                <FotoRemota uri={ficha.logo_url} ancho={84} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarVacio]} />
               )}
@@ -452,7 +452,7 @@ function FilaPublicacion({ publicacion, onPress }: { publicacion: PublicacionDeU
   return (
     <Pressable style={styles.publicacion} onPress={onPress}>
       {publicacion.logo_url ? (
-        <Image source={{ uri: publicacion.logo_url }} style={styles.miniatura} contentFit="cover" />
+        <FotoRemota uri={publicacion.logo_url} ancho={40} style={styles.miniatura} />
       ) : (
         // Borde en vez de relleno: del mismo gris que la tarjeta no se veía.
         <View style={[styles.miniatura, styles.miniaturaVacia]} />

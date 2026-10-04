@@ -1,4 +1,5 @@
-import type { PublicacionResumen } from '@/lib/catalog';
+/** Lo único que hace falta para ordenar: sirve tanto para el índice liviano como para la publicación completa. */
+type Ordenable = { categoria_id: string | null; destacado: boolean };
 
 /**
  * En qué orden se muestran los comercios del catálogo.
@@ -15,17 +16,17 @@ import type { PublicacionResumen } from '@/lib/catalog';
  * Los destacados encabezan su grupo —para eso se destacan—, también
  * barajados entre ellos.
  */
-export function ordenarCatalogo(
-  publicaciones: PublicacionResumen[],
+export function ordenarCatalogo<T extends Ordenable>(
+  publicaciones: T[],
   /** Ids de categorías en el orden del admin; manda en "Todas". */
   ordenCategorias: string[],
   /** Categoría elegida, o null si se está viendo "Todas". */
   categoriaId: string | null,
-): PublicacionResumen[] {
+): T[] {
   if (categoriaId) return barajar(publicaciones);
 
   const posicion = new Map(ordenCategorias.map((id, i) => [id, i]));
-  const grupos = new Map<number, PublicacionResumen[]>();
+  const grupos = new Map<number, T[]>();
 
   for (const publicacion of publicaciones) {
     // Las de una categoría que ya no está en la lista van al final, juntas.
@@ -45,7 +46,7 @@ export function ordenarCatalogo(
  * arreglo original es el que devolvió la consulta y se reutiliza en otras
  * partes de la pantalla.
  */
-function barajar(publicaciones: PublicacionResumen[]): PublicacionResumen[] {
+function barajar<T extends Ordenable>(publicaciones: T[]): T[] {
   const copia = [...publicaciones];
   for (let i = copia.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

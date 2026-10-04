@@ -27,6 +27,7 @@ import { compararRegiones, nombreRegion } from '@/lib/regiones';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
 import { FORMATO_RECORTE } from '@/lib/rejilla';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 const OPCIONES_DIAS = [3, 7, 15, 30];
 /** Tope de la duración a medida: un año. Más que eso es un error de tecleo. */
@@ -203,7 +204,7 @@ export default function PublicarBannerScreen() {
               <Text style={styles.sectionLabel}>MIS BANNERS</Text>
               {misBanners.map((banner) => (
                 <View key={banner.id} style={styles.miBannerRow}>
-                  <Image source={{ uri: banner.imagen_url }} style={styles.miBannerThumb} contentFit="cover" />
+                  <FotoRemota uri={banner.imagen_url} ancho={64} style={styles.miBannerThumb} />
                   <View style={styles.miBannerInfo}>
                     <Text style={styles.miBannerComuna}>{banner.comuna?.nombre ?? 'Todas las comunas'}</Text>
                     <EstadoBanner banner={banner} />

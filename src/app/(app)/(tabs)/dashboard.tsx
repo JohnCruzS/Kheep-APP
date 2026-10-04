@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dimensions, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { ActivityIndicator, Dimensions, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BannerCarousel } from '@/components/catalog/BannerCarousel';
@@ -23,7 +24,9 @@ import {
   fetchComuna,
   fetchCategoriaOtro,
   fetchComunas,
-  fetchPublicaciones,
+  FilaIndiceCatalogo,
+  fetchIndiceCatalogo,
+  fetchPublicacionesPorIds,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { ordenarCatalogo } from '@/lib/ordenCatalogo';
@@ -38,6 +41,13 @@ import { contactarPorWhatsApp } from '@/lib/whatsapp';
  * tarjeta queda "montada" sobre el cambio de fondo negro → gris.
  */
 const SOLAPE_TARJETA = 41;
+
+/**
+ * De a cuántos comercios se traen los datos completos (productos y fotos) a
+ * medida que se baja por la lista. Una tarjeta ocupa más de media pantalla:
+ * 8 cubren de sobra lo que se ve al entrar y un poco más.
+ */
+const PAGINA = 8;
 /** Espacio entre la fila de categorías y el borde superior de la tarjeta. */
 const ESPACIO_CATEGORIAS_TARJETA = 0;
 
@@ -69,8 +79,26 @@ export default function DashboardScreen() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [comunas, setComunas] = useState<Comuna[]>([]);
 
-  /** Todo el catálogo de la comuna, tal como vino de la base. */
-  const [deLaComuna, setDeLaComuna] = useState<PublicacionResumen[]>([]);
+  /**
+   * El índice del catálogo de la comuna: id, categoría y destacado de todas
+   * sus publicaciones (ver fetchIndiceCatalogo). Con esto se ordena, se
+   * filtra por categoría y se sabe qué hay, sin bajar productos ni fotos.
+   */
+  const [indice, setIndice] = useState<FilaIndiceCatalogo[]>([]);
+  /** Los datos completos que ya llegaron, por id: se piden de a PAGINA. */
+  const [detalles, setDetalles] = useState<Record<string, PublicacionResumen>>({});
+  const detallesRef = useRef(detalles);
+  useEffect(() => {
+    detallesRef.current = detalles;
+  }, [detalles]);
+  /** Ids pedidos y todavía sin respuesta: para no pedir dos veces lo mismo. */
+  const pedidos = useRef(new Set<string>());
+  /** Ids que la base ya no devolvió (se eliminaron o dejaron de estar aprobados entre medio). */
+  const ausentes = useRef(new Set<string>());
+  /** Cuántos de la categoría elegida se muestran: crece al llegar al final de la lista. */
+  const [cuantas, setCuantas] = useState(PAGINA);
+  const [cargandoMas, setCargandoMas] = useState(false);
+  const [errorPagina, setErrorPagina] = useState(false);
   /** Nombre de la comuna actual: llega solo, antes que la lista completa. */
   const [nombreComuna, setNombreComuna] = useState<string | null>(null);
   /**
@@ -242,17 +270,26 @@ export default function DashboardScreen() {
   /** Ya se resolvió la fila de categorías, aunque haya quedado vacía. */
   const [categoriasListas, setCategoriasListas] = useState(false);
 
-  // Se pide TODO el catálogo de la comuna de una vez, sin esperar a saber qué
-  // categorías tiene: así esta consulta viaja en paralelo con la de las
-  // categorías en vez de ir detrás (el arranque se acortaba a la mitad). De
-  // paso, cambiar de categoría ya no pide nada a la red: se filtra acá mismo
-  // y es instantáneo.
+  // Se pide el índice de TODO el catálogo de la comuna de una vez, sin esperar
+  // a saber qué categorías tiene: así viaja en paralelo con la consulta de las
+  // categorías en vez de ir detrás. Es liviano (tres columnas), y con él
+  // cambiar de categoría no pide nada a la red. Los productos y las fotos se
+  // traen después, de a poco (ver más abajo).
   const loadPublicaciones = useCallback(
     async ({ isRefresh = false }: { isRefresh?: boolean } = {}) => {
       isRefresh ? setRefreshing(true) : setLoading(true);
       setError(null);
       try {
-        setDeLaComuna(await fetchPublicaciones({ comunaId }));
+        const nuevo = await fetchIndiceCatalogo(comunaId);
+        // Lo que ya estaba en memoria y sigue publicado se refresca (pudo
+        // editarse mientras tanto); lo demás se olvida.
+        const vigentes = new Set(nuevo.map((f) => f.id));
+        const enMemoria = Object.keys(detallesRef.current).filter((id) => vigentes.has(id));
+        const frescos = enMemoria.length > 0 ? await fetchPublicacionesPorIds(enMemoria) : [];
+        ausentes.current.clear();
+        setErrorPagina(false);
+        setDetalles(Object.fromEntries(frescos.map((pub) => [pub.id, pub])));
+        setIndice(nuevo);
         setComunaCargada(comunaId);
       } catch (err) {
         setComunaCargada(comunaId);
@@ -272,10 +309,10 @@ export default function DashboardScreen() {
   // categoría que esta comuna no muestra no tendría dónde aparecer: se
   // muestra en "Otro", como si fuera suya.
   const esHuerfana = useCallback(
-    (p: PublicacionResumen) => !!categoriasVisibles && (!p.categoria_id || !categoriasVisibles.includes(p.categoria_id)),
+    (p: FilaIndiceCatalogo) => !!categoriasVisibles && (!p.categoria_id || !categoriasVisibles.includes(p.categoria_id)),
     [categoriasVisibles],
   );
-  const hayHuerfanas = useMemo(() => deLaComuna.some(esHuerfana), [deLaComuna, esHuerfana]);
+  const hayHuerfanas = useMemo(() => indice.some(esHuerfana), [indice, esHuerfana]);
 
   // La fila de categorías: si hay huérfanas y "Otro" no está (la comuna no la
   // tiene, o sin cuenta se escondió por no tener comercios propios), se suma
@@ -295,12 +332,62 @@ export default function DashboardScreen() {
   // Lo que se muestra: lo de la categoría elegida, al azar (ver
   // ordenCatalogo.ts). El orden se recalcula solo cuando cambia algo de
   // verdad, no en cada dibujado, para que las tarjetas no salten solas.
-  const publicaciones = useMemo(() => {
+  const ordenados = useMemo(() => {
     if (!categoriaId) return [];
     const esOtro = categoriaOtro?.id === categoriaId;
-    const visibles = deLaComuna.filter((p) => p.categoria_id === categoriaId || (esOtro && esHuerfana(p)));
+    const visibles = indice.filter((p) => p.categoria_id === categoriaId || (esOtro && esHuerfana(p)));
     return ordenarCatalogo(visibles, categoriasVisibles ?? [], categoriaId);
-  }, [deLaComuna, categoriaId, categoriasVisibles, categoriaOtro, esHuerfana]);
+  }, [indice, categoriaId, categoriasVisibles, categoriaOtro, esHuerfana]);
+
+  // Otra categoría, otra comuna o una recarga: se vuelve a la primera tanda.
+  useEffect(() => {
+    setCuantas(PAGINA);
+  }, [ordenados]);
+
+  // Trae los datos completos de los que se van a mostrar y todavía no están.
+  useEffect(() => {
+    const faltan = ordenados
+      .slice(0, cuantas)
+      .map((f) => f.id)
+      .filter((id) => !detalles[id] && !pedidos.current.has(id) && !ausentes.current.has(id));
+    if (faltan.length === 0) return;
+    faltan.forEach((id) => pedidos.current.add(id));
+    setCargandoMas(true);
+    fetchPublicacionesPorIds(faltan)
+      .then((lista) => {
+        const llegaron = new Set(lista.map((pub) => pub.id));
+        faltan.filter((id) => !llegaron.has(id)).forEach((id) => ausentes.current.add(id));
+        setErrorPagina(false);
+        setDetalles((d) => ({ ...d, ...Object.fromEntries(lista.map((pub) => [pub.id, pub])) }));
+      })
+      .catch(() => setErrorPagina(true))
+      .finally(() => {
+        faltan.forEach((id) => pedidos.current.delete(id));
+        setCargandoMas(false);
+      });
+  }, [ordenados, cuantas, detalles]);
+
+  // Lo que se muestra: los que ya llegaron, en orden y sin saltos. Si uno del
+  // medio todavía no llegó, la lista se corta ahí hasta que llegue: así las
+  // tarjetas nunca cambian de lugar debajo del dedo.
+  const publicaciones = useMemo(() => {
+    const lista: PublicacionResumen[] = [];
+    for (const fila of ordenados.slice(0, cuantas)) {
+      if (ausentes.current.has(fila.id)) continue;
+      const pub = detalles[fila.id];
+      if (!pub) break;
+      lista.push(pub);
+    }
+    return lista;
+  }, [ordenados, cuantas, detalles]);
+
+  /** La primera tanda de la categoría elegida todavía no llegó entera. */
+  const faltaPrimera =
+    !errorPagina && ordenados.slice(0, PAGINA).some((f) => !detalles[f.id] && !ausentes.current.has(f.id));
+
+  const cargarMas = useCallback(() => {
+    setCuantas((c) => (c < ordenados.length ? c + PAGINA : c));
+  }, [ordenados.length]);
 
   // Al volver a Inicio se vuelven a pedir: mientras la pestaña estaba
   // montada pudo aparecer una publicación nueva (recién aprobada, por
@@ -331,7 +418,10 @@ export default function DashboardScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: PublicacionResumen }) => (
-      <PublicacionCard publicacion={item} onContactar={handleContactar} onVerFoto={setFotoAbierta} />
+      // Con su propia `key`: la lista recicla las tarjetas al desplazarse, y
+      // sin esto una tarjeta reciclada conservaría la foto de producto que
+      // estaba mostrando la anterior.
+      <PublicacionCard key={item.id} publicacion={item} onContactar={handleContactar} onVerFoto={setFotoAbierta} />
     ),
     [handleContactar],
   );
@@ -345,7 +435,11 @@ export default function DashboardScreen() {
   // tenía ninguna, el logo se quedaba puesto para siempre.
   const listoParaMostrar =
     !!error ||
-    ((!comunaId || !!nombreComuna) && categoriasListas && !loading && comunaCargada === comunaId);
+    ((!comunaId || !!nombreComuna) &&
+      categoriasListas &&
+      !loading &&
+      comunaCargada === comunaId &&
+      !faltaPrimera);
   // `catalogoListo` entra en las dependencias a propósito: si el aviso solo
   // se mandara cuando cambia `listoParaMostrar`, bastaba con que la pantalla
   // ya estuviera lista antes (por ejemplo al reelegir la misma comuna) para
@@ -430,12 +524,12 @@ export default function DashboardScreen() {
         {error && <ErrorState message={error} onRetry={() => loadPublicaciones()} />}
 
         {!loading && !error && (
-          <FlatList
+          <FlashList
             // El margen negativo sube la lista dentro de la franja negra: la
             // primera tarjeta queda montada sobre el cambio de fondo y, al
             // desplazarse, las tarjetas se recortan justo ahí, porque una
             // lista no dibuja fuera de sus propios límites.
-            style={[styles.list, solapar && { marginTop: -SOLAPE_TARJETA }]}
+            style={StyleSheet.flatten([styles.list, solapar && { marginTop: -SOLAPE_TARJETA }])}
             data={publicaciones}
             keyExtractor={keyExtractor}
             contentContainerStyle={[
@@ -457,16 +551,21 @@ export default function DashboardScreen() {
             }}
             refreshing={refreshing}
             renderItem={renderItem}
-            // La lista rara vez pasa de 20-30 tarjetas en una comuna, pero estos
-            // ajustes evitan que React Native intente montar/medir de más de
-            // una vez — es lo que se nota como scroll "fluido" de verdad.
-            initialNumToRender={6}
-            maxToRenderPerBatch={6}
-            windowSize={7}
-            removeClippedSubviews
+            // FlashList recicla las tarjetas que salen de la pantalla en vez
+            // de crear nuevas: el desplazamiento es más fluido en teléfonos
+            // lentos. Al acercarse al final se pide la tanda siguiente.
+            onEndReached={cargarMas}
+            onEndReachedThreshold={1.5}
             ItemSeparatorComponent={ItemSeparator}
+            ListFooterComponent={
+              cargandoMas && publicaciones.length > 0 ? (
+                <ActivityIndicator color={Colors.accent} style={styles.cargandoMas} />
+              ) : null
+            }
             ListEmptyComponent={
-              comunaVacia && !hayHuerfanas ? (
+              faltaPrimera ? (
+                <ActivityIndicator color={Colors.accent} style={styles.cargandoMas} />
+              ) : comunaVacia && !hayHuerfanas ? (
                 <EmptyState
                   sobreClaro
                   title="Todavía no hay comercios en esta comuna"
@@ -496,6 +595,9 @@ function ItemSeparator() {
 }
 
 const styles = StyleSheet.create({
+  cargandoMas: {
+    marginVertical: Spacing.four,
+  },
   screen: {
     flex: 1,
     backgroundColor: Colors.background,

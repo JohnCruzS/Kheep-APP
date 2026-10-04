@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -85,7 +86,7 @@ export function SelectorComuna({
             autoCorrect={false}
           />
 
-          <FlatList
+          <FlashList
             data={filas}
             keyExtractor={(item) => item.id ?? 'todas'}
             keyboardShouldPersistTaps="handled"

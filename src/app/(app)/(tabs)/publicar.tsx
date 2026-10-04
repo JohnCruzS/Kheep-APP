@@ -24,6 +24,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 type ProductoDraft = {
   nombre: string;
@@ -342,7 +343,7 @@ function PublicarForm({
               style={styles.productoFila}
               onPress={() => router.push({ pathname: '/(app)/publicacion/editar/[id]', params: { id: publicacion.id } })}>
               {publicacion.logo_url ? (
-                <Image source={{ uri: publicacion.logo_url }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
+                <FotoRemota uri={publicacion.logo_url} ancho={medidaProducto.width} style={[styles.productoFoto, medidaProducto]} />
               ) : (
                 <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
               )}

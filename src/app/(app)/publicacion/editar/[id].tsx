@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
@@ -31,6 +30,7 @@ import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 /**
  * Un producto en el formulario. Todos se pueden editar en todo momento: los
@@ -344,7 +344,7 @@ function EditarForm({
           <View key={producto.id ?? `nuevo-${index}`} style={styles.productoFila}>
             <Pressable onPress={() => handlePickProductoImage(index)}>
               {foto ? (
-                <Image source={{ uri: foto }} style={[styles.productoFoto, medidaProducto]} contentFit="cover" />
+                <FotoRemota uri={foto} ancho={medidaProducto.width} style={[styles.productoFoto, medidaProducto]} />
               ) : (
                 <View style={[styles.productoFoto, medidaProducto, styles.productoFotoVacia]} />
               )}

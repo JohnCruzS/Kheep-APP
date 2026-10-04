@@ -305,6 +305,53 @@ export async function fetchPublicaciones({
   return (data as unknown as PublicacionResumen[]) ?? [];
 }
 
+/** Lo mínimo de una publicación para ordenar y filtrar el catálogo sin bajarla entera. */
+export type FilaIndiceCatalogo = Pick<PublicacionResumen, 'id' | 'categoria_id' | 'destacado'>;
+
+/**
+ * El catálogo se carga en dos pasos, para no bajar de una vez todas las
+ * publicaciones de una comuna con sus productos y fotos:
+ *
+ *  1. Este índice: solo id, categoría y si está destacada, de TODAS las de la
+ *     comuna. Pesa muy poco aunque sean cientos, y alcanza para armar el
+ *     orden al azar, saber qué categorías tienen algo y cambiar de categoría
+ *     al instante.
+ *  2. `fetchPublicacionesPorIds`: los datos completos (productos incluidos),
+ *     de a poco, a medida que la persona baja por la lista.
+ *
+ * Mismos filtros que `fetchPublicaciones`: aprobadas, no eliminadas y de la
+ * comuna.
+ */
+export async function fetchIndiceCatalogo(comunaId: string | null): Promise<FilaIndiceCatalogo[]> {
+  let request = supabase
+    .from('publicaciones')
+    .select('id, categoria_id, destacado')
+    .eq('estado', 'aprobado')
+    .is('deleted_at', null)
+    .order('destacado', { ascending: false })
+    .order('orden_peso', { ascending: false });
+  if (comunaId) request = request.eq('comuna_id', comunaId);
+
+  const { data, error } = await request;
+  if (error) throw error;
+  return (data as FilaIndiceCatalogo[]) ?? [];
+}
+
+/** Los datos completos de un grupo de publicaciones del catálogo (ver `fetchIndiceCatalogo`). */
+export async function fetchPublicacionesPorIds(ids: string[]): Promise<PublicacionResumen[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase
+    .from('publicaciones')
+    .select(
+      'id, titulo, descripcion, logo_url, telefono, destacado, categoria_id, categoria:categorias(nombre, icono), comuna:comunas(nombre), productos(nombre, precio, imagen_url, orden)',
+    )
+    .in('id', ids)
+    .eq('estado', 'aprobado')
+    .is('deleted_at', null);
+  if (error) throw error;
+  return (data as unknown as PublicacionResumen[]) ?? [];
+}
+
 export async function fetchPublicacionDetalle(id: string): Promise<PublicacionDetalle | null> {
   const { data, error } = await supabase
     .from('publicaciones')

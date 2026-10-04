@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
+import { FotoRemota } from '@/components/ui/FotoRemota';
 
 /**
  * Los datos de la cuenta y sus acciones. Está aparte de la pantalla porque lo
@@ -38,7 +39,7 @@ export function VistaCuenta({
           onPress={() => setVerFoto(true)}
           accessibilityRole="imagebutton"
           accessibilityLabel="Ver foto de perfil">
-          <Image source={{ uri: profile.logo_url }} style={styles.avatarImage} contentFit="cover" />
+          <FotoRemota uri={profile.logo_url} ancho={72} style={styles.avatarImage} />
         </Pressable>
       ) : (
         <View style={styles.avatarPlaceholder} />
