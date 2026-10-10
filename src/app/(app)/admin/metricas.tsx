@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
@@ -12,7 +12,6 @@ import { useSession } from '@/providers/SessionProvider';
 import { getErrorMessage } from '@/lib/errors';
 
 export default function MetricasScreen() {
-  const router = useRouter();
 
   const { permisos } = useSession();
   const [metricas, setMetricas] = useState<MetricaPublicacion[]>([]);
@@ -45,7 +44,7 @@ export default function MetricasScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Métricas" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Métricas" />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}

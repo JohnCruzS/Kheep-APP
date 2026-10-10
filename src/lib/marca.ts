@@ -406,11 +406,6 @@ export async function guardarMedidasLogo(medidas: MedidasLogo): Promise<void> {
   invalidarMarca();
 }
 
-/** Devuelve el título a las medidas del diseño. */
-export async function restablecerMedidasPorDefecto(): Promise<void> {
-  await guardarMedidasLogo(MEDIDAS_POR_DEFECTO);
-}
-
 export async function actualizarLogoActivo(id: string, activo: boolean): Promise<void> {
   const { error } = await supabase.from('logos_tematicos').update({ activo }).eq('id', id);
   if (error) throw error;

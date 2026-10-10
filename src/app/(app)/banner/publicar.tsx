@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
@@ -34,7 +34,6 @@ const OPCIONES_DIAS = [3, 7, 15, 30];
 const DIAS_MAX = 365;
 
 export default function PublicarBannerScreen() {
-  const router = useRouter();
   const { session, profile, permisos } = useSession();
   const esAdmin = profile?.rol === 'admin';
   // Administrador de zona: publica sin pagar, igual que el general, pero solo
@@ -189,7 +188,7 @@ export default function PublicarBannerScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Publicar banner" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Publicar banner" />
 
       <View style={styles.card}>
         {/* `FormScroll` se encarga del teclado igual que en el resto de la app:

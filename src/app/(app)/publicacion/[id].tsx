@@ -1,7 +1,7 @@
 // SOLO PARA EL PANEL: se llega desde la ficha de un usuario, para revisar
 // lo que publicó. El catálogo ya no entra acá.
 import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
@@ -19,7 +19,6 @@ import { FotoRemota } from '@/components/ui/FotoRemota';
 
 export default function PublicacionDetalleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   // La barra de 3 botones de Android se dibuja encima de la app: el botón
   // de WhatsApp (fijo abajo) debe quedar por sobre ella para poder tocarse.
   const insets = useSafeAreaInsets();
@@ -70,7 +69,7 @@ export default function PublicacionDetalleScreen() {
 
       {/* El mismo encabezado que el resto de la app: el título arriba y,
           debajo, de qué comercio se trata. */}
-      <EncabezadoMarca subtitulo={publicacion?.titulo ?? 'Comercio'} onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo={publicacion?.titulo ?? 'Comercio'} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}

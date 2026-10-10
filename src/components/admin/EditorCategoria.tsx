@@ -92,7 +92,7 @@ export function EditorCategoria({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.pantalla} edges={['top', 'bottom']}>
-        <EncabezadoMarca subtitulo={categoria ? 'Editar categoría' : 'Nueva categoría'} onVolver={onClose} />
+        <EncabezadoMarca subtitulo={categoria ? 'Editar categoría' : 'Nueva categoría'} />
 
         <KeyboardAvoidingView style={styles.cuerpo} behavior="padding">
           <ScrollView contentContainerStyle={styles.contenido} keyboardShouldPersistTaps="handled">

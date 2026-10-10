@@ -105,7 +105,7 @@ export default function EditarPublicacionScreen() {
           comunas={comunas}
           categorias={categorias}
           onDeleted={() => router.back()}
-          onVolver={() => router.back()}
+         
         />
       </>
     );
@@ -115,7 +115,7 @@ export default function EditarPublicacionScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Editar publicación" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Editar publicación" />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
@@ -131,13 +131,11 @@ function EditarForm({
   comunas,
   categorias,
   onDeleted,
-  onVolver,
 }: {
   publicacion: PublicacionDetalle;
   comunas: Comuna[];
   categorias: Categoria[];
   onDeleted: () => void;
-  onVolver: () => void;
 }) {
   const medidaProducto = useMedidaProducto();
   // El nombre es el del perfil (no se edita acá): al guardar se vuelve a
@@ -313,7 +311,7 @@ function EditarForm({
   }
 
   return (
-    <LienzoPublicacion fotoUri={logo?.uri ?? logoUrl ?? null} onElegirFoto={handlePickLogo} onVolver={onVolver}>
+    <LienzoPublicacion fotoUri={logo?.uri ?? logoUrl ?? null} onElegirFoto={handlePickLogo}>
       <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
       <PickerField

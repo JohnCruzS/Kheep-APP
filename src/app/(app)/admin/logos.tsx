@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -26,7 +25,6 @@ import {
   guardarMedidasLogo,
   limpiarLogosSobrantes,
   parseFecha,
-  restablecerMedidasPorDefecto,
 } from '@/lib/marca';
 import { supabase } from '@/lib/supabase';
 import { precargarTitulo, recordarMedidasTitulo, tituloEnMemoria } from '@/lib/cacheAdmin';
@@ -134,32 +132,6 @@ export default function LogosAdminScreen() {
     }
   }
 
-  function handleRestablecer() {
-    Alert.alert(
-      'Volver a las medidas originales',
-      'El título vuelve a la posición y el tamaño del diseño. El cambio lo ven todos los usuarios; los logos por fecha no se tocan.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Restablecer',
-          onPress: async () => {
-            setGuardando(true);
-            setError(null);
-            try {
-              await restablecerMedidasPorDefecto();
-              setMedidas(MEDIDAS_POR_DEFECTO);
-              setGuardadas(MEDIDAS_POR_DEFECTO);
-            } catch (err) {
-              setError(getErrorMessage(err, 'No se pudieron restablecer las medidas.'));
-            } finally {
-              setGuardando(false);
-            }
-          },
-        },
-      ],
-    );
-  }
-
   // Márgenes del título, en la rejilla de 1000 y para ESTA pantalla: ni el
   // logo ni el texto de debajo (la comuna, "Chile", "Admin"...) pueden tocar
   // lo que los rodea — la barra de arriba, el banner o los bordes. Se mide
@@ -181,7 +153,6 @@ export default function LogosAdminScreen() {
 
   const vigente = logoDeHoy(logos);
   const hayCambios = !mismasMedidas(medidas, guardadas);
-  const enDefecto = mismasMedidas(guardadas, MEDIDAS_POR_DEFECTO);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -271,28 +242,10 @@ export default function LogosAdminScreen() {
             onPress={handleGuardar}
             disabled={!hayCambios || guardando}
             accessibilityRole="button">
-            <Text style={styles.guardarLabel}>{guardando ? 'Guardando…' : 'Guardar'}</Text>
+            <Text style={styles.guardarLabel} numberOfLines={1} adjustsFontSizeToFit>{guardando ? 'Guardando…' : 'Guardar'}</Text>
           </Pressable>
         )}
 
-        {/* Justo debajo de "Guardar": es la salida
-            de emergencia después de probar medidas, no algo que se toque
-            todos los días. Apagado cuando ya está en el original. */}
-        {!faltaMigracion && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.restablecerFila,
-              pressed && styles.restablecerPresionada,
-              enDefecto && styles.restablecerApagada,
-            ]}
-            onPress={handleRestablecer}
-            disabled={guardando || enDefecto}>
-            <Ionicons name="refresh-outline" size={17} color={enDefecto ? Colors.textMuted : Colors.text} />
-            <Text style={[styles.restablecerLabel, enDefecto && styles.restablecerLabelApagado]}>
-              {enDefecto ? 'Está en las medidas originales' : 'Volver a las medidas originales'}
-            </Text>
-          </Pressable>
-        )}
 
       </ScrollView>
 
@@ -441,34 +394,8 @@ const styles = StyleSheet.create({
   },
   guardarLabel: {
     fontFamily: Fonts.medium,
-    fontSize: 21,
+    fontSize: 30,
     color: '#FFFFFF',
-  },
-  restablecerFila: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.four,
-    padding: Spacing.three,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    backgroundColor: Colors.surface,
-  },
-  restablecerPresionada: {
-    backgroundColor: Colors.backgroundAlt,
-  },
-  restablecerApagada: {
-    opacity: 0.5,
-  },
-  restablecerLabelApagado: {
-    color: Colors.textMuted,
-  },
-  restablecerLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.text,
   },
   ayuda: {
     fontFamily: Fonts.light,

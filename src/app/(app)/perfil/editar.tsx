@@ -51,7 +51,7 @@ export default function EditarPerfilScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Editar perfil" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Editar perfil" />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}

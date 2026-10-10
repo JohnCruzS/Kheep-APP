@@ -166,15 +166,20 @@ export default function DashboardScreen() {
         const categoriasData = session ? todas : conComercios;
         setComunaVacia(conComercios.length === 0);
         const previo = ordenMostrado.current;
-        const ordenadas = previo
+        // "Otro" es la categoría por descarte: va SIEMPRE al final de la fila
+        // y nunca cuenta entre las más usadas (pedido del cliente).
+        const esOtro = (c: Categoria) => c.id === otro?.id;
+        const sinOtro = categoriasData.filter((c) => !esOtro(c));
+        const ordenadasSinOtro = previo
           ? [
               ...previo
-                .map((id) => categoriasData.find((c) => c.id === id))
+                .map((id) => sinOtro.find((c) => c.id === id))
                 .filter((c): c is Categoria => c !== undefined),
-              ...categoriasData.filter((c) => !previo.includes(c.id)),
+              ...sinOtro.filter((c) => !previo.includes(c.id)),
             ]
           : // Primera carga: orden del admin + las más usadas por este usuario.
-            ordenarPorUso(categoriasData, uso);
+            ordenarPorUso(sinOtro, uso);
+        const ordenadas = [...ordenadasSinOtro, ...categoriasData.filter(esOtro)];
         ordenMostrado.current = ordenadas.map((c) => c.id);
         setCategoriasVisibles(todas.map((c) => c.id));
         setCategorias(ordenadas);
@@ -314,13 +319,19 @@ export default function DashboardScreen() {
   );
   const hayHuerfanas = useMemo(() => indice.some(esHuerfana), [indice, esHuerfana]);
 
-  // La fila de categorías: si hay huérfanas y "Otro" no está (la comuna no la
-  // tiene, o sin cuenta se escondió por no tener comercios propios), se suma
-  // al final para que se puedan encontrar.
+  // La fila de categorías. "Otro" es la categoría por descarte: solo existe
+  // en la comuna cuando tiene negocios —propios o sin una categoría visible—,
+  // también para quien entra con cuenta (pedido del cliente). Si los tiene y
+  // la comuna no la muestra, se suma al final para que se puedan encontrar.
+  const otroConNegocios = useMemo(
+    () => !!categoriaOtro && indice.some((p) => p.categoria_id === categoriaOtro.id || esHuerfana(p)),
+    [indice, categoriaOtro, esHuerfana],
+  );
   const chips = useMemo(() => {
-    if (!categoriaOtro || !hayHuerfanas || categorias.some((c) => c.id === categoriaOtro.id)) return categorias;
-    return [...categorias, categoriaOtro];
-  }, [categorias, categoriaOtro, hayHuerfanas]);
+    if (!categoriaOtro) return categorias;
+    const sinOtro = categorias.filter((c) => c.id !== categoriaOtro.id);
+    return otroConNegocios ? [...sinOtro, categoriaOtro] : sinOtro;
+  }, [categorias, categoriaOtro, otroConNegocios]);
 
   // Siempre hay una categoría elegida: si todavía no hay ninguna (o la que
   // estaba ya no existe), la primera de la fila.
@@ -555,6 +566,9 @@ export default function DashboardScreen() {
             // de crear nuevas: el desplazamiento es más fluido en teléfonos
             // lentos. Al acercarse al final se pide la tanda siguiente.
             onEndReached={cargarMas}
+            // Sin la barrita de desplazamiento del borde derecho (pedido del
+            // cliente): se entiende que la lista se desliza.
+            showsVerticalScrollIndicator={false}
             onEndReachedThreshold={1.5}
             ItemSeparatorComponent={ItemSeparator}
             ListFooterComponent={
@@ -590,8 +604,12 @@ export default function DashboardScreen() {
   );
 }
 
+/**
+ * Entre tarjeta y tarjeta, el mismo espacio que hay entre la tarjeta y el
+ * borde de la pantalla (25 de 1000, pedido del cliente).
+ */
 function ItemSeparator() {
-  return <View style={{ height: Spacing.three }} />;
+  return <View style={{ height: Layout.catalogMargin }} />;
 }
 
 const styles = StyleSheet.create({

@@ -483,7 +483,7 @@ type EditarPublicacion = {
  * es el del perfil del dueño (ver migración 0014).
  */
 export async function actualizarPublicacion(id: string, input: EditarPublicacion): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('publicaciones')
     .update({
       titulo: input.titulo,
@@ -492,10 +492,17 @@ export async function actualizarPublicacion(id: string, input: EditarPublicacion
       logo_url: input.logoUrl,
       ...(input.telefono ? { telefono: input.telefono } : {}),
     })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
 
   if (error) throw error;
+  // Con el permiso "Editar" apagado la base no rechaza: simplemente no cambia
+  // nada. Sin esta comprobación la app diría "guardado" sin haber guardado.
+  if (!data || data.length === 0) throw new Error(SIN_PERMISO_EDITAR);
 }
+
+/** Lo que se le dice a quien tiene el permiso "Editar" apagado (0033). */
+export const SIN_PERMISO_EDITAR = 'Un administrador desactivó la edición de tus publicaciones. Escríbele para que la vuelva a activar.';
 
 /**
  * Baja lógica: el dueño no puede borrar físicamente una publicación (eso
@@ -524,13 +531,15 @@ export async function actualizarProducto(
   id: string,
   input: { nombre: string; precio: number; imagen_url: string | null },
 ): Promise<void> {
-  const { error } = await supabase.from('productos').update(input).eq('id', id);
+  const { data, error } = await supabase.from('productos').update(input).eq('id', id).select('id');
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error(SIN_PERMISO_EDITAR);
 }
 
 export async function eliminarProducto(id: string): Promise<void> {
   const { data, error } = await supabase.from('productos').delete().eq('id', id).select('id, imagen_url');
   if (error) throw error;
+  if (!data || data.length === 0) throw new Error(SIN_PERMISO_EDITAR);
   // Igual que con los banners: sin esto, la foto del producto quedaría en el
   // almacenamiento para siempre, sin que nadie pueda verla ni encontrarla.
   await borrarImagenDeStorage('productos', (data?.[0]?.imagen_url as string | null) ?? null);
@@ -1632,6 +1641,16 @@ export type PerfilEnCategoria = {
   activo: boolean;
   /** Cuántas publicaciones tiene en esta comuna y categoría. */
   publicaciones: number;
+  /** Cuántas de esas esperan aprobación. */
+  pendientes: number;
+  /** Cuándo se registró la cuenta (para ordenar de más antiguo a más reciente). */
+  created_at: string;
+  /** 2 = publica directo, sin pasar por Aprobar. */
+  nivel: number;
+  /** Suspendida = no puede entrar a su cuenta. */
+  suspendida: boolean;
+  /** Si puede cambiar sus publicaciones (0033; sin la migración, siempre true). */
+  puede_editar: boolean;
 };
 
 /**
@@ -1642,21 +1661,39 @@ export type PerfilEnCategoria = {
  * cuentan) y se agrupa por autor.
  */
 export async function fetchPerfilesDeCategoria(comunaId: string, categoriaId: string): Promise<PerfilEnCategoria[]> {
-  const { data, error } = await supabase
-    .from('publicaciones')
-    .select('usuario_id, autor:profiles!publicaciones_usuario_id_fkey(id, nombre, logo_url, telefono_contacto, rol, activo)')
-    .eq('comuna_id', comunaId)
-    .eq('categoria_id', categoriaId)
-    .is('deleted_at', null);
+  const base = 'id, nombre, logo_url, telefono_contacto, rol, activo, created_at, nivel, suspendida';
+  const consultar = (columnasAutor: string) =>
+    supabase
+      .from('publicaciones')
+      .select(`estado, autor:profiles!publicaciones_usuario_id_fkey(${columnasAutor})`)
+      .eq('comuna_id', comunaId)
+      .eq('categoria_id', categoriaId)
+      .is('deleted_at', null);
+  // `puede_editar` llega con la migración 0033: sin ella se pide lo demás.
+  let respuesta = await consultar(`${base}, puede_editar`);
+  if (respuesta.error?.code === '42703') respuesta = await consultar(base);
+  const { data, error } = respuesta;
   if (error) throw error;
 
-  type Fila = { autor: Omit<PerfilEnCategoria, 'publicaciones'> | null };
+  type Fila = { estado: string; autor: Omit<PerfilEnCategoria, 'publicaciones' | 'pendientes'> | null };
   const porPerfil = new Map<string, PerfilEnCategoria>();
   for (const fila of (data as unknown as Fila[]) ?? []) {
     if (!fila.autor) continue;
+    const pendiente = fila.estado === 'pendiente' ? 1 : 0;
     const existente = porPerfil.get(fila.autor.id);
-    if (existente) existente.publicaciones += 1;
-    else porPerfil.set(fila.autor.id, { ...fila.autor, publicaciones: 1 });
+    if (existente) {
+      existente.publicaciones += 1;
+      existente.pendientes += pendiente;
+    } else {
+      porPerfil.set(fila.autor.id, {
+        ...fila.autor,
+        nivel: fila.autor.nivel ?? 1,
+        suspendida: Boolean(fila.autor.suspendida),
+        puede_editar: fila.autor.puede_editar ?? true,
+        publicaciones: 1,
+        pendientes: pendiente,
+      });
+    }
   }
   return [...porPerfil.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
@@ -1827,6 +1864,77 @@ export async function darDeBajaPublicacion(publicacionId: string): Promise<void>
  * publicación, así que el cambio vale para lo que publique de aquí en adelante;
  * lo que ya espera aprobación se resuelve a mano.
  */
+/** El permiso "Editar" de un usuario: apagado, no puede cambiar sus publicaciones (0033). */
+export async function actualizarPuedeEditar(perfilId: string, puedeEditar: boolean): Promise<void> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ puede_editar: puedeEditar })
+    .eq('id', perfilId)
+    .select('id');
+  if (error) {
+    if (error.code === '42703' || error.code === 'PGRST204') {
+      throw new Error('Falta ejecutar la migración 0033 en Supabase para usar el permiso "Editar".');
+    }
+    throw error;
+  }
+  if (!data || data.length === 0) throw new Error('No se pudo cambiar el permiso. Revisa que tu cuenta sea de administrador.');
+}
+
+/** Cuántas publicaciones vigentes (no dadas de baja) tiene cada usuario, en todas las comunas. */
+export async function contarPublicacionesDeUsuarios(ids: string[]): Promise<Record<string, number>> {
+  if (ids.length === 0) return {};
+  const { data, error } = await supabase
+    .from('publicaciones')
+    .select('usuario_id')
+    .in('usuario_id', ids)
+    .is('deleted_at', null);
+  if (error) throw error;
+  const cuentas: Record<string, number> = {};
+  for (const fila of (data as { usuario_id: string }[]) ?? []) {
+    cuentas[fila.usuario_id] = (cuentas[fila.usuario_id] ?? 0) + 1;
+  }
+  return cuentas;
+}
+
+/** El correo de una cuenta (vive fuera de la API: lo entrega una función solo para administradores). */
+export async function fetchCorreoDeCuenta(perfilId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('admin_datos_de_cuenta', { p_perfil: perfilId });
+  if (error) return null;
+  const fila = (Array.isArray(data) ? data[0] : null) as { email: string | null } | undefined;
+  return fila?.email ?? null;
+}
+
+/** Una publicación para revisar en el panel: como en el inicio, más su estado y fecha. */
+export type PublicacionEnRevision = PublicacionResumen & {
+  estado: 'pendiente' | 'aprobado' | 'rechazado';
+  created_at: string;
+  usuario_id: string;
+};
+
+/**
+ * Las publicaciones que el panel muestra en tarjetas, como se ven en el
+ * inicio: las pendientes de aprobar (Aprobar) o todas las de un usuario.
+ * Las dadas de baja no aparecen. Lo que cada administrador alcanza a ver lo
+ * decide la base (RLS): el de zona, solo lo de su zona.
+ */
+export async function fetchPublicacionesEnRevision(filtro: {
+  soloPendientes?: boolean;
+  usuarioId?: string;
+}): Promise<PublicacionEnRevision[]> {
+  let request = supabase
+    .from('publicaciones')
+    .select(
+      'id, titulo, descripcion, logo_url, telefono, destacado, categoria_id, estado, created_at, usuario_id, categoria:categorias(nombre, icono), comuna:comunas(nombre), productos(nombre, precio, imagen_url, orden)',
+    )
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+  if (filtro.soloPendientes) request = request.eq('estado', 'pendiente');
+  if (filtro.usuarioId) request = request.eq('usuario_id', filtro.usuarioId);
+  const { data, error } = await request;
+  if (error) throw error;
+  return (data as unknown as PublicacionEnRevision[]) ?? [];
+}
+
 export async function actualizarNivelPerfil(perfilId: string, nivel: 1 | 2): Promise<void> {
   const { data, error } = await supabase.from('profiles').update({ nivel }).eq('id', perfilId).select('id');
   if (error) throw error;

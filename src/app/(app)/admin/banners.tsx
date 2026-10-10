@@ -156,7 +156,7 @@ export default function BannersAdminScreen() {
 
       {/* Publicar y ver los activos son la misma pantalla: son las dos caras
           de lo mismo y separarlas obligaba a salir y volver a entrar. */}
-      <EncabezadoMarca subtitulo="Banners" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Banners" />
 
       {loading && (
         <View style={styles.carrusel}>

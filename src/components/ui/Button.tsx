@@ -14,7 +14,11 @@ type ButtonProps = {
   disabled?: boolean;
 };
 
+/** Los botones con letra grande: los que dicen "Nueva", "Subir" o "Guardar…". */
+const ETIQUETAS_GRANDES = /^(Nueva|Subir|Guardar|Guardando)/;
+
 export function Button({ label, onPress, variant = 'primary', loading, disabled }: ButtonProps) {
+  const grande = ETIQUETAS_GRANDES.test(label);
   const isPrimary = variant === 'primary';
   // En la tarjeta blanca del acceso, el botón secundario es negro macizo; en
   // el resto de la app va sobre negro, así que es un contorno blanco.
@@ -33,7 +37,10 @@ export function Button({ label, onPress, variant = 'primary', loading, disabled 
       {loading ? (
         <ActivityIndicator color={isPrimary ? Colors.text : Colors.text} />
       ) : (
-        <Text style={[styles.label, isPrimary ? styles.labelPrimary : styles.labelSecondary]}>
+        <Text
+          style={[styles.label, isPrimary ? styles.labelPrimary : styles.labelSecondary, grande && styles.labelGrande]}
+          numberOfLines={grande ? 1 : undefined}
+          adjustsFontSizeToFit={grande}>
           {label}
         </Text>
       )}
@@ -87,6 +94,11 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: Fonts.medium,
     fontSize: 21,
+  },
+  // Los botones que dicen "Nueva", "Subir" o "Guardar" van con letra más
+  // grande (pedido del cliente); el resto queda en 21.
+  labelGrande: {
+    fontSize: 30,
   },
   labelPrimary: {
     fontFamily: Fonts.light,

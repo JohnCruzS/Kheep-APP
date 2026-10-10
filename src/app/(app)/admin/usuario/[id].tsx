@@ -201,7 +201,7 @@ export default function FichaUsuarioScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <EncabezadoMarca subtitulo="Usuario" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Usuario" />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {loading && <LoadingState />}

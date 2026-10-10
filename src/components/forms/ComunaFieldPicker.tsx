@@ -43,6 +43,9 @@ export function ComunaFieldPicker({
   function handleClose() {
     setOpen(false);
     setBusqueda('');
+    // Al cerrarse con el teclado abierto, la ventana no avisa que se dejó de
+    // escribir: sin esto, al volver a abrirla ya no se veía "Buscar".
+    setEscribiendo(false);
   }
 
   // Sobre la tarjeta blanca (publicar) va como los campos de texto: una línea

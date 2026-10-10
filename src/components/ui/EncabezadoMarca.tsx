@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TituloPosicionado } from '@/components/ui/BrandLogo';
@@ -24,11 +24,10 @@ const SEPARACION_DEBAJO = 8;
  * (nunca más que el perímetro de 340 del inicio): con el título arriba y
  * chico, el contenido de la pantalla empieza antes.
  *
- * `onVolver` dibuja la flecha de regreso superpuesta, sin descolocar el
- * título: si la flecha ocupara sitio en la fila, el logo dejaría de estar
- * centrado en la pantalla.
+ * Sin flecha de volver (pedido del cliente): se vuelve con el botón o el
+ * gesto atrás del teléfono.
  */
-export function EncabezadoMarca({ subtitulo, onVolver }: { subtitulo: string; onVolver?: () => void }) {
+export function EncabezadoMarca({ subtitulo }: { subtitulo: string }) {
   const { width } = useWindowDimensions();
   // Todas las pantallas lo ponen dentro de un área segura de arriba: esta
   // franja (la barra de estado) ya está reservada fuera del encabezado.
@@ -62,12 +61,6 @@ export function EncabezadoMarca({ subtitulo, onVolver }: { subtitulo: string; on
           </Text>
         }
       />
-
-      {onVolver && (
-        <Pressable style={styles.volver} onPress={onVolver} hitSlop={14} accessibilityRole="button" accessibilityLabel="Volver">
-          <Text style={styles.flecha}>‹</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -84,17 +77,5 @@ const styles = StyleSheet.create({
     color: '#8A8A8A',
     maxWidth: '70%',
     textAlign: 'center',
-  },
-  volver: {
-    position: 'absolute',
-    left: Spacing.three,
-    top: Spacing.three,
-    paddingHorizontal: Spacing.two,
-  },
-  flecha: {
-    fontFamily: Fonts.light,
-    fontSize: 32,
-    lineHeight: 36,
-    color: Colors.accent,
   },
 });

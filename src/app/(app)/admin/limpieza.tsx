@@ -1,4 +1,4 @@
-import { Redirect, Stack, useRouter } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
@@ -53,7 +53,6 @@ function fechaLegible(iso: string | null): string {
  * encima.
  */
 export default function LimpiezaScreen() {
-  const router = useRouter();
   const { permisos } = useSession();
   const [imagenes, setImagenes] = useState<ImagenHuerfana[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,7 +152,7 @@ export default function LimpiezaScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Limpieza" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Limpieza" />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.ayuda}>
@@ -430,7 +429,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   botonLabel: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.medium,
     fontSize: 19,
     color: Colors.danger,
   },

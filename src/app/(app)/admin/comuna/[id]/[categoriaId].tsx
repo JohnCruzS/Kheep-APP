@@ -1,6 +1,6 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,10 +8,18 @@ import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { comunasEnMemoria } from '@/lib/cacheAdmin';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Interruptor } from '@/components/ui/Interruptor';
+import { AccionRoja, FilaDato, FilaInterruptor, TarjetaDesplegable } from '@/components/admin/TarjetaDesplegable';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { puede } from '@/lib/administradores';
 import {
   PerfilEnCategoria,
+  actualizarNivelPerfil,
+  actualizarPuedeEditar,
   actualizarVisibilidadPerfil,
+  contarPublicacionesDeUsuarios,
+  fetchCorreoDeCuenta,
+  reactivarCuenta,
+  suspenderCuenta,
   eliminarPerfil,
   eliminarPublicacionesDePerfil,
   fetchCategoriasAdmin,
@@ -21,10 +29,19 @@ import {
 import { getErrorMessage } from '@/lib/errors';
 import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
-import { FotoRemota } from '@/components/ui/FotoRemota';
+import { FiltrosOrden } from '@/components/admin/FiltrosOrden';
 
 /**
- * Los perfiles que publican en una categoría dentro de una comuna.
+ * Los perfiles que publican en una categoría dentro de una comuna, en
+ * tarjetas que se abren y se cierran (maqueta del cliente). Abierta, cada una
+ * muestra:
+ *  - junto al nombre, cuántas publicaciones tiene ("(5)"): al tocarlo se ven
+ *    todas, en tarjetas como las del inicio;
+ *  - a la derecha, el interruptor de visible/oculto;
+ *  - su correo y tres permisos: Directo (publica sin pasar por Aprobar),
+ *    Loguin (puede entrar a su cuenta; apagado = suspendida) y Editar (puede
+ *    cambiar sus publicaciones);
+ *  - "Eliminar". Tocar el correo abre su ficha completa.
  *
  * Ocultar y eliminar son cosas distintas:
  *  - Ocultar: el perfil y sus publicaciones desaparecen del catálogo, pero la
@@ -40,6 +57,13 @@ export default function PerfilesDeCategoriaScreen() {
   const { id: comunaId, categoriaId } = useLocalSearchParams<{ id: string; categoriaId: string }>();
   const { permisos } = useSession();
   const esGeneral = permisos?.esGeneral ?? false;
+  /** Suspender (Loguin) también lo puede un administrador de zona con ese permiso. */
+  const puedeSuspender = esGeneral || puede(permisos, 'suspender', comunaId);
+  const [abierto, setAbierto] = useState<string | null>(null);
+  /** Publicaciones de cada usuario en todas las comunas: el "(5)". */
+  const [totales, setTotales] = useState<Record<string, number>>({});
+  /** Correos ya pedidos (se piden al abrir la tarjeta: viven fuera de la API). */
+  const [correos, setCorreos] = useState<Record<string, string | null>>({});
 
   const [perfiles, setPerfiles] = useState<PerfilEnCategoria[]>([]);
   // Igual que en la lista de categorías: el nombre al instante desde la
@@ -50,6 +74,18 @@ export default function PerfilesDeCategoriaScreen() {
   const [tituloCategoria, setTituloCategoria] = useState('Categoría');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Cómo se ve la lista (pedido del cliente): por fecha de registro de la
+   * cuenta, de la más antigua a la más reciente o al revés, o solo los que
+   * tienen algo esperando aprobación (de los más antiguos a los recientes).
+   */
+  const [filtro, setFiltro] = useState<'antiguos' | 'recientes' | 'pendientes'>('antiguos');
+  const visibles = useMemo(() => {
+    const porFecha = [...perfiles].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    if (filtro === 'recientes') return porFecha.reverse();
+    if (filtro === 'pendientes') return porFecha.filter((p) => p.pendientes > 0);
+    return porFecha;
+  }, [perfiles, filtro]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,6 +97,9 @@ export default function PerfilesDeCategoriaScreen() {
         fetchCategoriasAdmin(),
       ]);
       setPerfiles(lista);
+      contarPublicacionesDeUsuarios(lista.map((p) => p.id))
+        .then(setTotales)
+        .catch(() => {});
       setComunaNombre(comuna?.nombre ?? 'Comuna');
       setTituloCategoria(categorias.find((c) => c.id === categoriaId)?.nombre ?? 'Categoría');
     } catch (err) {
@@ -78,14 +117,22 @@ export default function PerfilesDeCategoriaScreen() {
     }, [load]),
   );
 
-  async function handleToggle(perfil: PerfilEnCategoria) {
-    const nuevo = !perfil.activo;
-    setPerfiles((list) => list.map((p) => (p.id === perfil.id ? { ...p, activo: nuevo } : p)));
+  /** Cambia algo del perfil en pantalla al tiro y lo guarda; si falla, vuelve atrás. */
+  async function cambiar(perfil: PerfilEnCategoria, cambio: Partial<PerfilEnCategoria>, guardar: () => Promise<void>) {
+    setPerfiles((list) => list.map((p) => (p.id === perfil.id ? { ...p, ...cambio } : p)));
     try {
-      await actualizarVisibilidadPerfil(perfil.id, nuevo);
+      await guardar();
     } catch (err) {
-      setPerfiles((list) => list.map((p) => (p.id === perfil.id ? { ...p, activo: perfil.activo } : p)));
-      setError(getErrorMessage(err, 'No se pudo actualizar el perfil.'));
+      setPerfiles((list) => list.map((p) => (p.id === perfil.id ? perfil : p)));
+      Alert.alert('No se pudo guardar', getErrorMessage(err, 'Intenta de nuevo.'));
+    }
+  }
+
+  function abrir(perfil: PerfilEnCategoria) {
+    const nuevo = abierto === perfil.id ? null : perfil.id;
+    setAbierto(nuevo);
+    if (nuevo && !(nuevo in correos)) {
+      fetchCorreoDeCuenta(nuevo).then((correo) => setCorreos((c) => ({ ...c, [nuevo]: correo })));
     }
   }
 
@@ -139,16 +186,21 @@ export default function PerfilesDeCategoriaScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Mismo encabezado que el resto del panel: el título de la app con la
-          comuna debajo, para no perder de vista dónde se está. */}
-      <EncabezadoMarca subtitulo={comunaNombre} onVolver={() => router.back()} />
+      {/* Comuna y categoría juntas bajo el título: "Arica/Delivery". */}
+      <EncabezadoMarca subtitulo={`${comunaNombre}/${tituloCategoria}`} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.tituloSeccion}>{tituloCategoria}</Text>
-        <Text style={styles.ayuda}>
-          Perfiles con publicaciones en esta categoría y comuna. Toca uno para ver su ficha. El interruptor los oculta del catálogo —junto con todas
-          sus publicaciones, en cualquier comuna— y se puede revertir; “Eliminar” no.
-        </Text>
+        {perfiles.length > 0 && (
+          <FiltrosOrden
+            opciones={[
+              { id: 'antiguos', label: 'Antiguos' },
+              { id: 'recientes', label: 'Recientes' },
+              { id: 'pendientes', label: 'Pendientes' },
+            ]}
+            elegida={filtro}
+            onElegir={setFiltro}
+          />
+        )}
 
         {loading && <LoadingState />}
         {error && <ErrorState message={error} onRetry={load} />}
@@ -156,55 +208,97 @@ export default function PerfilesDeCategoriaScreen() {
         {!loading && !error && perfiles.length === 0 && (
           <Text style={styles.vacio}>Todavía nadie publica en esta categoría dentro de esta comuna.</Text>
         )}
+        {!loading && !error && perfiles.length > 0 && visibles.length === 0 && (
+          <Text style={styles.vacio}>Nadie tiene publicaciones esperando aprobación en esta categoría.</Text>
+        )}
 
-        {perfiles.map((perfil) => (
-          <View key={perfil.id} style={styles.row}>
-            {perfil.logo_url ? (
-              <FotoRemota uri={perfil.logo_url} ancho={44} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarVacio]} />
-            )}
-
-            {/* Tocar el usuario abre su ficha: contacto, permisos,
-                pendientes y todo lo que publicó. */}
-            <Pressable
-              style={styles.rowInfo}
-              onPress={() => router.push({ pathname: '/(app)/admin/usuario/[id]', params: { id: perfil.id } })}
-              accessibilityRole="button">
-              <Text style={styles.nombre} numberOfLines={1}>
-                {perfil.nombre}
-              </Text>
-              <Text style={styles.subtexto}>
-                {perfil.publicaciones} {perfil.publicaciones === 1 ? 'publicación' : 'publicaciones'} acá
-                {perfil.telefono_contacto ? ` · ${perfil.telefono_contacto}` : ''}
-              </Text>
-              <Text style={[styles.estado, !perfil.activo && styles.estadoOculto]}>
-                {perfil.activo ? 'Visible' : 'Oculto'}
-                {perfil.rol === 'admin' ? ' · administrador' : ''}
-              </Text>
-            </Pressable>
-
-            {/* Ocultar o eliminar la cuenta afecta a todas las comunas: solo
-                el administrador general. */}
-            {esGeneral && (
-            <View style={styles.rowActions}>
-              <Interruptor
-                value={perfil.activo}
-                onValueChange={() => handleToggle(perfil)}
+        {visibles.map((perfil) => {
+          const estaAbierto = abierto === perfil.id;
+          const total = totales[perfil.id] ?? perfil.publicaciones;
+          const esAdminGeneral = perfil.rol === 'admin';
+          return (
+            <TarjetaDesplegable
+              key={perfil.id}
+              titulo={perfil.nombre}
+              abierta={estaAbierto}
+              onAlternar={() => abrir(perfil)}
+              junto={
+                estaAbierto ? (
+                  // El número abre todas sus publicaciones, en tarjetas.
+                  <Pressable
+                    onPress={() =>
+                      router.push({ pathname: '/(app)/admin/publicaciones', params: { usuario: perfil.id, nombre: perfil.nombre } })
+                    }
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ver las ${total} publicaciones de ${perfil.nombre}`}>
+                    <Text style={styles.total}>({total})</Text>
+                  </Pressable>
+                ) : null
+              }
+              derecha={
+                <>
+                  <Interruptor
+                    value={perfil.activo}
+                    disabled={!esGeneral}
+                    onValueChange={(activo) =>
+                      void cambiar(perfil, { activo }, () => actualizarVisibilidadPerfil(perfil.id, activo))
+                    }
+                    accessibilityLabel={perfil.activo ? `Ocultar a ${perfil.nombre}` : `Mostrar a ${perfil.nombre}`}
+                  />
+                </>
+              }>
+              {/* Tocar el correo abre su ficha completa (teléfono, fechas, suspensión). */}
+              <FilaDato
+                etiqueta="Correo"
+                valor={perfil.id in correos ? (correos[perfil.id] ?? 'sin correo') : 'cargando…'}
+                onPress={() => router.push({ pathname: '/(app)/admin/usuario/[id]', params: { id: perfil.id } })}
               />
-              {/* A un administrador no se le ofrece eliminar: la base lo
-                  rechaza igual (ver 0017) y el botón solo confundiría. */}
-              {perfil.rol !== 'admin' && (
-                <Pressable onPress={() => handleEliminar(perfil)} hitSlop={8}>
-                  <Text style={styles.eliminar}>Eliminar</Text>
-                </Pressable>
-              )}
-            </View>
-            )}
-          </View>
-        ))}
+              {pendientesTexto(perfil)}
+              <FilaInterruptor
+                etiqueta="Directo"
+                valor={perfil.nivel === 2 || esAdminGeneral}
+                deshabilitado={!esGeneral || esAdminGeneral}
+                onCambio={(directo) =>
+                  void cambiar(perfil, { nivel: directo ? 2 : 1 }, () => actualizarNivelPerfil(perfil.id, directo ? 2 : 1))
+                }
+              />
+              <FilaInterruptor
+                etiqueta="Loguin"
+                valor={!perfil.suspendida}
+                deshabilitado={!puedeSuspender || esAdminGeneral}
+                onCambio={(puedeEntrar) =>
+                  void cambiar(perfil, { suspendida: !puedeEntrar }, () =>
+                    puedeEntrar
+                      ? reactivarCuenta(perfil.id)
+                      : suspenderCuenta(perfil.id, 'Acceso desactivado desde el panel.', null),
+                  )
+                }
+              />
+              <FilaInterruptor
+                etiqueta="Editar"
+                valor={perfil.puede_editar}
+                deshabilitado={!esGeneral || esAdminGeneral}
+                onCambio={(puedeEditar) =>
+                  void cambiar(perfil, { puede_editar: puedeEditar }, () => actualizarPuedeEditar(perfil.id, puedeEditar))
+                }
+              />
+              {esGeneral && !esAdminGeneral && <AccionRoja texto="Eliminar" onPress={() => handleEliminar(perfil)} />}
+            </TarjetaDesplegable>
+          );
+        })}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/** "1 por aprobar": solo si tiene algo esperando. */
+function pendientesTexto(perfil: PerfilEnCategoria) {
+  if (perfil.pendientes === 0) return null;
+  return (
+    <Text style={styles.pendientes}>
+      {perfil.pendientes} {perfil.pendientes === 1 ? 'publicación por aprobar' : 'publicaciones por aprobar'}
+    </Text>
   );
 }
 
@@ -213,101 +307,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  tituloSeccion: {
-    fontFamily: Fonts.light,
-    fontSize: 21,
-    color: Colors.accent,
-    textAlign: 'center',
-    marginBottom: Spacing.two,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
-  },
-  backLabel: {
-    fontFamily: Fonts.medium,
-    color: Colors.text,
-    fontSize: 15,
-    width: 78,
-  },
-  topTitle: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.text,
-    fontSize: 15,
-    flex: 1,
-    textAlign: 'center',
-  },
   content: {
     paddingHorizontal: u(REJILLA.margenLateral),
-    paddingTop: Spacing.three,
     paddingBottom: Spacing.six,
   },
-  ayuda: {
-    fontFamily: Fonts.light,
-    marginBottom: Spacing.three,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.textMuted,
-  },
   vacio: {
-    fontFamily: Fonts.light,
-    fontSize: 13,
+    fontFamily: Fonts.delgada,
+    fontSize: 14,
+    lineHeight: 20,
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: Spacing.four,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    backgroundColor: Colors.surface,
-    borderRadius: u(REJILLA.curvatura),
-    padding: Spacing.three,
-    marginBottom: Spacing.two,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
+  // El "(5)" junto al nombre, en rojo como la maqueta.
+  total: {
+    fontFamily: Fonts.tarjeta,
+    fontSize: 27.5,
+    color: Colors.accent,
   },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  avatarVacio: {
-    backgroundColor: Colors.background,
-  },
-  rowInfo: {
-    flex: 1,
-  },
-  nombre: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  subtexto: {
-    fontFamily: Fonts.light,
-    fontSize: 11.5,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  estado: {
-    fontFamily: Fonts.medium,
-    fontSize: 11.5,
-    color: Colors.success,
-    marginTop: 3,
-  },
-  estadoOculto: {
-    color: Colors.warning,
-  },
-  rowActions: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  eliminar: {
-    fontFamily: Fonts.medium,
-    fontSize: 12,
-    color: Colors.danger,
+  pendientes: {
+    fontFamily: Fonts.delgada,
+    fontSize: 15,
+    color: Colors.accent,
+    textAlign: 'center',
   },
 });

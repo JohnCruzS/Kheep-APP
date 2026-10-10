@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   filaLabel: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 19,
     textAlign: 'center',
     color: Colors.text,

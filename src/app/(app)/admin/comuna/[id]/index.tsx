@@ -7,13 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { comunasEnMemoria } from '@/lib/cacheAdmin';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
-import { ListaArrastrable } from '@/components/ui/ListaArrastrable';
+import { ListaArrastrable, type PropsAsa } from '@/components/ui/ListaArrastrable';
 import { EditorCategoria } from '@/components/admin/EditorCategoria';
 import { MenuAcciones } from '@/components/admin/MenuAcciones';
 import { SelectorComuna } from '@/components/admin/SelectorComuna';
 import { Interruptor } from '@/components/ui/Interruptor';
 import { ALTO_TARJETA_LISTA, Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import {
+  CATEGORIA_OTRO,
   CategoriaDeComuna,
   Comuna,
   actualizarVisibilidadCategoriaComuna,
@@ -33,6 +34,14 @@ import { REJILLA, u } from '@/lib/rejilla';
 
 /** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
 const ALTO_FILA = ALTO_TARJETA_LISTA + TarjetaLista.separacion;
+
+/** "Otro", la categoría por descarte: va fija al final de la lista y no se arrastra. */
+const esOtro = (c: { nombre: string }) => c.nombre.trim().toLowerCase() === CATEGORIA_OTRO.toLowerCase();
+/** La lista con "Otro" (si está) movida al final. */
+const conOtroAlFinal = <T extends { nombre: string }>(lista: T[]) => [
+  ...lista.filter((c) => !esOtro(c)),
+  ...lista.filter(esOtro),
+];
 
 /**
  * El catálogo de UNA comuna: qué categorías muestra, en qué orden y con qué
@@ -78,7 +87,7 @@ export default function CategoriasDeComunaScreen() {
         fetchComunas(),
         fetchComuna(comunaId),
       ]);
-      setCategorias(config.categorias);
+      setCategorias(conOtroAlFinal(config.categorias));
       setComunas(lista);
       setNombreComuna(comuna?.nombre ?? 'Comuna');
     } catch (err) {
@@ -112,8 +121,10 @@ export default function CategoriasDeComunaScreen() {
     }
   }
 
-  async function handleReordenar(nuevas: CategoriaDeComuna[]) {
+  async function handleReordenar(movibles: CategoriaDeComuna[]) {
     const anterior = categorias;
+    // Se arrastran solo las demás; "Otro" se vuelve a poner al final.
+    const nuevas = [...movibles, ...categorias.filter(esOtro)];
     setCategorias(nuevas);
     try {
       await guardarOrdenCategoriasComuna(
@@ -218,38 +229,23 @@ export default function CategoriasDeComunaScreen() {
   }
 
 
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <Stack.Screen options={{ headerShown: false }} />
-
-      <EncabezadoMarca subtitulo={nombreComuna} onVolver={() => router.back()} />
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.lista}>
-          {loading && <LoadingState />}
-          {error && <ErrorState message={error} onRetry={load} />}
-
-          {!loading && !error && categorias.length === 0 && (
-            <Text style={styles.vacio}>Esta comuna no muestra ninguna categoría. Agrega una con “Nueva”.</Text>
-          )}
-
-          {!loading && !error && (
-            <ListaArrastrable
-              datos={categorias}
-              altoFila={ALTO_FILA}
-              claveDe={(categoria) => categoria.id}
-              onReordenar={handleReordenar}>
-              {(categoria, _indice, arrastrando, propsAsa) => (
+  /** Una fila de la lista. `propsAsa` null = fija (la de "Otro"). */
+  function fila(
+    categoria: CategoriaDeComuna,
+    arrastrando: boolean,
+    propsAsa: PropsAsa | null,
+  ) {
+    return (
                 <View style={[styles.fila, arrastrando && styles.filaArrastrando]}>
                   {/* La flecha es el asa: se mantiene apretada y se arrastra
                       para cambiar el orden. Va aparte del resto de la fila
                       para que un deslizamiento normal siga desplazando la
                       pantalla. */}
                   <View
-                    {...(gestiona ? propsAsa : {})}
+                    {...(gestiona && propsAsa ? propsAsa : {})}
                     style={styles.asa}
-                    accessibilityLabel={`Mover ${categoria.nombre}`}>
-                    <Text style={styles.asaIcono}>➤</Text>
+                    accessibilityLabel={propsAsa ? `Mover ${categoria.nombre}` : `${categoria.nombre} va siempre al final`}>
+                    <Text style={[styles.asaIcono, !propsAsa && styles.asaFija]}>➤</Text>
                   </View>
 
                   <Pressable
@@ -277,9 +273,42 @@ export default function CategoriasDeComunaScreen() {
                     />
                   )}
                 </View>
-              )}
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      <EncabezadoMarca subtitulo={nombreComuna} />
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.lista}>
+          {loading && <LoadingState />}
+          {error && <ErrorState message={error} onRetry={load} />}
+
+          {!loading && !error && categorias.length === 0 && (
+            <Text style={styles.vacio}>Esta comuna no muestra ninguna categoría. Agrega una con “Nueva”.</Text>
+          )}
+
+          {!loading && !error && (
+            <ListaArrastrable
+              datos={categorias.filter((c) => !esOtro(c))}
+              altoFila={ALTO_FILA}
+              claveDe={(categoria) => categoria.id}
+              onReordenar={handleReordenar}>
+              {(categoria, _indice, arrastrando, propsAsa) => fila(categoria, arrastrando, propsAsa)}
             </ListaArrastrable>
           )}
+
+          {/* "Otro", fijo al final: sin asa, no se puede mover. */}
+          {!loading &&
+            !error &&
+            categorias.filter(esOtro).map((categoria) => (
+              <View key={categoria.id} style={styles.filaFija}>
+                {fila(categoria, false, null)}
+              </View>
+            ))}
         </View>
 
       </ScrollView>
@@ -289,7 +318,7 @@ export default function CategoriasDeComunaScreen() {
         <Pressable
           style={({ pressed }) => [styles.nueva, pressed && styles.nuevaPresionada]}
           onPress={() => setCreando(true)}>
-          <Text style={styles.nuevaLabel}>Nueva</Text>
+          <Text style={styles.nuevaLabel} numberOfLines={1} adjustsFontSizeToFit>Nueva</Text>
         </Pressable>
       )}
 
@@ -415,6 +444,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: Spacing.two,
   },
+  // La fila de "Otro", fuera de la lista arrastrable: mismo alto y separación.
+  filaFija: {
+    marginTop: 0,
+  },
+  asaFija: {
+    opacity: 0.25,
+  },
   asaIcono: {
     fontFamily: Fonts.light,
     fontSize: 22,
@@ -451,7 +487,7 @@ const styles = StyleSheet.create({
   },
   nuevaLabel: {
     fontFamily: Fonts.medium,
-    fontSize: 21,
+    fontSize: 30,
     color: '#FFFFFF',
   },
 });

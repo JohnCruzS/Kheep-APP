@@ -91,7 +91,10 @@ export async function pickAndCompressImage(
     mediaTypes: ['images'],
     quality: 1, // la compresión real la hacemos nosotros abajo, con control fino
     allowsEditing: recortar,
-    ...(recortar ? { aspect } : {}),
+    // La foto del comercio y la del perfil se muestran en un círculo: el
+    // recorte también es circular, así se ve exactamente lo que va a quedar.
+    // (Solo Android; en iPhone el recorte del sistema es siempre cuadrado.)
+    ...(recortar ? { aspect, shape: uso === 'logo' ? ('oval' as const) : ('rectangle' as const) } : {}),
   });
 
   if (result.canceled || result.assets.length === 0) {

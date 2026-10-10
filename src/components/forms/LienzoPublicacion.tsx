@@ -1,11 +1,9 @@
 import { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FormScroll } from '@/components/ui/FormScroll';
 import { TarjetaClaraProvider } from '@/components/ui/TarjetaClara';
-import { Text } from '@/components/ui/Texto';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Colors, Spacing } from '@/constants/theme';
 import { FORMATO_RECORTE } from '@/lib/rejilla';
 import { FotoRemota } from '@/components/ui/FotoRemota';
 
@@ -55,18 +53,14 @@ export function useMedidaProducto() {
 export function LienzoPublicacion({
   fotoUri,
   onElegirFoto,
-  onVolver,
   children,
 }: {
   /** La foto del comercio; sin ella se ve el círculo gris. */
   fotoUri: string | null;
   onElegirFoto?: () => void;
-  /** Si viene, muestra la flecha para volver (editar). */
-  onVolver?: () => void;
   children: ReactNode;
 }) {
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const negro = Math.round(width * PROPORCION.negro);
   const inicio = Math.round(width * PROPORCION.inicioTarjeta);
   const margen = Math.round(width * PROPORCION.margen);
@@ -101,16 +95,6 @@ export function LienzoPublicacion({
         </FormScroll>
       </TarjetaClaraProvider>
 
-      {onVolver && (
-        <Pressable
-          onPress={onVolver}
-          hitSlop={12}
-          style={[styles.volver, { top: insets.top + Spacing.two }]}
-          accessibilityRole="button"
-          accessibilityLabel="Volver">
-          <Text style={styles.volverLabel}>‹</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -149,15 +133,5 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.four,
-  },
-  volver: {
-    position: 'absolute',
-    left: Spacing.three,
-  },
-  volverLabel: {
-    fontFamily: Fonts.light,
-    fontSize: 34,
-    lineHeight: 38,
-    color: Colors.accent,
   },
 });

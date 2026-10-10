@@ -4,7 +4,6 @@ import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { SelectorComuna } from '@/components/admin/SelectorComuna';
 import { LoadingState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
@@ -50,11 +49,17 @@ export default function AdministradorScreen() {
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [regiones, setRegiones] = useState<string[]>([]);
-  const [comunasElegidas, setComunasElegidas] = useState<string[]>([]);
+  // La zona se elige región por región: al activar una región aparecen
+  // debajo sus comunas, todas encendidas, y se apagan las que no van. Una
+  // región apagada no muestra sus comunas.
+  //   activas:   regiones encendidas
+  //   excluidas: comunas apagadas dentro de una región encendida
+  const [activas, setActivas] = useState<string[]>([]);
+  const [excluidas, setExcluidas] = useState<string[]>([]);
   const [permisos, setPermisos] = useState<PermisoZona[]>([]);
-  const [eligiendoComuna, setEligiendoComuna] = useState(false);
   const [verRegiones, setVerRegiones] = useState(false);
+  /** Regiones encendidas con su lista de comunas plegada (se toca el nombre para abrir o cerrar). */
+  const [plegadas, setPlegadas] = useState<string[]>([]);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -67,8 +72,21 @@ export default function AdministradorScreen() {
           if (admin) {
             setNombre(admin.nombre);
             setEmail(admin.email);
-            setRegiones(admin.regiones);
-            setComunasElegidas(admin.comunas);
+            // Lo guardado se traduce a la pantalla: una región completa queda
+            // encendida con todas sus comunas; con comunas sueltas, su región
+            // queda encendida y el resto de sus comunas, apagadas.
+            const regionesDeSueltas = [
+              ...new Set(lista.filter((c) => admin.comunas.includes(c.id)).map((c) => c.region)),
+            ].filter((r) => !admin.regiones.includes(r));
+            setActivas([...admin.regiones, ...regionesDeSueltas]);
+            // Al abrir un administrador que ya existe, sus regiones parten
+            // plegadas: la lista no queda larguísima de entrada.
+            setPlegadas([...admin.regiones, ...regionesDeSueltas]);
+            setExcluidas(
+              lista
+                .filter((c) => regionesDeSueltas.includes(c.region) && !admin.comunas.includes(c.id))
+                .map((c) => c.id),
+            );
             setPermisos(admin.permisos);
           }
         }
@@ -81,7 +99,51 @@ export default function AdministradorScreen() {
   }, [id]);
 
   const todasLasRegiones = useMemo(() => [...new Set(comunas.map((c) => c.region))].sort(compararRegiones), [comunas]);
-  const nombreDe = (comunaId: string) => comunas.find((c) => c.id === comunaId)?.nombre ?? 'Comuna';
+  const comunasDe = (region: string) => comunas.filter((c) => c.region === region);
+  /** Cuántas comunas de una región encendida quedaron elegidas. */
+  const elegidasDe = (region: string) => comunasDe(region).filter((c) => !excluidas.includes(c.id)).length;
+
+  /**
+   * Lo que se guarda: cada región encendida con TODAS sus comunas va como
+   * región completa (así cubre también las comunas que se agreguen después);
+   * si se apagó alguna, van solo sus comunas encendidas.
+   */
+  function zonaParaGuardar(): { regiones: string[]; comunas: string[] } {
+    const regiones: string[] = [];
+    const sueltas: string[] = [];
+    for (const region of activas) {
+      const todas = comunasDe(region);
+      const encendidas = todas.filter((c) => !excluidas.includes(c.id));
+      if (encendidas.length === todas.length) regiones.push(region);
+      else sueltas.push(...encendidas.map((c) => c.id));
+    }
+    return { regiones, comunas: sueltas };
+  }
+
+  function alternarRegion(region: string) {
+    if (activas.includes(region)) {
+      setActivas((a) => a.filter((r) => r !== region));
+    } else {
+      // Al encenderla, todas sus comunas parten encendidas.
+      const ids = comunasDe(region).map((c) => c.id);
+      setExcluidas((e) => e.filter((id) => !ids.includes(id)));
+      setActivas((a) => [...a, region]);
+      setPlegadas((p) => p.filter((r) => r !== region));
+    }
+  }
+
+  /** Lo elegido, en una línea: "Arica · Antofagasta (2 de 9)". */
+  const resumenZona =
+    activas.length === 0
+      ? 'Ninguna'
+      : [...activas]
+          .sort(compararRegiones)
+          .map((r) => {
+            const total = comunasDe(r).length;
+            const elegidas = elegidasDe(r);
+            return elegidas === total ? sinPrefijo(r) : `${sinPrefijo(r)} (${elegidas} de ${total})`;
+          })
+          .join(' · ');
 
   function alternar<T>(lista: T[], valor: T): T[] {
     return lista.includes(valor) ? lista.filter((v) => v !== valor) : [...lista, valor];
@@ -94,7 +156,8 @@ export default function AdministradorScreen() {
       if (!isValidEmail(email)) return setError('Escribe un correo válido.');
       if (password.length < 6) return setError('La contraseña debe tener al menos 6 caracteres.');
     }
-    if (regiones.length === 0 && comunasElegidas.length === 0) {
+    const zona = zonaParaGuardar();
+    if (zona.regiones.length === 0 && zona.comunas.length === 0) {
       return setError('Asígnale al menos una región o una comuna.');
     }
     if (permisos.length === 0) return setError('Dale al menos un permiso.');
@@ -112,7 +175,7 @@ export default function AdministradorScreen() {
           : `Cuenta creada. ${nombre.trim()} ya puede entrar con ${email.trim()} y la contraseña que escribiste.`;
       }
 
-      await asignarAdminZona({ usuarioId, permisos, regiones, comunas: comunasElegidas });
+      await asignarAdminZona({ usuarioId, permisos, regiones: zona.regiones, comunas: zona.comunas });
       Alert.alert(editando ? 'Guardado' : 'Administrador creado', aviso, [
         { text: 'Listo', onPress: () => router.back() },
       ]);
@@ -149,7 +212,7 @@ export default function AdministradorScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <EncabezadoMarca subtitulo={editando ? 'Editar administrador' : 'Nuevo administrador'} onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo={editando ? 'Editar administrador' : 'Nuevo administrador'} />
 
       {loading ? (
         <LoadingState />
@@ -185,35 +248,47 @@ export default function AdministradorScreen() {
           <Text style={styles.seccion}>Zona</Text>
 
           <Pressable style={styles.bloque} onPress={() => setVerRegiones((v) => !v)}>
-            <Text style={styles.bloqueTitulo}>Regiones completas</Text>
-            <Text style={styles.bloqueValor}>{regiones.length > 0 ? regiones.map(sinPrefijo).join(', ') : 'Ninguna'}</Text>
+            <Text style={styles.bloqueTitulo}>Regiones y comunas</Text>
+            <Text style={styles.bloqueValor}>{resumenZona}</Text>
           </Pressable>
           {verRegiones &&
-            todasLasRegiones.map((region) => (
-              <View key={region} style={styles.opcion}>
-                <Text style={styles.opcionLabel}>{sinPrefijo(region)}</Text>
-                <Interruptor
-                  value={regiones.includes(region)}
-                  onValueChange={() => setRegiones((r) => alternar(r, region))}
-                />
-              </View>
-            ))}
-
-          <View style={[styles.bloque, styles.bloqueComunas]}>
-            <Text style={styles.bloqueTitulo}>Comunas sueltas</Text>
-            {comunasElegidas.length === 0 && <Text style={styles.bloqueValor}>Ninguna</Text>}
-            {comunasElegidas.map((comunaId) => (
-              <View key={comunaId} style={styles.chip}>
-                <Text style={styles.chipLabel}>{nombreDe(comunaId)}</Text>
-                <Pressable onPress={() => setComunasElegidas((c) => c.filter((x) => x !== comunaId))} hitSlop={10}>
-                  <Text style={styles.chipQuitar}>✕</Text>
-                </Pressable>
-              </View>
-            ))}
-            <Pressable onPress={() => setEligiendoComuna(true)} style={styles.agregar} hitSlop={8}>
-              <Text style={styles.agregarLabel}>+ Agregar comuna</Text>
-            </Pressable>
-          </View>
+            todasLasRegiones.map((region) => {
+              const encendida = activas.includes(region);
+              const abierta = encendida && !plegadas.includes(region);
+              const delaRegion = comunasDe(region);
+              return (
+                <View key={region}>
+                  <View style={styles.opcion}>
+                    {/* Tocar el nombre pliega o despliega sus comunas, sin apagar la región. */}
+                    <Pressable
+                      style={styles.opcionTexto}
+                      onPress={() => encendida && setPlegadas((p) => alternar(p, region))}
+                      disabled={!encendida}
+                      hitSlop={6}>
+                      <Text style={styles.opcionLabel}>{sinPrefijo(region)}</Text>
+                    </Pressable>
+                    {encendida && <Text style={styles.contador}>{`${elegidasDe(region)}/${delaRegion.length}`}</Text>}
+                    <Interruptor
+                      value={encendida}
+                      onValueChange={() => alternarRegion(region)}
+                      accessibilityLabel={`Incluir la región ${sinPrefijo(region)}`}
+                    />
+                  </View>
+                  {/* Sus comunas, solo si la región está encendida y desplegada. */}
+                  {abierta &&
+                    delaRegion.map((comuna) => (
+                      <View key={comuna.id} style={[styles.opcion, styles.opcionComuna]}>
+                        <Text style={[styles.opcionLabel, styles.opcionTexto]}>{`- ${comuna.nombre}`}</Text>
+                        <Interruptor
+                          value={!excluidas.includes(comuna.id)}
+                          onValueChange={() => setExcluidas((e) => alternar(e, comuna.id))}
+                          accessibilityLabel={`Incluir ${comuna.nombre} en su zona`}
+                        />
+                      </View>
+                    ))}
+                </View>
+              );
+            })}
 
           {/* ------------------------------------------------ permisos */}
           <Text style={styles.seccion}>Permisos</Text>
@@ -242,16 +317,6 @@ export default function AdministradorScreen() {
         </FormScroll>
       )}
 
-      <SelectorComuna
-        visible={eligiendoComuna}
-        titulo="Agregar a su zona"
-        comunas={comunas.filter((c) => !comunasElegidas.includes(c.id))}
-        onClose={() => setEligiendoComuna(false)}
-        onElegir={(comunaId) => {
-          setEligiendoComuna(false);
-          if (comunaId) setComunasElegidas((c) => [...c, comunaId]);
-        }}
-      />
     </SafeAreaView>
   );
 }
@@ -293,9 +358,6 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     marginBottom: Spacing.two,
   },
-  bloqueComunas: {
-    gap: Spacing.two,
-  },
   bloqueTitulo: {
     fontFamily: Fonts.medium,
     fontSize: 16,
@@ -307,40 +369,21 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginTop: 2,
   },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    borderRadius: 999,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  chipLabel: {
-    fontFamily: Fonts.light,
-    fontSize: 15,
-    color: Colors.text,
-  },
-  chipQuitar: {
-    fontFamily: Fonts.medium,
-    fontSize: 15,
-    color: Colors.textMuted,
-  },
-  agregar: {
-    paddingVertical: Spacing.two,
-  },
-  agregarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 15,
-    color: Colors.accent,
-  },
   opcion: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.three,
     paddingVertical: Spacing.two,
+  },
+  // Las comunas, un poco más adentro que el nombre de su región.
+  opcionComuna: {
+    paddingLeft: Spacing.four,
+  },
+  contador: {
+    fontFamily: Fonts.light,
+    fontSize: 15,
+    color: Colors.textMuted,
   },
   opcionTexto: {
     flex: 1,

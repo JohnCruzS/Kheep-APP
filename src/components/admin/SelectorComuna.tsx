@@ -58,6 +58,9 @@ export function SelectorComuna({
 
   function cerrar() {
     setBusqueda('');
+    // Al cerrarse con el teclado abierto, la ventana no avisa que se dejó de
+    // escribir: sin esto, al volver a abrirla ya no se veía "Buscar".
+    setEscribiendo(false);
     onClose();
   }
 
@@ -97,6 +100,7 @@ export function SelectorComuna({
                 style={styles.fila}
                 onPress={() => {
                   setBusqueda('');
+                  setEscribiendo(false);
                   onElegir(item.id);
                 }}>
                 <Text style={styles.filaLabel}>{item.label}</Text>

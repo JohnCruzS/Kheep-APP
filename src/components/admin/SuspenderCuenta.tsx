@@ -75,7 +75,7 @@ export function SuspenderCuenta({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.pantalla} edges={['top', 'bottom']}>
-        <EncabezadoMarca subtitulo="Suspender cuenta" onVolver={onClose} />
+        <EncabezadoMarca subtitulo="Suspender cuenta" />
 
         <KeyboardAvoidingView style={styles.pantalla} behavior="padding">
           <ScrollView contentContainerStyle={styles.contenido} keyboardShouldPersistTaps="handled">

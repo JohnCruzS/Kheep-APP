@@ -82,6 +82,9 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre, alAbrir 
   function handleClose() {
     setOpen(false);
     setBusqueda('');
+    // Al cerrarse con el teclado abierto, la ventana no avisa que se dejó de
+    // escribir: sin esto, al volver a abrirla ya no se veía "Buscar".
+    setEscribiendo(false);
   }
 
   function handleSelect(id: string | null) {
@@ -205,7 +208,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   optionLabel: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 19,
     textAlign: 'center',
     color: Colors.text,

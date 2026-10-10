@@ -76,7 +76,7 @@ export function SelectorZonas({
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose}>
       <SafeAreaView style={styles.pantalla} edges={['top', 'bottom']}>
-        <EncabezadoMarca subtitulo="Chile" onVolver={onClose} />
+        <EncabezadoMarca subtitulo="Chile" />
 
         <ScrollView contentContainerStyle={styles.contenido} showsVerticalScrollIndicator={false}>
           {regiones.map(([region, lista]) => {

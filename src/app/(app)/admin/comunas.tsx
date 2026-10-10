@@ -70,7 +70,7 @@ export default function ComunasAdminScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Chile" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Chile" />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}

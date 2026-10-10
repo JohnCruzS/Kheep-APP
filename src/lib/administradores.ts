@@ -59,6 +59,8 @@ export type AdminZona = {
   permisos: PermisoZona[];
   regiones: string[];
   comunas: string[];
+  /** false = pausado: conserva zona y permisos, pero no puede hacer nada (0033). */
+  activo: boolean;
 };
 
 export async function listarAdminsZona(): Promise<AdminZona[]> {
@@ -71,6 +73,7 @@ export async function listarAdminsZona(): Promise<AdminZona[]> {
     permisos: string[];
     regiones: string[];
     comunas: string[];
+    activo?: boolean;
   };
   return ((data as Fila[]) ?? []).map((f) => ({
     usuarioId: f.usuario_id,
@@ -79,7 +82,30 @@ export async function listarAdminsZona(): Promise<AdminZona[]> {
     permisos: (f.permisos ?? []) as PermisoZona[],
     regiones: f.regiones ?? [],
     comunas: f.comunas ?? [],
+    // Sin la migración 0033 la columna no llega: se los toma como activos.
+    activo: f.activo ?? true,
   }));
+}
+
+/** Pausa (false) o vuelve a activar (true) un administrador de zona sin quitarlo. */
+export async function pausarAdminZona(usuarioId: string, activo: boolean): Promise<void> {
+  const { error } = await supabase.rpc('pausar_admin_zona', { p_usuario: usuarioId, p_activo: activo });
+  if (error) throw error;
+}
+
+/**
+ * Le fija una clave nueva a un administrador de zona. Las claves se guardan
+ * cifradas y nadie puede verlas: lo único posible es cambiarlas.
+ */
+export async function cambiarClaveAdminZona(usuarioId: string, clave: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_cambiar_clave', { p_usuario: usuarioId, p_clave: clave });
+  if (error) throw error;
+}
+
+/** La clave de la propia cuenta, con la sesión iniciada. */
+export async function cambiarMiClave(clave: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password: clave });
+  if (error) throw error;
 }
 
 export async function asignarAdminZona(input: {

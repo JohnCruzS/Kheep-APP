@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,7 +14,6 @@ import { useSession } from '@/providers/SessionProvider';
  * "Editar perfil" ni a "Cerrar sesión".
  */
 export default function CuentaScreen() {
-  const router = useRouter();
   const { session, profile } = useSession();
 
   if (!session || !profile) {
@@ -25,7 +24,7 @@ export default function CuentaScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Mi cuenta" onVolver={() => router.back()} />
+      <EncabezadoMarca subtitulo="Mi cuenta" />
 
       <View style={styles.card}>
         <ScrollView contentContainerStyle={styles.cardContent} showsVerticalScrollIndicator={false}>
