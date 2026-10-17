@@ -1,5 +1,6 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  GestureResponderHandlers,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -21,6 +22,21 @@ type Props = {
   onContactar: (publicacion: PublicacionResumen) => void;
   /** Tocar la foto la abre completa. */
   onVerFoto: (url: string) => void;
+  /**
+   * Dos toques sobre la parte blanca bajo la foto del comercio (en Aprobar:
+   * aprobar la publicación). Sin él, esa parte no responde.
+   */
+  onDobleToquePanel?: () => void;
+  /**
+   * En Aprobar: muestra junto al nombre cuántas fotos quedan por ver (la que
+   * está en pantalla ya cuenta como vista) y avisa cuántas van quedando, para
+   * que no se apruebe sin haberlas mirado todas.
+   */
+  onFotosPorVer?: (restantes: number) => void;
+  /** Junto al nombre, cuántas fotos faltan por aprobar (en vez de las por ver). */
+  fotosPorAprobar?: number;
+  /** Gestos sobre la parte blanca (en el panel: arrastrarla para eliminar). */
+  panelHandlers?: GestureResponderHandlers;
 };
 
 /**
@@ -37,7 +53,25 @@ type Props = {
  * con el nombre del comercio arriba y el del producto y su precio abajo,
  * sombreados para que se lean sobre cualquier foto.
  */
-function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props) {
+function PublicacionCardComponent({
+  publicacion,
+  onContactar,
+  onVerFoto,
+  onDobleToquePanel,
+  onFotosPorVer,
+  fotosPorAprobar,
+  panelHandlers,
+}: Props) {
+  const ultimoToque = useRef(0);
+  function alTocarPanel() {
+    const ahora = Date.now();
+    if (ahora - ultimoToque.current < 500) {
+      ultimoToque.current = 0;
+      onDobleToquePanel?.();
+    } else {
+      ultimoToque.current = ahora;
+    }
+  }
   const productos = useMemo(
     () => [...publicacion.productos].sort((a, b) => a.orden - b.orden),
     [publicacion.productos],
@@ -53,10 +87,20 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
     setAncho(Math.round(e.nativeEvent.layout.width));
   }
 
+  /** Las fotos de productos que ya pasaron por la pantalla (la primera, de entrada). */
+  const [vistas, setVistas] = useState<Set<number>>(() => new Set([0]));
+  const porVer = Math.max(0, productos.length - vistas.size);
+  const onFotosPorVerRef = useRef(onFotosPorVer);
+  onFotosPorVerRef.current = onFotosPorVer;
+  useEffect(() => {
+    onFotosPorVerRef.current?.(porVer);
+  }, [porVer]);
+
   function alDeslizar(e: NativeSyntheticEvent<NativeScrollEvent>) {
     if (ancho <= 0) return;
     const visible = Math.max(0, Math.min(productos.length - 1, Math.round(e.nativeEvent.contentOffset.x / ancho)));
     setIndice((anterior) => (anterior === visible ? anterior : visible));
+    setVistas((v) => (v.has(visible) ? v : new Set(v).add(visible)));
   }
 
   return (
@@ -66,7 +110,7 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
     <View style={styles.row}>
       {/* La foto del comercio, no un icono: se toca para verla completa
           (documento EDIT APP). */}
-      <View style={styles.iconPanel}>
+      <View style={styles.iconPanel} {...panelHandlers}>
         <Pressable
           onPress={() => publicacion.logo_url && onVerFoto(publicacion.logo_url)}
           disabled={!publicacion.logo_url}
@@ -79,6 +123,15 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
           )}
         </Pressable>
         <View style={styles.iconShadow} />
+        {/* La parte blanca de abajo: en Aprobar, dos toques aprueban. */}
+        {onDobleToquePanel && (
+          <Pressable
+            style={styles.zonaPanel}
+            onPressIn={alTocarPanel}
+            accessibilityRole="button"
+            accessibilityLabel="Toca dos veces para aprobar"
+          />
+        )}
       </View>
 
       <View style={styles.contentPanel} onLayout={medir}>
@@ -122,9 +175,16 @@ function PublicacionCardComponent({ publicacion, onContactar, onVerFoto }: Props
               onPress={() => onContactar(publicacion)}
               accessibilityRole="button"
               accessibilityLabel={`Contactar a ${publicacion.titulo} por WhatsApp`}>
-              <Text style={styles.title} numberOfLines={1}>
-                {publicacion.titulo}
-              </Text>
+              <View style={styles.filaTitulo}>
+                <Text style={[styles.title, styles.titleEncogible]} numberOfLines={1}>
+                  {publicacion.titulo}
+                </Text>
+                {/* En Aprobar: las fotos que faltan por ver. Aparte del nombre
+                    para que, si el nombre es largo, se acorte él y no el número. */}
+                {(onFotosPorVer || fotosPorAprobar !== undefined) && (
+                  <Text style={[styles.title, styles.porVer]}>{`  ${fotosPorAprobar ?? porVer}`}</Text>
+                )}
+              </View>
             </Pressable>
             {publicacion.destacado && <Text style={styles.destacado}>★</Text>}
           </View>
@@ -167,6 +227,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     alignItems: 'center',
     paddingTop: 10,
+  },
+  filaTitulo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  titleEncogible: {
+    flexShrink: 1,
+  },
+  porVer: {
+    fontFamily: Fonts.delgada,
+  },
+  zonaPanel: {
+    flex: 1,
+    alignSelf: 'stretch',
   },
   fotoPerfil: {
     width: 58,

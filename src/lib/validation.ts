@@ -16,6 +16,24 @@ export function normalizeChileanPhone(value: string): string {
   return `+56${withoutCountryCode}`;
 }
 
+/**
+ * El celular se escribe SIEMPRE como 9 y ocho dígitos (pedido del cliente):
+ * "912345678". El +56 lo agrega la app al guardar.
+ */
 export function isValidChileanPhone(value: string): boolean {
-  return /^\+569\d{8}$/.test(normalizeChileanPhone(value));
+  return /^9\d{8}$/.test(value.replace(/\D/g, ''));
 }
+
+/** Mientras se escribe: solo dígitos y como máximo los nueve del celular. */
+export function soloCelular(value: string): string {
+  return value.replace(/\D/g, '').slice(0, 9);
+}
+
+/** Un celular guardado (+56912345678) tal como se escribe en el campo: 912345678. */
+export function celularLocal(value: string | null | undefined): string {
+  const digitos = (value ?? '').replace(/\D/g, '');
+  return (digitos.startsWith('56') ? digitos.slice(2) : digitos).slice(0, 9);
+}
+
+/** El aviso cuando el celular no tiene el formato. */
+export const MENSAJE_CELULAR = 'El celular tiene que ser 9 y ocho dígitos, por ejemplo 912345678.';

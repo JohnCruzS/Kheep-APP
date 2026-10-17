@@ -1,23 +1,24 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LoadingState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
+import { CampoClave } from '@/components/ui/CampoClave';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { FormScroll } from '@/components/ui/FormScroll';
-import { TextField } from '@/components/ui/TextField';
 import { Interruptor } from '@/components/ui/Interruptor';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import {
-  PERMISOS_ZONA,
+  GRUPOS_PERMISOS,
+  alternarGrupo,
+  grupoActivo,
   PermisoZona,
   asignarAdminZona,
   crearCuentaAdministrador,
   listarAdminsZona,
-  quitarAdminZona,
 } from '@/lib/administradores';
 import { ComunaAdmin, fetchComunasAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
@@ -28,11 +29,17 @@ import { compararRegiones, nombreRegion } from '@/lib/regiones';
 const sinPrefijo = nombreRegion;
 
 /**
- * Crear o editar un administrador de zona.
+ * Crear un administrador de zona, o cambiarle la zona (maqueta del cliente).
  *
- * Al crear se escriben los datos de la cuenta nueva (nombre, correo y
- * contraseña); si el correo ya tiene cuenta, se asciende esa en vez de crear
- * otra. Al editar solo se cambian la zona y los permisos.
+ *  - Nuevo: nombre, correo y contraseña en líneas; el botón blanco
+ *    "Ubicación" abre las regiones; los tres permisos; y "Guardar" fijo abajo.
+ *    Si el correo ya tiene cuenta, se asciende esa en vez de crear otra.
+ *  - Editar (se llega tocando "zona – …" en Admin): directamente la vista
+ *    "Ubicación", con "Guardar" abajo. Los permisos se cambian en Admin.
+ *
+ * Ubicación: una tarjeta por región con su interruptor; encendida, adentro
+ * aparecen sus comunas, cada una con el suyo. Tocar el nombre de la región
+ * pliega o despliega sus comunas.
  *
  * La zona se arma con regiones completas y/o comunas sueltas: una región
  * cubre todas sus comunas, también las que se agreguen después.
@@ -57,10 +64,19 @@ export default function AdministradorScreen() {
   const [activas, setActivas] = useState<string[]>([]);
   const [excluidas, setExcluidas] = useState<string[]>([]);
   const [permisos, setPermisos] = useState<PermisoZona[]>([]);
-  const [verRegiones, setVerRegiones] = useState(false);
   /** Regiones encendidas con su lista de comunas plegada (se toca el nombre para abrir o cerrar). */
   const [plegadas, setPlegadas] = useState<string[]>([]);
   const [guardando, setGuardando] = useState(false);
+  /** Al crear, la vista "Ubicación" se abre aparte con el botón blanco. */
+  const [eligiendoUbicacion, setEligiendoUbicacion] = useState(false);
+  /**
+   * Dos toques sobre el título alternan entre "Chile" (todas las regiones y
+   * comunas) y "Visible" (solo las que hoy se ven en la app): la zona se
+   * puede elegir del total o solo entre las visibles (pedido del cliente).
+   */
+  const [soloVisibles, setSoloVisibles] = useState(false);
+  const subtituloUbicacion = soloVisibles ? 'Visible' : 'Chile';
+  const alternarVisibles = () => setSoloVisibles((v) => !v);
 
   useEffect(() => {
     (async () => {
@@ -124,9 +140,11 @@ export default function AdministradorScreen() {
     if (activas.includes(region)) {
       setActivas((a) => a.filter((r) => r !== region));
     } else {
-      // Al encenderla, todas sus comunas parten encendidas.
+      // Al encenderla, todas sus comunas parten encendidas; en "Visible",
+      // solo las visibles: las ocultas (que no se ven en pantalla) quedan fuera.
       const ids = comunasDe(region).map((c) => c.id);
-      setExcluidas((e) => e.filter((id) => !ids.includes(id)));
+      const ocultas = soloVisibles ? comunasDe(region).filter((c) => !c.activa).map((c) => c.id) : [];
+      setExcluidas((e) => [...e.filter((id) => !ids.includes(id)), ...ocultas]);
       setActivas((a) => [...a, region]);
       setPlegadas((p) => p.filter((r) => r !== region));
     }
@@ -186,137 +204,160 @@ export default function AdministradorScreen() {
     }
   }
 
-  function handleQuitar() {
-    if (!id) return;
-    Alert.alert(
-      'Quitar administrador',
-      `${nombre} deja de ser administrador y vuelve a ser una cuenta normal. Su cuenta no se borra.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Quitar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await quitarAdminZona(id);
-              router.back();
-            } catch (err) {
-              setError(getErrorMessage(err, 'No se pudo quitar el administrador.'));
-            }
-          },
-        },
-      ],
+  /** Lo que se muestra de una región: todas sus comunas, o solo las visibles en la app. */
+  const mostradasDe = (region: string) => comunasDe(region).filter((c) => !soloVisibles || c.activa);
+
+  /** Las regiones como tarjetas, con sus comunas adentro (vista "Ubicación"). */
+  function regiones() {
+    // En "Visible", las regiones sin ninguna comuna visible no aparecen.
+    return todasLasRegiones.filter((region) => mostradasDe(region).length > 0).map((region) => {
+      const encendida = activas.includes(region);
+      const abierta = encendida && !plegadas.includes(region);
+      return (
+        <View key={region} style={styles.tarjetaRegion}>
+          <View style={styles.cabeceraRegion}>
+            {/* Tocar el nombre pliega o despliega sus comunas, sin apagar la región. */}
+            <Pressable
+              style={styles.zonaNombre}
+              onPress={() => encendida && setPlegadas((p) => alternar(p, region))}
+              disabled={!encendida}
+              hitSlop={6}>
+              <Text style={styles.region} numberOfLines={1}>
+                {sinPrefijo(region)}
+              </Text>
+            </Pressable>
+            <Interruptor
+              value={encendida}
+              onValueChange={() => alternarRegion(region)}
+              accessibilityLabel={`Incluir la región ${sinPrefijo(region)}`}
+            />
+          </View>
+          {abierta && (
+            <View style={styles.comunas}>
+              {mostradasDe(region).map((comuna) => (
+                <View key={comuna.id} style={styles.filaComuna}>
+                  <Text style={styles.comuna} numberOfLines={1}>
+                    {comuna.nombre}
+                  </Text>
+                  <Interruptor
+                    value={!excluidas.includes(comuna.id)}
+                    onValueChange={() => setExcluidas((e) => alternar(e, comuna.id))}
+                    accessibilityLabel={`Incluir ${comuna.nombre} en su zona`}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      );
+    });
+  }
+
+  /** "Guardar", fijo abajo de la pantalla (no se desplaza con lo demás). */
+  function botonGuardar(onPress: () => void, texto = 'Guardar') {
+    return (
+      <View style={styles.abajo}>
+        {error && <Text style={styles.error}>{error}</Text>}
+        <Button label={guardando ? 'Guardando…' : texto} onPress={onPress} loading={guardando} />
+      </View>
+    );
+  }
+
+  // Editar: la zona y nada más.
+  if (editando) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <EncabezadoMarca subtitulo={subtituloUbicacion} onDobleToque={alternarVisibles} />
+        {loading ? (
+          <LoadingState />
+        ) : (
+          <>
+            <ScrollView contentContainerStyle={styles.contenidoUbicacion} showsVerticalScrollIndicator={false}>
+              {regiones()}
+            </ScrollView>
+            {botonGuardar(handleGuardar)}
+          </>
+        )}
+      </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <EncabezadoMarca subtitulo={editando ? 'Editar administrador' : 'Nuevo administrador'} />
+      <EncabezadoMarca subtitulo="Nuevo" />
 
       {loading ? (
         <LoadingState />
       ) : (
-        <FormScroll contentContainerStyle={styles.content}>
-          {/* La cuenta: solo al crear. Al editar se muestra quién es. */}
-          {editando ? (
-            <View style={styles.quien}>
-              <Text style={styles.quienNombre}>{nombre}</Text>
-              <Text style={styles.quienCorreo}>{email}</Text>
-            </View>
-          ) : (
-            <>
-              <TextField label="Nombre" value={nombre} onChangeText={setNombre} autoCapitalize="words" />
-              <TextField
-                label="Correo"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              <TextField
-                label="Contraseña"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                hint="Mínimo 6 caracteres. Si el correo ya tiene cuenta, se usa la suya."
-              />
-            </>
-          )}
+        <>
+          <FormScroll contentContainerStyle={styles.content}>
+            <TextInput
+              placeholder="Nombre"
+              placeholderTextColor={Colors.text}
+              value={nombre}
+              onChangeText={setNombre}
+              autoCapitalize="words"
+              style={styles.campo}
+            />
+            <TextInput
+              placeholder="Correo"
+              placeholderTextColor={Colors.text}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              style={styles.campo}
+            />
+            <CampoClave
+              placeholder="Contraseña"
+              placeholderTextColor={Colors.text}
+              value={password}
+              onChangeText={setPassword}
+              style={[styles.campo, styles.campoClave]}
+            />
 
-          {/* ---------------------------------------------------- zona */}
-          <Text style={styles.seccion}>Zona</Text>
-
-          <Pressable style={styles.bloque} onPress={() => setVerRegiones((v) => !v)}>
-            <Text style={styles.bloqueTitulo}>Regiones y comunas</Text>
-            <Text style={styles.bloqueValor}>{resumenZona}</Text>
-          </Pressable>
-          {verRegiones &&
-            todasLasRegiones.map((region) => {
-              const encendida = activas.includes(region);
-              const abierta = encendida && !plegadas.includes(region);
-              const delaRegion = comunasDe(region);
-              return (
-                <View key={region}>
-                  <View style={styles.opcion}>
-                    {/* Tocar el nombre pliega o despliega sus comunas, sin apagar la región. */}
-                    <Pressable
-                      style={styles.opcionTexto}
-                      onPress={() => encendida && setPlegadas((p) => alternar(p, region))}
-                      disabled={!encendida}
-                      hitSlop={6}>
-                      <Text style={styles.opcionLabel}>{sinPrefijo(region)}</Text>
-                    </Pressable>
-                    {encendida && <Text style={styles.contador}>{`${elegidasDe(region)}/${delaRegion.length}`}</Text>}
-                    <Interruptor
-                      value={encendida}
-                      onValueChange={() => alternarRegion(region)}
-                      accessibilityLabel={`Incluir la región ${sinPrefijo(region)}`}
-                    />
-                  </View>
-                  {/* Sus comunas, solo si la región está encendida y desplegada. */}
-                  {abierta &&
-                    delaRegion.map((comuna) => (
-                      <View key={comuna.id} style={[styles.opcion, styles.opcionComuna]}>
-                        <Text style={[styles.opcionLabel, styles.opcionTexto]}>{`- ${comuna.nombre}`}</Text>
-                        <Interruptor
-                          value={!excluidas.includes(comuna.id)}
-                          onValueChange={() => setExcluidas((e) => alternar(e, comuna.id))}
-                          accessibilityLabel={`Incluir ${comuna.nombre} en su zona`}
-                        />
-                      </View>
-                    ))}
-                </View>
-              );
-            })}
-
-          {/* ------------------------------------------------ permisos */}
-          <Text style={styles.seccion}>Permisos</Text>
-          {PERMISOS_ZONA.map((permiso) => (
-            <View key={permiso.clave} style={styles.opcion}>
-              <View style={styles.opcionTexto}>
-                <Text style={styles.opcionLabel}>{permiso.nombre}</Text>
-                <Text style={styles.opcionDetalle}>{permiso.detalle}</Text>
-              </View>
-              <Interruptor
-                value={permisos.includes(permiso.clave)}
-                onValueChange={() => setPermisos((p) => alternar(p, permiso.clave))}
-              />
-            </View>
-          ))}
-
-          {error && <Text style={styles.error}>{error}</Text>}
-
-          <Button label={guardando ? 'Guardando…' : 'Guardar'} onPress={handleGuardar} loading={guardando} />
-
-          {editando && (
-            <Pressable style={styles.quitar} onPress={handleQuitar} hitSlop={10}>
-              <Text style={styles.quitarLabel}>Quitar como administrador</Text>
+            {/* El botón blanco abre las regiones; debajo, lo elegido. */}
+            <Pressable
+              style={({ pressed }) => [styles.botonUbicacion, pressed && styles.botonUbicacionPresionado]}
+              onPress={() => setEligiendoUbicacion(true)}
+              accessibilityRole="button">
+              <Text style={styles.botonUbicacionTexto}>Ubicación</Text>
             </Pressable>
-          )}
-        </FormScroll>
+            {activas.length > 0 && <Text style={styles.resumen}>{resumenZona}</Text>}
+
+            {/* Las tres atribuciones de un administrador de zona. */}
+            <View style={styles.permisos}>
+              {GRUPOS_PERMISOS.map((grupo) => (
+                <View key={grupo.id} style={styles.filaPermiso}>
+                  <Text style={styles.permiso}>{grupo.nombre}</Text>
+                  <Interruptor
+                    value={grupoActivo(permisos, grupo)}
+                    onValueChange={() => setPermisos((p) => alternarGrupo(p, grupo))}
+                    accessibilityLabel={grupo.nombre}
+                  />
+                </View>
+              ))}
+            </View>
+          </FormScroll>
+          {botonGuardar(handleGuardar)}
+        </>
       )}
 
+      {/* "Ubicación", a pantalla completa; su "Guardar" vuelve al formulario. */}
+      <Modal visible={eligiendoUbicacion} animationType="none" onRequestClose={() => setEligiendoUbicacion(false)}>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+          <EncabezadoMarca subtitulo={subtituloUbicacion} onDobleToque={alternarVisibles} />
+          <ScrollView contentContainerStyle={styles.contenidoUbicacion} showsVerticalScrollIndicator={false}>
+            {regiones()}
+          </ScrollView>
+          <View style={styles.abajo}>
+            <Button label="Guardar" onPress={() => setEligiendoUbicacion(false)} />
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -327,92 +368,113 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    paddingHorizontal: u(REJILLA.margenLateral) + Spacing.two,
-    paddingBottom: Spacing.six,
+    paddingHorizontal: u(REJILLA.margenLateral) + Spacing.four,
+    paddingBottom: Spacing.five,
   },
-  quien: {
-    alignItems: 'center',
+  // Nombre, correo y contraseña: líneas, como la maqueta.
+  campo: {
+    fontFamily: Fonts.delgada,
+    fontSize: 20,
+    color: Colors.text,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceBorder,
+    paddingVertical: Spacing.three,
     marginTop: Spacing.three,
   },
-  quienNombre: {
-    fontFamily: Fonts.medium,
-    fontSize: 21,
-    color: Colors.text,
+  // La contraseña alineada a la izquierda como las otras líneas (el ojo, a la derecha).
+  campoClave: {
+    paddingLeft: 0,
   },
-  quienCorreo: {
-    fontFamily: Fonts.light,
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  seccion: {
-    fontFamily: Fonts.light,
-    fontSize: 21,
-    color: Colors.accent,
+  // El botón blanco "Ubicación".
+  botonUbicacion: {
     marginTop: Spacing.five,
-    marginBottom: Spacing.two,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
   },
-  bloque: {
-    backgroundColor: Colors.surface,
-    borderRadius: u(REJILLA.curvatura),
-    padding: Spacing.three,
-    marginBottom: Spacing.two,
+  botonUbicacionPresionado: {
+    opacity: 0.85,
   },
-  bloqueTitulo: {
+  botonUbicacionTexto: {
     fontFamily: Fonts.medium,
-    fontSize: 16,
-    color: Colors.text,
+    fontSize: 21,
+    color: '#000000',
   },
-  bloqueValor: {
-    fontFamily: Fonts.light,
+  resumen: {
+    fontFamily: Fonts.delgada,
     fontSize: 14,
     color: Colors.textMuted,
-    marginTop: 2,
+    textAlign: 'center',
+    marginTop: Spacing.two,
   },
-  opcion: {
+  permisos: {
+    marginTop: Spacing.five,
+    gap: Spacing.four,
+  },
+  filaPermiso: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: Spacing.three,
-    paddingVertical: Spacing.two,
   },
-  // Las comunas, un poco más adentro que el nombre de su región.
-  opcionComuna: {
-    paddingLeft: Spacing.four,
-  },
-  contador: {
-    fontFamily: Fonts.light,
-    fontSize: 15,
-    color: Colors.textMuted,
-  },
-  opcionTexto: {
-    flex: 1,
-  },
-  opcionLabel: {
-    fontFamily: Fonts.light,
-    fontSize: 17,
+  permiso: {
+    fontFamily: Fonts.delgada,
+    fontSize: 21,
     color: Colors.text,
   },
-  opcionDetalle: {
-    fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.textMuted,
-    marginTop: 2,
+  // Vista "Ubicación": tarjetas de región.
+  contenidoUbicacion: {
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingBottom: Spacing.four,
+  },
+  tarjetaRegion: {
+    backgroundColor: TarjetaLista.fondo,
+    borderRadius: u(REJILLA.curvatura),
+    borderWidth: 1,
+    borderColor: TarjetaLista.borde,
+    marginBottom: u(REJILLA.margenLateral),
+    paddingHorizontal: TarjetaLista.sangria,
+  },
+  cabeceraRegion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    height: u(240) - 2,
+  },
+  zonaNombre: {
+    flex: 1,
+  },
+  region: {
+    fontFamily: Fonts.tarjeta,
+    fontSize: TarjetaLista.tamanoTexto,
+    color: Colors.text,
+  },
+  comunas: {
+    paddingBottom: Spacing.four,
+    gap: Spacing.three,
+  },
+  filaComuna: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: Spacing.four,
+  },
+  comuna: {
+    flex: 1,
+    fontFamily: Fonts.delgada,
+    fontSize: 21,
+    color: Colors.text,
+  },
+  // "Guardar" fijo abajo.
+  abajo: {
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingBottom: Spacing.three,
   },
   error: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 14,
     color: Colors.danger,
-    marginTop: Spacing.three,
-  },
-  quitar: {
-    alignItems: 'center',
-    marginTop: Spacing.four,
-  },
-  quitarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 16,
-    color: Colors.danger,
+    textAlign: 'center',
+    marginBottom: Spacing.one,
   },
 });
-

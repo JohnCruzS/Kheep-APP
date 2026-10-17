@@ -20,6 +20,7 @@ import {
   fetchComunas,
   fetchMisPublicaciones,
 } from '@/lib/catalog';
+import { MENSAJE_CELULAR, celularLocal, isValidChileanPhone, normalizeChileanPhone, soloCelular } from '@/lib/validation';
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
@@ -138,7 +139,7 @@ function PublicarForm({
   );
 
   /** Arranca con el del perfil, pero se puede cambiar solo para este comercio. */
-  const [telefono, setTelefono] = useState(telefonoContacto ?? '');
+  const [telefono, setTelefono] = useState(celularLocal(telefonoContacto));
 
   const [comunas, setComunas] = useState<Comuna[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
@@ -161,7 +162,7 @@ function PublicarForm({
   }, []);
 
   useEffect(() => {
-    if (telefonoContacto) setTelefono((actual) => actual || telefonoContacto);
+    if (telefonoContacto) setTelefono((actual) => actual || celularLocal(telefonoContacto));
   }, [telefonoContacto]);
 
   const categoriaNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
@@ -211,10 +212,34 @@ function PublicarForm({
       setError('Primero ponle nombre a tu perfil: es el que aparece en la publicación.');
       return;
     }
-    // Mismo formato que exige la base (migración 0007): +569 y ocho dígitos.
-    const telefonoLimpio = telefono.replace(/[^\d+]/g, '');
-    if (!/^\+569\d{8}$/.test(telefonoLimpio)) {
-      setError('El teléfono tiene que ser +569 y ocho dígitos, por ejemplo +56912345678.');
+    // Se escribe 9 y ocho dígitos; se guarda con el +56 (formato de la base, 0007).
+    if (!isValidChileanPhone(telefono)) {
+      setError(MENSAJE_CELULAR);
+      return;
+    }
+    const telefonoLimpio = normalizeChileanPhone(telefono);
+    // Obligatorios (pedido del cliente): la foto del comercio, la comuna, la
+    // categoría y la foto de cada producto. Sin ellos la tarjeta del inicio
+    // queda a medias.
+    if (!logo) {
+      setError('Sube la foto de tu comercio (el círculo de arriba).');
+      return;
+    }
+    if (!comunaId) {
+      setError('Elige la comuna.');
+      return;
+    }
+    if (!categoriaId) {
+      setError('Elige la categoría.');
+      return;
+    }
+    const conContenido = productos.filter(tieneAlgo);
+    if (conContenido.length === 0) {
+      setError('Agrega al menos un producto con su foto.');
+      return;
+    }
+    if (conContenido.some((p) => !p.image)) {
+      setError('Cada producto necesita su foto.');
       return;
     }
 
@@ -277,9 +302,10 @@ function PublicarForm({
       <TextField
         label="Teléfono"
         value={telefono}
-        onChangeText={setTelefono}
-        keyboardType="phone-pad"
-        autoComplete="tel"
+        onChangeText={(t) => setTelefono(soloCelular(t))}
+        keyboardType="number-pad"
+        maxLength={9}
+        placeholder="912345678"
         estiloContenedor={styles.filaCampo}
       />
 
@@ -334,10 +360,13 @@ function PublicarForm({
       )}
 
       {/* Lo que ya está publicado, al final: acá se entra a editarlo. */}
-      {!misPublicacionesLoading && misPublicaciones.length > 0 && (
+      {!misPublicacionesLoading && misPublicaciones.some((p) => p.estado !== 'pendiente') && (
         <View style={styles.misPublicaciones}>
           <Text style={styles.seccion}>MIS PUBLICACIONES</Text>
-          {misPublicaciones.map((publicacion) => (
+          {/* Solo las aprobadas y las rechazadas (pedido del cliente): las
+              aprobadas se editan en el texto; las rechazadas se corrigen y se
+              reenvían. */}
+          {misPublicaciones.filter((p) => p.estado !== 'pendiente').map((publicacion) => (
             <Pressable
               key={publicacion.id}
               style={styles.productoFila}
@@ -355,6 +384,10 @@ function PublicarForm({
                   {[publicacion.categoria?.nombre, publicacion.comuna?.nombre].filter(Boolean).join(' · ') ||
                     'Sin categoría ni comuna'}
                 </Text>
+                {/* Por cuál foto la rechazaron, para que sepa qué cambiar. */}
+                {publicacion.estado === 'rechazado' && publicacion.rechazo_foto ? (
+                  <Text style={styles.rechazoFoto}>Rechazada por la imagen {publicacion.rechazo_foto}</Text>
+                ) : null}
               </View>
               <EstadoBadge estado={publicacion.estado} />
             </Pressable>
@@ -434,6 +467,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: 18,
     color: Colors.cardText,
+  },
+  rechazoFoto: {
+    fontFamily: Fonts.light,
+    marginTop: 2,
+    fontSize: 13,
+    color: Colors.danger,
   },
   productoPrecio: {
     fontFamily: Fonts.light,

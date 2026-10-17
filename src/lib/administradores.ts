@@ -17,6 +17,56 @@ export const PERMISOS_ZONA: { clave: PermisoZona; nombre: string; detalle: strin
   { clave: 'suspender', nombre: 'Suspender cuentas', detalle: 'Bloquear el acceso de quien publica en su zona.' },
 ];
 
+/**
+ * Las tres atribuciones de un administrador de zona (pedido del cliente).
+ * Cada una agrupa uno o más permisos de la base: se encienden y se apagan
+ * juntos, y abajo de cada una se lista lo que incluye.
+ *
+ * "Banners y métricas" ya no se le da a un administrador de zona: queda solo
+ * para el administrador general.
+ */
+export type GrupoPermisos = {
+  id: 'aprobacion' | 'categorias' | 'cuentas';
+  nombre: string;
+  incluye: string[];
+  claves: PermisoZona[];
+};
+
+export const GRUPOS_PERMISOS: GrupoPermisos[] = [
+  {
+    id: 'aprobacion',
+    nombre: 'Aprobación',
+    incluye: ['Aprobar publicaciones', 'Rechazar publicaciones'],
+    claves: ['moderar'],
+  },
+  {
+    id: 'categorias',
+    nombre: 'Categorías',
+    incluye: ['Crear categorías', 'Cambiarlas de orden', 'Mostrarlas u ocultarlas', 'Eliminarlas de su comuna'],
+    claves: ['categorias'],
+  },
+  {
+    id: 'cuentas',
+    nombre: 'Usuarios',
+    incluye: ['Eliminar comercios (dar de baja publicaciones)', 'Suspender y reactivar cuentas'],
+    claves: ['publicaciones', 'suspender'],
+  },
+];
+
+/** Si el grupo está encendido: tiene todos sus permisos. */
+export function grupoActivo(permisos: PermisoZona[], grupo: GrupoPermisos): boolean {
+  return grupo.claves.every((c) => permisos.includes(c));
+}
+
+/**
+ * Enciende o apaga un grupo entero. De paso saca "banners", que ya no es una
+ * atribución de los administradores de zona.
+ */
+export function alternarGrupo(permisos: PermisoZona[], grupo: GrupoPermisos): PermisoZona[] {
+  const sinGrupo = permisos.filter((p) => !grupo.claves.includes(p) && p !== 'banners');
+  return grupoActivo(permisos, grupo) ? sinGrupo : [...sinGrupo, ...grupo.claves];
+}
+
 /** Lo que puede hacer quien tiene la sesión abierta. */
 export type PermisosAdmin = {
   /** Administrador general: todo, en todas partes. */
@@ -87,6 +137,17 @@ export async function listarAdminsZona(): Promise<AdminZona[]> {
   }));
 }
 
+/** Guarda el orden de la lista de Admins (0034): el primero de `ids` va arriba. */
+export async function ordenarAdminsZona(ids: string[]): Promise<void> {
+  const { error } = await supabase.rpc('ordenar_admins_zona', { p_ids: ids });
+  if (error) {
+    if (error.code === 'PGRST202' || /ordenar_admins_zona/.test(error.message ?? '')) {
+      throw new Error('Falta ejecutar la migración 0034 en Supabase para guardar el orden.');
+    }
+    throw error;
+  }
+}
+
 /** Pausa (false) o vuelve a activar (true) un administrador de zona sin quitarlo. */
 export async function pausarAdminZona(usuarioId: string, activo: boolean): Promise<void> {
   const { error } = await supabase.rpc('pausar_admin_zona', { p_usuario: usuarioId, p_activo: activo });
@@ -100,6 +161,20 @@ export async function pausarAdminZona(usuarioId: string, activo: boolean): Promi
 export async function cambiarClaveAdminZona(usuarioId: string, clave: string): Promise<void> {
   const { error } = await supabase.rpc('admin_cambiar_clave', { p_usuario: usuarioId, p_clave: clave });
   if (error) throw error;
+}
+
+/**
+ * Cambia el correo de un administrador de zona o el propio (0035). Es
+ * inmediato: no pasa por el correo de confirmación de Supabase.
+ */
+export async function cambiarCorreoAdmin(usuarioId: string, email: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_cambiar_correo', { p_usuario: usuarioId, p_email: email.trim() });
+  if (error) {
+    if (error.code === 'PGRST202' || /admin_cambiar_correo/.test(error.message ?? '')) {
+      throw new Error('Falta ejecutar la migración 0035 en Supabase para cambiar correos.');
+    }
+    throw error;
+  }
 }
 
 /** La clave de la propia cuenta, con la sesión iniciada. */

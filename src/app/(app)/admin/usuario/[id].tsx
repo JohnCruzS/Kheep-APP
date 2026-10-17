@@ -24,6 +24,7 @@ import {
   rechazarPublicacion,
 } from '@/lib/catalog';
 import { puede } from '@/lib/administradores';
+import { celularLocal } from '@/lib/validation';
 import { getErrorMessage } from '@/lib/errors';
 import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
@@ -236,7 +237,7 @@ export default function FichaUsuarioScreen() {
             <Seccion titulo="Contacto">
               <Dato
                 etiqueta="Teléfono"
-                valor={ficha.telefono_contacto}
+                valor={ficha.telefono_contacto ? celularLocal(ficha.telefono_contacto) : null}
                 onPress={ficha.telefono_contacto ? () => Linking.openURL(`tel:${ficha.telefono_contacto}`) : undefined}
               />
               {esGeneral && (

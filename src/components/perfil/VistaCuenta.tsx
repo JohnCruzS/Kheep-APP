@@ -1,13 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ComponentProps, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ComponentProps, useEffect, useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 
 import { ImageViewer } from '@/components/catalog/ImageViewer';
 import { Button } from '@/components/ui/Button';
+import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { fetchMiVisibilidad, pausarMiPerfil } from '@/lib/catalog';
+import { getErrorMessage } from '@/lib/errors';
+import { celularLocal } from '@/lib/validation';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
 import { FotoRemota } from '@/components/ui/FotoRemota';
@@ -26,6 +30,28 @@ export function VistaCuenta({
 }) {
   const router = useRouter();
   const [verFoto, setVerFoto] = useState(false);
+  // La pausa voluntaria del comerciante (0038). El admin tiene su propio
+  // interruptor, que manda: si él lo ocultó, acá solo se avisa.
+  const esComerciante = profile.rol === 'comerciante';
+  const [visibilidad, setVisibilidad] = useState<{ pausado: boolean; ocultoPorAdmin: boolean } | null>(null);
+  useEffect(() => {
+    if (!esComerciante) return;
+    fetchMiVisibilidad()
+      .then((v) => setVisibilidad(v.disponible ? v : null))
+      .catch(() => setVisibilidad(null));
+  }, [esComerciante]);
+
+  async function cambiarVisible(visible: boolean) {
+    if (!visibilidad) return;
+    const antes = visibilidad;
+    setVisibilidad({ ...antes, pausado: !visible });
+    try {
+      await pausarMiPerfil(!visible);
+    } catch (err) {
+      setVisibilidad(antes);
+      Alert.alert('No se pudo guardar', getErrorMessage(err, 'Intenta de nuevo.'));
+    }
+  }
 
   const nivelLabel = profile.rol === 'admin' ? 'Administrador' : profile.nivel === 2 ? 'Verificado' : 'En revisión';
   const nivelStyle =
@@ -59,14 +85,31 @@ export function VistaCuenta({
 
       <View style={styles.infoList}>
         <InfoRow label="Correo" value={email ?? '—'} />
-        <InfoRow label="Teléfono" value={profile.telefono_contacto ?? '—'} />
+        <InfoRow label="Teléfono" value={profile.telefono_contacto ? celularLocal(profile.telefono_contacto) : '—'} />
       </View>
 
-      {profile.rol === 'comerciante' && profile.nivel === 1 && (
-        <Text style={styles.hintText}>
-          Tus publicaciones nuevas quedan pendientes hasta que un admin las revise. Esto es automático, no depende de
-          esta pantalla.
-        </Text>
+      {/* Mostrar u ocultar el perfil por un tiempo, cuando quiera
+          (vacaciones, sin stock…). Apagado, ni él ni sus publicaciones se ven. */}
+      {esComerciante && visibilidad && (
+        <View style={styles.visibleBox}>
+          <View style={styles.visibleFila}>
+            <Text style={styles.visibleLabel}>Perfil visible</Text>
+            <Interruptor
+              value={!visibilidad.pausado}
+              onValueChange={(v) => void cambiarVisible(v)}
+              accessibilityLabel="Perfil visible"
+            />
+          </View>
+          {/* Solo se avisa si no se está viendo (pedido del cliente: sin
+              textos de ayuda cuando está todo normal). */}
+          {(visibilidad.ocultoPorAdmin || visibilidad.pausado) && (
+            <Text style={styles.visibleNota}>
+              {visibilidad.ocultoPorAdmin
+                ? 'Un administrador ocultó tu perfil: no se ve en el catálogo hasta que lo vuelva a mostrar.'
+                : 'Tu perfil está en pausa: los demás no ven tu perfil ni tus publicaciones (tú sí, para revisarlas).'}
+            </Text>
+          )}
+        </View>
       )}
 
       {/* Iconos de trazo en vez de emojis: cada teléfono dibuja los emojis a
@@ -132,6 +175,28 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  visibleBox: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.three,
+    marginBottom: Spacing.four,
+  },
+  visibleFila: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  visibleLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 16,
+    color: Colors.text,
+  },
+  visibleNota: {
+    fontFamily: Fonts.light,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.textMuted,
+    marginTop: Spacing.one,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -221,14 +286,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 15,
     color: Colors.text,
-  },
-  hintText: {
-    fontFamily: Fonts.light,
-    marginTop: Spacing.four,
-    fontSize: 12.5,
-    lineHeight: 18,
-    color: Colors.textMuted,
-    textAlign: 'center',
   },
   actionRows: {
     width: '100%',

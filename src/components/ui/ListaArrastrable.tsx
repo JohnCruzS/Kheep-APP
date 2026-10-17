@@ -5,6 +5,13 @@ import { Animated, PanResponder, StyleSheet, View, ViewProps } from 'react-nativ
 export type PropsAsa = Pick<ViewProps, 'onTouchStart' | 'onTouchEnd'>;
 
 /**
+ * La otra forma de agarrar una fila, sin asa: se mantiene apretada (por
+ * ejemplo, el nombre de una tarjeta) y después se arrastra. Va en un
+ * `Pressable`: `onLongPress` la agarra y `onPressOut` la suelta si no se movió.
+ */
+export type PropsMantener = { onLongPress: () => void; onPressOut: () => void };
+
+/**
  * Lista que se reordena arrastrando las filas por su asa.
  *
  * Está hecha con `PanResponder` y `Animated`, que vienen con React Native, y
@@ -26,6 +33,7 @@ export function ListaArrastrable<T>({
   claveDe,
   onReordenar,
   children,
+  onArrastrando,
 }: {
   datos: T[];
   /** Alto de cada fila, separación incluida. */
@@ -33,8 +41,13 @@ export function ListaArrastrable<T>({
   claveDe: (item: T) => string;
   /** Se llama al soltar, con la lista ya en el orden nuevo. */
   onReordenar: (nuevos: T[]) => void;
-  /** Dibuja una fila; `propsAsa` va en el elemento del que se tira. */
-  children: (item: T, indice: number, arrastrando: boolean, propsAsa: PropsAsa) => ReactNode;
+  /**
+   * Dibuja una fila. `propsAsa` va en el elemento del que se tira; o bien
+   * `propsMantener`, en un `Pressable`, para agarrarla manteniéndola apretada.
+   */
+  children: (item: T, indice: number, arrastrando: boolean, propsAsa: PropsAsa, propsMantener: PropsMantener) => ReactNode;
+  /** Avisa cuando empieza y termina un arrastre (para frenar el desplazamiento de la pantalla). */
+  onArrastrando?: (arrastrando: boolean) => void;
 }) {
   const [indiceActivo, setIndiceActivo] = useState<number | null>(null);
   const [saltos, setSaltos] = useState(0);
@@ -45,6 +58,15 @@ export function ListaArrastrable<T>({
   const saltosRef = useRef(0);
   const datosRef = useRef(datos);
   datosRef.current = datos;
+  // También en una ref: el PanResponder se arma una sola vez, y si llamara
+  // al `onReordenar` de entonces usaría los datos del primer dibujado (por
+  // ejemplo, una lista todavía vacía) y al soltar dejaba la pantalla vacía.
+  const onReordenarRef = useRef(onReordenar);
+  onReordenarRef.current = onReordenar;
+  const onArrastrandoRef = useRef(onArrastrando);
+  onArrastrandoRef.current = onArrastrando;
+  /** Si la lista ya tomó el gesto (se está moviendo una fila con el dedo). */
+  const moviendoRef = useRef(false);
 
   const desplazamiento = useRef(new Animated.Value(0)).current;
 
@@ -56,12 +78,14 @@ export function ListaArrastrable<T>({
     setIndiceActivo(null);
     setSaltos(0);
     desplazamiento.setValue(0);
+    onArrastrandoRef.current?.(false);
+    moviendoRef.current = false;
 
     if (desde === null || salto === 0) return;
     const nuevos = [...datosRef.current];
     const [movido] = nuevos.splice(desde, 1);
     nuevos.splice(desde + salto, 0, movido);
-    onReordenar(nuevos);
+    onReordenarRef.current(nuevos);
   }
 
   const responder = useRef(
@@ -69,6 +93,14 @@ export function ListaArrastrable<T>({
       // Solo toma el gesto si hay una fila agarrada por su asa: si no, se
       // comería los toques de las filas y el desplazamiento de la pantalla.
       onMoveShouldSetPanResponder: (_e, gesto) => indiceActivoRef.current !== null && Math.abs(gesto.dy) > 2,
+      // Agarrada manteniéndola apretada, el toque lo tiene el `Pressable` de
+      // adentro: en la fase de captura la lista se lo quita al empezar a mover.
+      onMoveShouldSetPanResponderCapture: (_e, gesto) =>
+        indiceActivoRef.current !== null && Math.abs(gesto.dy) > 2,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        moviendoRef.current = true;
+      },
       onPanResponderMove: (_e, gesto) => {
         const desde = indiceActivoRef.current;
         if (desde === null) return;
@@ -88,6 +120,7 @@ export function ListaArrastrable<T>({
   ).current;
 
   function agarrar(indice: number) {
+    onArrastrandoRef.current?.(true);
     indiceActivoRef.current = indice;
     saltosRef.current = 0;
     desplazamiento.setValue(0);
@@ -127,7 +160,15 @@ export function ListaArrastrable<T>({
                 ? { transform: [{ translateY: desplazamiento }], zIndex: 2, elevation: 6 }
                 : { transform: [{ translateY: correr(indice) }] },
             ]}>
-            {children(item, indice, activa, propsAsa)}
+            {children(item, indice, activa, propsAsa, {
+              onLongPress: () => agarrar(indice),
+              // Se soltó sin mover: se cancela el agarre. Si la lista tomó el
+              // gesto, este aviso llega igual (el `Pressable` pierde el toque)
+              // y no hay que soltar: el arrastre recién empieza.
+              onPressOut: () => {
+                if (indiceActivoRef.current === indice && !moviendoRef.current) soltar();
+              },
+            })}
           </Animated.View>
         );
       })}

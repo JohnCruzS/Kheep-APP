@@ -59,6 +59,7 @@ const styles = StyleSheet.create({
     maxWidth: 260,
   },
   retryButton: {
-    width: 160,
+    // Ancho mínimo, no fijo: con la letra grande, "Reintentar" se cortaba en dos líneas.
+    minWidth: 220,
   },
 });

@@ -1,6 +1,6 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,15 +8,16 @@ import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { comunasEnMemoria } from '@/lib/cacheAdmin';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Interruptor } from '@/components/ui/Interruptor';
-import { AccionRoja, FilaDato, FilaInterruptor, TarjetaDesplegable } from '@/components/admin/TarjetaDesplegable';
+import { AccionRoja, FilaContacto, FilaInterruptor, TarjetaDesplegable } from '@/components/admin/TarjetaDesplegable';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { puede } from '@/lib/administradores';
 import {
+  BannerEnRevision,
   PerfilEnCategoria,
   actualizarNivelPerfil,
+  fetchBannersPendientes,
   actualizarPuedeEditar,
   actualizarVisibilidadPerfil,
-  contarPublicacionesDeUsuarios,
   fetchCorreoDeCuenta,
   reactivarCuenta,
   suspenderCuenta,
@@ -26,7 +27,9 @@ import {
   fetchComuna,
   fetchPerfilesDeCategoria,
 } from '@/lib/catalog';
+import { celularLocal } from '@/lib/validation';
 import { getErrorMessage } from '@/lib/errors';
+import { escribirPorWhatsApp } from '@/lib/whatsapp';
 import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 import { FiltrosOrden } from '@/components/admin/FiltrosOrden';
@@ -35,13 +38,21 @@ import { FiltrosOrden } from '@/components/admin/FiltrosOrden';
  * Los perfiles que publican en una categoría dentro de una comuna, en
  * tarjetas que se abren y se cierran (maqueta del cliente). Abierta, cada una
  * muestra:
- *  - junto al nombre, cuántas publicaciones tiene ("(5)"): al tocarlo se ven
- *    todas, en tarjetas como las del inicio;
- *  - a la derecha, el interruptor de visible/oculto;
- *  - su correo y tres permisos: Directo (publica sin pasar por Aprobar),
- *    Loguin (puede entrar a su cuenta; apagado = suspendida) y Editar (puede
- *    cambiar sus publicaciones);
- *  - "Eliminar". Tocar el correo abre su ficha completa.
+ *  - junto al nombre, las fotos que tiene por revisar en sus publicaciones
+ *    pendientes ("(7)"; sin pendientes no sale): al tocarlo se revisan de a
+ *    una, con "Aprobar" / "No" y los gestos de Aprobar;
+ *  - mantener presionado el nombre abre sus publicaciones activas (y sus
+ *    banners), en tarjetas como las del inicio;
+ *  - a la derecha, el interruptor de visible/oculto del administrador. Es
+ *    distinto de la pausa que el propio comerciante maneja desde su perfil
+ *    (0038): si se lo apaga acá, él no lo puede volver a prender;
+ *  - su WhatsApp (tocar la palabra lo cambia a su correo; tocar el dato le
+ *    escribe por ahí);
+ *  - tres permisos: Directo (publica sin pasar por Aprobar; todos parten sin
+ *    él y solo el general lo da), Loguin (puede entrar a su cuenta; apagado
+ *    es un bloqueo temporal, la contraseña no cambia) y Editar (puede cambiar
+ *    lo que publicó). Sin Loguin tampoco edita;
+ *  - "Eliminar".
  *
  * Ocultar y eliminar son cosas distintas:
  *  - Ocultar: el perfil y sus publicaciones desaparecen del catálogo, pero la
@@ -60,8 +71,6 @@ export default function PerfilesDeCategoriaScreen() {
   /** Suspender (Loguin) también lo puede un administrador de zona con ese permiso. */
   const puedeSuspender = esGeneral || puede(permisos, 'suspender', comunaId);
   const [abierto, setAbierto] = useState<string | null>(null);
-  /** Publicaciones de cada usuario en todas las comunas: el "(5)". */
-  const [totales, setTotales] = useState<Record<string, number>>({});
   /** Correos ya pedidos (se piden al abrir la tarjeta: viven fuera de la API). */
   const [correos, setCorreos] = useState<Record<string, string | null>>({});
 
@@ -74,32 +83,62 @@ export default function PerfilesDeCategoriaScreen() {
   const [tituloCategoria, setTituloCategoria] = useState('Categoría');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Banners esperando revisión en esta comuna (para la lista "Banner"). */
+  const [bannersPendientes, setBannersPendientes] = useState<BannerEnRevision[]>([]);
   /**
-   * Cómo se ve la lista (pedido del cliente): por fecha de registro de la
-   * cuenta, de la más antigua a la más reciente o al revés, o solo los que
-   * tienen algo esperando aprobación (de los más antiguos a los recientes).
+   * Las cinco listas (pedido del cliente), en este orden y partiendo por
+   * "Nuevo":
+   *  - Nuevo / Anterior / Alfabético: TODOS los perfiles, en tarjetas que se
+   *    despliegan; por fecha de registro (nuevos arriba o al revés) o por
+   *    nombre de la A a la Z;
+   *  - Publicación / Banner: solo quienes tienen publicaciones o banners por
+   *    aprobar, en una lista simple con cuántos; no se despliegan: tocar el
+   *    nombre lleva a aprobar. Arriba los que más tiempo llevan esperando.
    */
-  const [filtro, setFiltro] = useState<'antiguos' | 'recientes' | 'pendientes'>('antiguos');
+  const [filtro, setFiltro] = useState<'nuevo' | 'anterior' | 'alfabetico' | 'publicacion' | 'banner'>('nuevo');
   const visibles = useMemo(() => {
+    if (filtro === 'alfabetico') return [...perfiles].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
     const porFecha = [...perfiles].sort((a, b) => a.created_at.localeCompare(b.created_at));
-    if (filtro === 'recientes') return porFecha.reverse();
-    if (filtro === 'pendientes') return porFecha.filter((p) => p.pendientes > 0);
-    return porFecha;
+    return filtro === 'nuevo' ? porFecha.reverse() : porFecha;
   }, [perfiles, filtro]);
+
+  /** Banners por aprobar de cada perfil, y desde cuándo espera el más antiguo. */
+  const bannersPorPerfil = useMemo(() => {
+    // Llegan del que más espera al más reciente: el primero de cada perfil
+    // es desde cuándo espera.
+    const grupos = new Map<string, { id: string; nombre: string; cuantos: number; desde: string }>();
+    for (const b of bannersPendientes) {
+      const grupo = grupos.get(b.usuario_id);
+      if (grupo) grupo.cuantos += 1;
+      else grupos.set(b.usuario_id, { id: b.usuario_id, nombre: b.autor?.nombre ?? 'Comerciante', cuantos: 1, desde: b.created_at });
+    }
+    return grupos;
+  }, [bannersPendientes]);
+
+  /** La lista simple de "Publicación" o "Banner", de lo que más espera a lo más reciente. */
+  const porAprobar = useMemo(() => {
+    if (filtro === 'publicacion') {
+      return perfiles
+        .filter((p) => p.pendientes > 0)
+        .sort((a, b) => (a.pendienteDesde ?? '').localeCompare(b.pendienteDesde ?? ''))
+        .map((p) => ({ id: p.id, nombre: p.nombre, cuantos: p.pendientes }));
+    }
+    return [...bannersPorPerfil.values()].sort((a, b) => a.desde.localeCompare(b.desde));
+  }, [filtro, perfiles, bannersPorPerfil]);
+  const listaSimple = filtro === 'publicacion' || filtro === 'banner';
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [lista, comuna, categorias] = await Promise.all([
+      const [lista, comuna, categorias, banners] = await Promise.all([
         fetchPerfilesDeCategoria(comunaId, categoriaId),
         fetchComuna(comunaId),
         fetchCategoriasAdmin(),
+        fetchBannersPendientes({ comunaId }).catch(() => [] as BannerEnRevision[]),
       ]);
       setPerfiles(lista);
-      contarPublicacionesDeUsuarios(lista.map((p) => p.id))
-        .then(setTotales)
-        .catch(() => {});
+      setBannersPendientes(banners);
       setComunaNombre(comuna?.nombre ?? 'Comuna');
       setTituloCategoria(categorias.find((c) => c.id === categoriaId)?.nombre ?? 'Categoría');
     } catch (err) {
@@ -126,6 +165,14 @@ export default function PerfilesDeCategoriaScreen() {
       setPerfiles((list) => list.map((p) => (p.id === perfil.id ? perfil : p)));
       Alert.alert('No se pudo guardar', getErrorMessage(err, 'Intenta de nuevo.'));
     }
+  }
+
+  /** Abre el perfil en tarjetas: sus activas (y banners), sus pendientes o sus banners por aprobar. */
+  function verEnTarjetas(perfil: { id: string }, modo: 'activas' | 'pendientes' | 'banners') {
+    router.push({
+      pathname: '/(app)/admin/perfil-tarjetas',
+      params: { usuario: perfil.id, comuna: comunaId, categoria: categoriaId, titulo: `${comunaNombre}/${tituloCategoria}`, modo },
+    });
   }
 
   function abrir(perfil: PerfilEnCategoria) {
@@ -190,12 +237,14 @@ export default function PerfilesDeCategoriaScreen() {
       <EncabezadoMarca subtitulo={`${comunaNombre}/${tituloCategoria}`} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {perfiles.length > 0 && (
+        {(perfiles.length > 0 || bannersPendientes.length > 0) && (
           <FiltrosOrden
             opciones={[
-              { id: 'antiguos', label: 'Antiguos' },
-              { id: 'recientes', label: 'Recientes' },
-              { id: 'pendientes', label: 'Pendientes' },
+              { id: 'nuevo', label: 'Nuevo' },
+              { id: 'anterior', label: 'Anterior' },
+              { id: 'alfabetico', label: 'Alfabético' },
+              { id: 'publicacion', label: 'Publicación' },
+              { id: 'banner', label: 'Banner' },
             ]}
             elegida={filtro}
             onElegir={setFiltro}
@@ -205,34 +254,63 @@ export default function PerfilesDeCategoriaScreen() {
         {loading && <LoadingState />}
         {error && <ErrorState message={error} onRetry={load} />}
 
-        {!loading && !error && perfiles.length === 0 && (
+        {!loading && !error && !listaSimple && perfiles.length === 0 && (
           <Text style={styles.vacio}>Todavía nadie publica en esta categoría dentro de esta comuna.</Text>
         )}
-        {!loading && !error && perfiles.length > 0 && visibles.length === 0 && (
-          <Text style={styles.vacio}>Nadie tiene publicaciones esperando aprobación en esta categoría.</Text>
+        {!loading && !error && listaSimple && porAprobar.length === 0 && (
+          <Text style={styles.vacio}>
+            {filtro === 'publicacion'
+              ? 'Nadie tiene publicaciones esperando aprobación en esta categoría.'
+              : 'Nadie tiene banners esperando aprobación en esta comuna.'}
+          </Text>
         )}
 
-        {visibles.map((perfil) => {
+        {/* Publicación / Banner, lista simple: no se despliega; tocar (o
+            mantener presionado) el nombre abre lo suyo para aprobar. */}
+        {!loading &&
+          !error &&
+          listaSimple &&
+          porAprobar.map((fila) => {
+            const abrirParaAprobar = () => verEnTarjetas(fila, filtro === 'banner' ? 'banners' : 'pendientes');
+            return (
+              <TarjetaDesplegable
+                key={fila.id}
+                titulo={fila.nombre}
+                abierta={false}
+                onAlternar={abrirParaAprobar}
+                onMantenerTitulo={abrirParaAprobar}
+                pistaMantener="Abre lo suyo para aprobar"
+                alFinal={<Text style={styles.cuantos}>{fila.cuantos}</Text>}
+              />
+            );
+          })}
+
+        {!listaSimple && visibles.map((perfil) => {
           const estaAbierto = abierto === perfil.id;
-          const total = totales[perfil.id] ?? perfil.publicaciones;
           const esAdminGeneral = perfil.rol === 'admin';
+          // Lo que espera aprobación: sus publicaciones de esta categoría y
+          // sus banners de esta comuna.
+          const bannersSuyos = bannersPorPerfil.get(perfil.id)?.cuantos ?? 0;
+          const porAprobarSuyo = perfil.pendientes + bannersSuyos;
           return (
             <TarjetaDesplegable
               key={perfil.id}
               titulo={perfil.nombre}
               abierta={estaAbierto}
               onAlternar={() => abrir(perfil)}
+              // Mantener presionado el nombre: sus publicaciones activas, en tarjetas.
+              onMantenerTitulo={() => verEnTarjetas(perfil, 'activas')}
+              pistaMantener="Mantén apretado para ver sus publicaciones"
               junto={
-                estaAbierto ? (
-                  // El número abre todas sus publicaciones, en tarjetas.
+                estaAbierto && porAprobarSuyo > 0 ? (
+                  // Publicaciones + banners por aprobar: abre las
+                  // publicaciones (o, si no tiene, los banners) para aprobar.
                   <Pressable
-                    onPress={() =>
-                      router.push({ pathname: '/(app)/admin/publicaciones', params: { usuario: perfil.id, nombre: perfil.nombre } })
-                    }
+                    onPress={() => verEnTarjetas(perfil, perfil.pendientes > 0 ? 'pendientes' : 'banners')}
                     hitSlop={10}
                     accessibilityRole="button"
-                    accessibilityLabel={`Ver las ${total} publicaciones de ${perfil.nombre}`}>
-                    <Text style={styles.total}>({total})</Text>
+                    accessibilityLabel={`Aprobar lo pendiente de ${perfil.nombre} (${porAprobarSuyo})`}>
+                    <Text style={styles.total}>({porAprobarSuyo})</Text>
                   </Pressable>
                 ) : null
               }
@@ -248,13 +326,13 @@ export default function PerfilesDeCategoriaScreen() {
                   />
                 </>
               }>
-              {/* Tocar el correo abre su ficha completa (teléfono, fechas, suspensión). */}
-              <FilaDato
-                etiqueta="Correo"
-                valor={perfil.id in correos ? (correos[perfil.id] ?? 'sin correo') : 'cargando…'}
-                onPress={() => router.push({ pathname: '/(app)/admin/usuario/[id]', params: { id: perfil.id } })}
+              <FilaContacto
+                whatsapp={perfil.telefono_contacto ? celularLocal(perfil.telefono_contacto) : null}
+                correo={perfil.id in correos ? correos[perfil.id] : undefined}
+                onWhatsApp={() => perfil.telefono_contacto && void escribirPorWhatsApp(perfil.telefono_contacto)}
+                onCorreo={() => correos[perfil.id] && void Linking.openURL(`mailto:${correos[perfil.id]}`)}
               />
-              {pendientesTexto(perfil)}
+              {perfil.pausado && <Text style={styles.pausado}>Pausado por el comerciante</Text>}
               <FilaInterruptor
                 etiqueta="Directo"
                 valor={perfil.nivel === 2 || esAdminGeneral}
@@ -275,10 +353,11 @@ export default function PerfilesDeCategoriaScreen() {
                   )
                 }
               />
+              {/* Sin Loguin no entra, así que tampoco edita. */}
               <FilaInterruptor
                 etiqueta="Editar"
-                valor={perfil.puede_editar}
-                deshabilitado={!esGeneral || esAdminGeneral}
+                valor={perfil.puede_editar && !perfil.suspendida}
+                deshabilitado={!esGeneral || esAdminGeneral || perfil.suspendida}
                 onCambio={(puedeEditar) =>
                   void cambiar(perfil, { puede_editar: puedeEditar }, () => actualizarPuedeEditar(perfil.id, puedeEditar))
                 }
@@ -289,16 +368,6 @@ export default function PerfilesDeCategoriaScreen() {
         })}
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-/** "1 por aprobar": solo si tiene algo esperando. */
-function pendientesTexto(perfil: PerfilEnCategoria) {
-  if (perfil.pendientes === 0) return null;
-  return (
-    <Text style={styles.pendientes}>
-      {perfil.pendientes} {perfil.pendientes === 1 ? 'publicación por aprobar' : 'publicaciones por aprobar'}
-    </Text>
   );
 }
 
@@ -325,10 +394,16 @@ const styles = StyleSheet.create({
     fontSize: 27.5,
     color: Colors.accent,
   },
-  pendientes: {
+  // El número de la lista simple, en rojo contra el borde derecho.
+  cuantos: {
+    fontFamily: Fonts.tarjeta,
+    fontSize: 27.5,
+    color: Colors.accent,
+  },
+  pausado: {
     fontFamily: Fonts.delgada,
     fontSize: 15,
-    color: Colors.accent,
+    color: Colors.textMuted,
     textAlign: 'center',
   },
 });

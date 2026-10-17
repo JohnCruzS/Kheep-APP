@@ -1,10 +1,9 @@
-import { RevisionEnTarjetas } from '@/components/admin/RevisionEnTarjetas';
+import { AprobarLista } from '@/components/admin/AprobarLista';
 
 /**
- * Aprobar: lo que espera aprobación, en tarjetas como las del inicio
- * ("Últimos (N)", maqueta del cliente). Tocar el nombre del comercio abre
- * Aprobar / Rechazar.
+ * Aprobar: todo lo que espera aprobación (publicaciones y banners) en una
+ * sola lista de tarjetas, que los filtros reordenan (ver AprobarLista).
  */
 export default function ModeracionScreen() {
-  return <RevisionEnTarjetas soloPendientes />;
+  return <AprobarLista />;
 }

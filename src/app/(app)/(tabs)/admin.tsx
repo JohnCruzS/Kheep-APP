@@ -40,6 +40,13 @@ export default function ComunasTabScreen() {
   const [loading, setLoading] = useState(() => comunasEnMemoria() === null);
   const [error, setError] = useState<string | null>(null);
   const [regionAbierta, setRegionAbierta] = useState<string | null>(null);
+  /**
+   * Dos toques sobre el título alternan entre "Chile" (todas las comunas) y
+   * "Visible" (solo las que se ven en la app): ahí se pueden ocultar, pero
+   * las ocultas no aparecen, así que para volver a mostrar una hay que volver
+   * a "Chile" (pedido del cliente).
+   */
+  const [soloVisibles, setSoloVisibles] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -63,7 +70,8 @@ export default function ComunasTabScreen() {
 
   const regiones = useMemo(() => {
     const porRegion = new Map<string, ComunaAdmin[]>();
-    const visibles = esGeneral ? comunas : comunas.filter((c) => permisos?.comunas.includes(c.id));
+    const deMiZona = esGeneral ? comunas : comunas.filter((c) => permisos?.comunas.includes(c.id));
+    const visibles = soloVisibles ? deMiZona.filter((c) => c.activa) : deMiZona;
     for (const comuna of visibles) {
       const region = comuna.region ?? 'Sin región';
       const lista = porRegion.get(region);
@@ -71,7 +79,7 @@ export default function ComunasTabScreen() {
       else porRegion.set(region, [comuna]);
     }
     return [...porRegion.entries()].sort(([a], [b]) => compararRegiones(a, b));
-  }, [comunas, esGeneral, permisos]);
+  }, [comunas, esGeneral, permisos, soloVisibles]);
 
   async function handleToggle(comuna: ComunaAdmin) {
     const nuevo = !comuna.activa;
@@ -98,7 +106,7 @@ export default function ComunasTabScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <EncabezadoMarca subtitulo="Chile" />
+      <EncabezadoMarca subtitulo={soloVisibles ? 'Visible' : 'Chile'} onDobleToque={() => setSoloVisibles((v) => !v)} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
@@ -107,7 +115,12 @@ export default function ComunasTabScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {regiones.map(([region, lista]) => {
             const abierta = regionAbierta === region;
-            const visibles = lista.filter((c) => c.activa).length;
+            // El total es el de la región entera, también en "Visible" (donde
+            // la lista trae solo las visibles): así se sigue leyendo "1/4".
+            const deLaRegion = comunas.filter(
+              (c) => c.region === region && (esGeneral || permisos?.comunas.includes(c.id)),
+            );
+            const visibles = deLaRegion.filter((c) => c.activa).length;
             return (
               <View key={region} style={styles.tarjeta}>
                 <Pressable
@@ -117,7 +130,7 @@ export default function ComunasTabScreen() {
                   <Text style={styles.region} numberOfLines={1}>
                     {nombreRegion(region)}
                   </Text>
-                  <Text style={styles.contador}>{`${visibles}/${lista.length}`}</Text>
+                  <Text style={styles.contador}>{`${visibles}/${deLaRegion.length}`}</Text>
                 </Pressable>
 
                 {abierta &&

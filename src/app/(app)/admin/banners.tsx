@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -10,63 +10,101 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { Text } from '@/components/ui/Texto';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
-import { Colors, Fonts, Spacing } from '@/constants/theme';
-import { BannerAdmin, CUPO_BANNERS, eliminarBanner, fetchBannersActivosAdmin } from '@/lib/catalog';
-import { getErrorMessage } from '@/lib/errors';
-import { bannersEnMemoria, precargarBanners } from '@/lib/cacheAdmin';
-import { useSession } from '@/providers/SessionProvider';
-import { REJILLA, u } from '@/lib/rejilla';
 import { FotoRemota } from '@/components/ui/FotoRemota';
+import { Ionicons } from '@expo/vector-icons';
+import { UbicacionBanner } from '@/components/admin/UbicacionBanner';
+import { Text } from '@/components/ui/Texto';
+import { Colors, Fonts, Spacing } from '@/constants/theme';
+import { bannersEnMemoria, precargarBanners } from '@/lib/cacheAdmin';
+import {
+  BannerAdmin,
+  pausarBanner,
+  eliminarBanner,
+} from '@/lib/catalog';
+import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
+import { useSession } from '@/providers/SessionProvider';
+
+const HORA = 3600000;
+const DIA = 24 * HORA;
+
+const dos = (n: number) => String(n).padStart(2, '0');
+
+/** 20:45:30 (horas, minutos y segundos). */
+function hms(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 3600)}:${dos(Math.floor((s % 3600) / 60))}:${dos(s % 60)}`;
+}
+
+/** 3 d 04:15 (días, horas y minutos): para banners de varios días. */
+function dhm(ms: number): string {
+  const m = Math.max(0, Math.floor(ms / 60000));
+  return `${Math.floor(m / 1440)} d ${dos(Math.floor((m % 1440) / 60))}:${dos(m % 60)}`;
+}
 
 /**
- * Cuánto le queda al banner, como HH:MM:SS (documento EDIT APP). Pasado un
- * día se dice en días: "3 d 04:15:20" es ilegible, y a esa distancia lo que
- * importa es el día, no el segundo.
+ * El tiempo del banner, en los dos formatos de la maqueta del cliente (se
+ * pasa de uno a otro tocándolo):
+ *  - transcurrido: cuánto lleva de lo contratado, "20:45:30 / 24:00";
+ *  - restante: cuánto le queda, "3:14:30".
+ * Pasadas las 48 horas, las horas sueltas ("356:08:51") no las lee nadie: se
+ * cuenta en días ("3 d 04:15 / 15 d").
  */
-function restante(fechaInicio: string | null, fechaFin: string | null): string {
-  if (!fechaFin) return 'Sin vencimiento';
-  const ms = new Date(fechaFin).getTime() - Date.now();
-  if (ms <= 0) return 'Terminado';
+function tiempo(banner: BannerAdmin, verRestante: boolean): string {
+  if (!banner.fecha_fin) return 'Sin vencimiento';
+  const fin = new Date(banner.fecha_fin).getTime();
+  const inicio = banner.fecha_inicio ? new Date(banner.fecha_inicio).getTime() : null;
+  // En pausa, el reloj queda detenido en el momento en que se pausó.
+  const ahora = banner.pausado_en ? new Date(banner.pausado_en).getTime() : Date.now();
+  if (fin <= ahora) return 'Terminado';
 
-  // Lo contratado, para leer "lo que queda / lo que duraba".
-  const total = fechaInicio ? new Date(fechaFin).getTime() - new Date(fechaInicio).getTime() : null;
-  const totalTexto = total ? ` / ${Math.round(total / 3600000)}:00` : '';
+  const total = inicio ? fin - inicio : null;
+  const enDias = (total ?? fin - ahora) > 48 * HORA;
+  if (verRestante || inicio === null || total === null) return enDias ? dhm(fin - ahora) : hms(fin - ahora);
 
-  // Pasadas 48 horas, "568:08:51" no lo lee nadie: se cuenta en días.
-  if (ms > 48 * 3600000) {
-    const dias = Math.floor(ms / 86400000);
-    const horas = Math.floor((ms % 86400000) / 3600000);
-    const totalDias = total ? ` / ${Math.round(total / 86400000)} d` : '';
-    return `${dias} d ${String(horas).padStart(2, '0')} h${totalDias}`;
-  }
-
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const seg = Math.floor((ms % 60000) / 1000);
-  return [h, m, seg].map((n) => String(n).padStart(2, '0')).join(':') + totalTexto;
+  const llevado = Math.min(total, Math.max(0, ahora - inicio));
+  return enDias
+    ? `${dhm(llevado)} / ${Math.round(total / DIA)} d`
+    : `${hms(llevado)} / ${Math.round(total / HORA)}:00`;
 }
 
 /** DD/MM/AAAA, el mismo formato que el resto de la app. */
 function fecha(iso: string): string {
   const d = new Date(iso);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  return `${dos(d.getDate())}/${dos(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+/** "https://www.kheep.cl/" → "www.kheep.cl": el enlace como se lee. */
+function enlaceCorto(url: string): string {
+  return url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
 }
 
 /**
- * Banners que hoy se ven en el carrusel del catálogo, con opción de
- * eliminarlos (por ejemplo, uno con contenido inapropiado).
+ * Banners (maqueta del cliente): los banners publicados, de a uno. La imagen
+ * va al alto con que se ve en el inicio y se pasa con el dedo; todo lo de
+ * abajo es del banner que está en pantalla:
+ *  - "3/6": cuál se está viendo de cuántos hay;
+ *  - la barra: por dónde va el carrusel (crece con cada banner; entera
+ *    roja en el último);
+ *  - el tiempo (tocarlo cambia entre transcurrido y restante) y, a su
+ *    derecha, "V-150" (veces que se vio) o "U-25" (personas distintas que
+ *    lo vieron): se ve uno y tocarlo cambia al otro;
+ *  - el enlace;
+ *  - Ubicación (la lista de regiones y comunas, encendidas donde está),
+ *    Eliminar (lo borra para siempre) y Pausar / Reanudar (en pausa no sale
+ *    en el carrusel y su tiempo se congela; al reanudar sigue con lo que le
+ *    quedaba).
+ *    el carrusel).
+ * Abajo, "Nuevo" para publicar otro.
  */
 export default function BannersAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { permisos } = useSession();
-  // Lo que dejó precargado el panel: se muestra al tiro, sin ruedita, y por
-  // detrás se vuelve a pedir.
   const filtrar = useCallback(
     (todos: BannerAdmin[]) =>
       // El de zona administra los banners de sus comunas; los de "todas las
@@ -74,18 +112,24 @@ export default function BannersAdminScreen() {
       permisos?.esGeneral ? todos : todos.filter((b) => b.comuna_id && permisos?.comunas.includes(b.comuna_id)),
     [permisos],
   );
+  // Lo que dejó precargado el panel: se muestra al tiro y por detrás se vuelve a pedir.
   const precargados = bannersEnMemoria();
   const [banners, setBanners] = useState<BannerAdmin[]>(precargados ? filtrar(precargados) : []);
-  /** Solo la primera vez que no hay nada en memoria. */
   const [loading, setLoading] = useState(precargados === null);
   const [error, setError] = useState<string | null>(null);
   const [eliminando, setEliminando] = useState<string | null>(null);
   /** En qué banner está el carrusel: lo que se ve debajo es de ESE banner. */
   const [indice, setIndice] = useState(0);
-  /** Ancho real de una página, medido del contenedor. */
+  /** Dónde va el carrusel mientras se desliza (1,4 = entre el 2.º y el 3.º): la barra lo sigue. */
+  const [posicion, setPosicion] = useState(0);
   const [ancho, setAncho] = useState(0);
-  // El tiempo restante se redibuja cada segundo: es una cuenta atrás, y
-  // congelada no dice nada.
+  /** Tocar el tiempo: transcurrido ↔ restante. */
+  const [verRestante, setVerRestante] = useState(false);
+  /** Tocar las vistas: V (veces que se vio) ↔ U (personas distintas). */
+  const [verUnicas, setVerUnicas] = useState(false);
+  /** Las comunas donde está el banner, para la vista "Ubicación" (null = todas). */
+  const [ubicacion, setUbicacion] = useState<string[] | null | undefined>(undefined);
+  // El tiempo se redibuja cada segundo: congelado no dice nada.
   const [, setTic] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTic((t) => t + 1), 1000);
@@ -103,9 +147,12 @@ export default function BannersAdminScreen() {
     }
   }, [filtrar]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Al volver de "Nuevo" se recarga: así aparece el recién publicado.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   function handleEliminar(banner: BannerAdmin) {
     const deQuien = banner.autor?.nombre ? ` de ${banner.autor.nombre}` : '';
@@ -122,8 +169,8 @@ export default function BannersAdminScreen() {
             try {
               await eliminarBanner(banner.id);
               setBanners((list) => list.filter((b) => b.id !== banner.id));
-              // Si se borró el último, el carrusel se queda sin esa página.
               setIndice((i) => Math.max(0, Math.min(i, banners.length - 2)));
+              setPosicion((p) => Math.max(0, Math.min(p, banners.length - 2)));
             } catch (err) {
               setError(getErrorMessage(err, 'No se pudo eliminar el banner.'));
             } finally {
@@ -135,45 +182,69 @@ export default function BannersAdminScreen() {
     );
   }
 
+  const [pausando, setPausando] = useState<string | null>(null);
+
+  /** Pausar / Reanudar: lo hace la base y se recarga para traer el tiempo corrido. */
+  async function alternarPausa(banner: BannerAdmin) {
+    const pausar = banner.pausado_en === null;
+    setPausando(banner.id);
+    try {
+      await pausarBanner(banner.id, pausar);
+      await load();
+    } catch (err) {
+      Alert.alert(pausar ? 'No se pudo pausar' : 'No se pudo reanudar', getErrorMessage(err, 'Intenta de nuevo.'));
+    } finally {
+      setPausando(null);
+    }
+  }
+
+  /**
+   * Ubicación: dónde se muestra. Un banner publicado en varias comunas son
+   * varias copias con la misma imagen; se juntan todas las comunas de esas
+   * copias. Una copia para "todas las comunas" las enciende todas.
+   */
+  function verUbicacion(banner: BannerAdmin) {
+    const copias = banners.filter((b) => b.imagen_url === banner.imagen_url);
+    setUbicacion(copias.some((b) => b.comuna_id === null) ? null : copias.map((b) => b.comuna_id as string));
+  }
+
   function medirAncho(e: LayoutChangeEvent) {
     setAncho(Math.round(e.nativeEvent.layout.width));
   }
 
   function alDeslizar(e: NativeSyntheticEvent<NativeScrollEvent>) {
     if (ancho <= 0) return;
-    const nuevo = Math.max(0, Math.min(banners.length - 1, Math.round(e.nativeEvent.contentOffset.x / ancho)));
+    const exacta = Math.max(0, Math.min(banners.length - 1, e.nativeEvent.contentOffset.x / ancho));
+    setPosicion(exacta);
+    const nuevo = Math.round(exacta);
     setIndice((anterior) => (anterior === nuevo ? anterior : nuevo));
   }
 
-  /** El banner que se está mirando: de él son todos los datos de la tarjeta. */
   const actual = banners[Math.min(indice, banners.length - 1)];
-  /** Cuánto del carrusel se lleva recorrido: un tramo por banner, entero en el último. */
-  const avance = banners.length > 0 ? Math.min(1, (indice + 1) / banners.length) : 0;
+  // La barra crece a medida que se avanza por los banners: un tramo por
+  // banner, y entera roja en el último (pedido del cliente).
+  const avance = banners.length > 0 ? Math.min(1, (posicion + 1) / banners.length) : 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
+      {/* Dos toques en el título: los precios por región y comuna (solo el general). */}
+      <EncabezadoMarca
+        subtitulo="Banners"
+        onDobleToque={permisos?.esGeneral ? () => router.push('/(app)/admin/precios-banner') : undefined}
+      />
 
-      {/* Publicar y ver los activos son la misma pantalla: son las dos caras
-          de lo mismo y separarlas obligaba a salir y volver a entrar. */}
-      <EncabezadoMarca subtitulo="Banners" />
-
-      {loading && (
-        <View style={styles.carrusel}>
-          <View style={[styles.card, styles.silueta]} />
-        </View>
-      )}
+      {loading && <View style={[styles.marco, styles.imagen, styles.silueta]} />}
       {error && <ErrorState message={error} onRetry={load} />}
       {!loading && !error && banners.length === 0 && (
-        <EmptyState title="No hay banners activos" message="Cuando haya banners mostrándose en la app, aparecerán acá." />
+        <EmptyState title="No hay banners publicados" message="Cuando haya banners en la app, aparecerán acá." />
       )}
 
-      {/* Lo único que se desliza es la IMAGEN: los datos —el lugar en el
-          cupo, el tiempo, las métricas y el pie— se quedan quietos en su
-          sitio y pasan a ser los del banner que se está mirando. */}
       {!loading && !error && banners.length > 0 && actual && (
-        <View style={styles.carrusel} onLayout={medirAncho}>
-          <View style={styles.card}>
+        <ScrollView contentContainerStyle={styles.contenido} showsVerticalScrollIndicator={false}>
+          {/* Solo la imagen se desliza; los datos de abajo pasan a ser los del
+              banner que se está mirando. */}
+          <View style={styles.marco} onLayout={medirAncho}>
             <ScrollView
               horizontal
               pagingEnabled
@@ -181,258 +252,230 @@ export default function BannersAdminScreen() {
               onScroll={alDeslizar}
               onMomentumScrollEnd={alDeslizar}
               scrollEventThrottle={16}
-              style={styles.tiraImagenes}>
+              style={styles.tira}>
               {banners.map((banner) => (
                 <FotoRemota
                   key={banner.id}
                   uri={banner.imagen_url}
                   ancho={ancho}
-                  style={[styles.imagen, { width: ancho }]}
+                  style={[styles.imagen, { width: ancho }, banner.pausado_en !== null && styles.apagada]}
                 />
               ))}
             </ScrollView>
-
-            {/* En qué lugar del cupo va el que se está viendo: "2/5" es el
-                segundo de los cinco espacios del carrusel. */}
-            <Text style={[styles.cupo, banners.length >= CUPO_BANNERS && styles.cupoLleno]}>
-              {indice + 1}/{CUPO_BANNERS}
-            </Text>
-
-            {/* La barra dice por dónde va el carrusel: se llena un tramo por
-                banner y queda entera roja en el último. */}
-            <View style={styles.barra}>
-              <View style={[styles.barraLlena, { flex: avance }]} />
-              {avance < 1 && <View style={{ flex: 1 - avance }} />}
-            </View>
-
-            <Text style={styles.cuentaAtras} numberOfLines={1}>
-              {restante(actual.fecha_inicio, actual.fecha_fin)}
-            </Text>
-
-            {/* Lo que quiere saber quien lo pagó. */}
-            <View style={styles.metricas}>
-              <Text style={styles.metricaEtiqueta}>
-                Vistas <Text style={styles.metricaValor}>{actual.vistas.toLocaleString('es-CL')}</Text>
-              </Text>
-              {actual.enlace ? (
-                <Text style={styles.metricaEtiqueta}>
-                  Enlace <Text style={styles.metricaValor}>{actual.clics.toLocaleString('es-CL')}</Text>
-                </Text>
-              ) : (
-                <Text style={styles.sinEnlace}>Sin enlace</Text>
-              )}
-            </View>
-
-            <View style={styles.pieCard}>
-              {/* En dos líneas: en una sola, la fecha se cortaba con puntos
-                  suspensivos y era justo lo que había que saber. */}
-              <View style={styles.detalleBloque}>
-                <Text style={styles.detalle}>
-                  {(actual.autor?.nombre ?? 'Banner del sistema') +
-                    ' · ' +
-                    (actual.comuna?.nombre ?? 'Todas las comunas')}
-                </Text>
-                {actual.fecha_fin && <Text style={styles.detalle}>Hasta el {fecha(actual.fecha_fin)}</Text>}
-              </View>
-              <Pressable
-                onPress={() => handleEliminar(actual)}
-                disabled={eliminando === actual.id}
-                style={({ pressed }) => [styles.eliminarBtn, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Eliminar banner">
-                <Text style={styles.eliminarLabel}>{eliminando === actual.id ? 'Eliminando…' : 'Eliminar'}</Text>
-              </Pressable>
-            </View>
           </View>
 
-        </View>
+          {/* Cuál se está viendo de cuántos hay: "3/6". */}
+          <Text style={styles.cupo}>
+            {indice + 1}/{banners.length}
+          </Text>
+
+          {/* Por dónde va el carrusel: crece con cada banner, entera en el último. */}
+          <View style={styles.barra}>
+            <View style={[styles.barraLlena, { flex: avance }]} />
+            {avance < 1 && <View style={{ flex: 1 - avance }} />}
+          </View>
+
+          <View style={styles.fila}>
+            <View style={[styles.filaIzquierda, styles.conPausa]}>
+              {/* Pausa estilo video: ⏸ lo pausa (deja de mostrarse y el tiempo se
+                  congela) y ▶ lo reanuda con lo que le quedaba. */}
+              <Pressable
+                onPress={() => void alternarPausa(actual)}
+                disabled={pausando === actual.id}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={actual.pausado_en !== null ? 'Reanudar banner' : 'Pausar banner'}>
+                <Ionicons
+                  name={actual.pausado_en !== null ? 'play' : 'pause'}
+                  size={22}
+                  color={actual.pausado_en !== null ? Colors.accent : Colors.text}
+                />
+              </Pressable>
+              <Pressable onPress={() => setVerRestante((v) => !v)} hitSlop={8} style={styles.filaIzquierda}>
+                <Text style={styles.tiempo} numberOfLines={1}>
+                  {tiempo(actual, verRestante)}
+                </Text>
+              </Pressable>
+            </View>
+            {/* V = veces que se vio; U = personas distintas que lo vieron. Se ve
+                uno y tocarlo cambia al otro. */}
+            <Pressable onPress={() => setVerUnicas((v) => !v)} hitSlop={8}>
+              <Text
+                style={styles.valor}
+                accessibilityLabel={
+                  verUnicas ? `${actual.vistas_unicas} personas distintas` : `${actual.vistas} veces visto`
+                }>
+                <Text style={styles.letra}>{verUnicas ? 'U ' : 'V '}</Text>
+                {(verUnicas ? actual.vistas_unicas : actual.vistas).toLocaleString('es-CL')}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.fila}>
+            <Text style={[actual.enlace ? styles.valor : styles.tiempo, styles.filaIzquierda]} numberOfLines={1}>
+              {actual.enlace ? enlaceCorto(actual.enlace) : 'Sin enlace'}
+            </Text>
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.ubicacion, pressed && styles.pressed]}
+            onPress={() => verUbicacion(actual)}
+            accessibilityRole="button">
+            <Text style={styles.ubicacionLabel}>Ubicación</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => handleEliminar(actual)}
+            disabled={eliminando === actual.id}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Eliminar banner">
+            <Text style={styles.eliminar}>{eliminando === actual.id ? 'Eliminando…' : 'Eliminar'}</Text>
+          </Pressable>
+
+          {/* Debajo de todo, no flotando encima del contenido (pedido del cliente). */}
+          <BotonNuevo onPress={() => router.push('/(app)/admin/banner-nuevo')} abajo={insets.bottom} />
+        </ScrollView>
       )}
 
-      {/* Espacio libre: el botón va DEBAJO de la tarjeta, nunca encima. */}
-      <View style={styles.hueco} />
+      <UbicacionBanner
+        visible={ubicacion !== undefined}
+        comunaIds={ubicacion ?? null}
+        onClose={() => setUbicacion(undefined)}
+      />
 
-      {/* El botón queda abajo, al alcance del pulgar y después de ver lo que
-          ya hay publicado (documento EDIT APP). */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.publicar,
-          { marginBottom: Spacing.three + insets.bottom },
-          pressed && styles.publicarPresionado,
-        ]}
-        onPress={() => router.push('/(app)/banner/publicar')}>
-        <Text style={styles.publicarLabel}>Nuevo</Text>
-      </Pressable>
+      {/* Sin banners, "Nuevo" va debajo del aviso. */}
+      {!loading && !error && banners.length === 0 && (
+        <BotonNuevo onPress={() => router.push('/(app)/admin/banner-nuevo')} abajo={insets.bottom} />
+      )}
     </SafeAreaView>
   );
 }
+
+/** "Nuevo": publicar otro banner. */
+function BotonNuevo({ onPress, abajo }: { onPress: () => void; abajo: number }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.nuevo, { marginBottom: Spacing.three + abajo }, pressed && styles.nuevoPresionado]}
+      onPress={onPress}>
+      <Text style={styles.nuevoLabel}>Nuevo</Text>
+    </Pressable>
+  );
+}
+
+const margen = u(REJILLA.margenLateral);
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
   },
+  contenido: {
+    paddingBottom: Spacing.four,
+  },
+  marco: {
+    marginHorizontal: margen,
+    marginTop: Spacing.three,
+    borderRadius: u(REJILLA.curvatura),
+    overflow: 'hidden',
+  },
+  tira: {
+    flexGrow: 0,
+  },
+  imagen: {
+    // El mismo alto que en el inicio: el admin lo ve como lo ven todos.
+    height: u(REJILLA.bannerAlto),
+    backgroundColor: Colors.surface,
+  },
+  silueta: {
+    backgroundColor: Colors.surface,
+  },
+  apagada: {
+    opacity: 0.4,
+  },
   cupo: {
-    fontFamily: Fonts.light,
-    fontSize: 19,
+    fontFamily: Fonts.delgada,
+    fontSize: 24,
     color: Colors.textMuted,
     textAlign: 'center',
     paddingVertical: Spacing.three,
   },
-  cupoLleno: {
-    color: Colors.warning,
-  },
   barra: {
     flexDirection: 'row',
     height: 2,
-    marginHorizontal: Spacing.four,
+    marginHorizontal: margen,
     backgroundColor: '#FFFFFF',
   },
   barraLlena: {
     backgroundColor: Colors.accent,
   },
-  cuentaAtras: {
-    fontFamily: Fonts.light,
-    fontSize: 17,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    paddingVertical: Spacing.three,
-  },
-  metricas: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: Spacing.five,
-    paddingBottom: Spacing.three,
-  },
-  metricaEtiqueta: {
-    fontFamily: Fonts.light,
-    fontSize: 17,
-    color: Colors.accent,
-  },
-  metricaValor: {
-    color: Colors.text,
-  },
-  sinEnlace: {
-    fontFamily: Fonts.light,
-    fontSize: 17,
-    color: Colors.textMuted,
-  },
-  pieCard: {
+  fila: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.three,
+    marginHorizontal: margen * 2,
+    marginTop: Spacing.four,
   },
-  carrusel: {
-    marginHorizontal: u(REJILLA.margenLateral),
-    marginTop: Spacing.three,
+  filaIzquierda: {
+    flexShrink: 1,
   },
-  silueta: {
-    height: u(REJILLA.bannerAlto) + 260,
+  tiempo: {
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
+    color: Colors.textMuted,
   },
-  hueco: {
-    flex: 1,
+  valor: {
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
+    color: Colors.text,
   },
-  publicar: {
-    marginHorizontal: u(REJILLA.margenLateral),
+  ubicacion: {
+    marginHorizontal: margen * 1.5,
+    marginTop: Spacing.five,
+    paddingVertical: Spacing.three,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+  },
+  ubicacionLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 22,
+    color: '#000000',
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+  eliminar: {
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
+    color: Colors.accent,
+    textAlign: 'center',
+    marginTop: Spacing.four,
+  },
+  conPausa: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  // La "V" / "U" apagada; el número, en blanco.
+  letra: {
+    color: Colors.textMuted,
+  },
+  nuevo: {
+    marginHorizontal: margen,
+    marginTop: Spacing.five,
     paddingVertical: Spacing.four,
     borderRadius: u(REJILLA.curvatura),
     backgroundColor: Colors.accent,
     alignItems: 'center',
   },
-  publicarPresionado: {
+  nuevoPresionado: {
     backgroundColor: Colors.accentPressed,
   },
-  publicarLabel: {
+  nuevoLabel: {
     fontFamily: Fonts.medium,
     fontSize: 21,
     color: '#FFFFFF',
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
-  },
-  backLabel: {
-    fontFamily: Fonts.medium,
-    color: Colors.text,
-    fontSize: 15,
-    width: 70,
-  },
-  topTitle: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.text,
-    fontSize: 15,
-  },
-  content: {
-    paddingHorizontal: u(REJILLA.margenLateral),
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
-  },
-  ayuda: {
-    // Sin `flex`, el texto empuja el cupo fuera de la pantalla.
-    flex: 1,
-    fontFamily: Fonts.light,
-    fontSize: 13,
-    lineHeight: 19,
-    color: Colors.textMuted,
-    marginBottom: Spacing.three,
-  },
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: u(REJILLA.curvatura),
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    overflow: 'hidden',
-  },
-  tiraImagenes: {
-    // Sin esto, la tira de imágenes se estira al alto de la tarjeta entera.
-    flexGrow: 0,
-  },
-  imagen: {
-    // El mismo alto que en el catálogo: el admin lo ve como lo ven todos.
-    height: u(REJILLA.bannerAlto),
-    backgroundColor: Colors.backgroundAlt,
-  },
-  info: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    padding: Spacing.three,
-  },
-  infoTexto: {
-    flex: 1,
-  },
-  autor: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  detalleBloque: {
-    // Sin `flex`, el texto empuja "Eliminar" fuera de la tarjeta.
-    flex: 1,
-    gap: 2,
-  },
-  detalle: {
-    fontFamily: Fonts.light,
-    fontSize: 12,
-    color: Colors.textMuted,
-  },
-  eliminarBtn: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: 10,
-    backgroundColor: 'rgba(217,8,4,0.15)',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  eliminarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-    color: Colors.danger,
   },
 });

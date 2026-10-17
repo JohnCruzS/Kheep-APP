@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -13,6 +14,8 @@ export type Banner = {
   orden: number;
   /** A dónde lleva tocarlo; null = no lleva a ninguna parte. */
   enlace: string | null;
+  /** Modo Principal (0042): sale primero una vez por teléfono. */
+  principal?: boolean;
 };
 
 /** Cuántos banners caben a la vez en una comuna (documento EDIT APP: "3/5"). */
@@ -56,6 +59,9 @@ export type Producto = {
 
 export type PublicacionDetalle = Omit<PublicacionResumen, 'productos'> & {
   productos: Producto[];
+  estado?: 'pendiente' | 'aprobado' | 'rechazado';
+  /** Por cuál foto la rechazaron (0039). */
+  rechazo_foto?: number | null;
 };
 
 export type MiPublicacion = {
@@ -67,6 +73,8 @@ export type MiPublicacion = {
   categoria: { nombre: string } | null;
   comuna: { nombre: string } | null;
   productos: { id: string }[];
+  /** Por cuál foto la rechazaron (0039). */
+  rechazo_foto?: number | null;
 };
 
 /**
@@ -90,6 +98,12 @@ function faltaColumnaNueva(error: { code?: string; message?: string } | null): b
 }
 
 export async function fetchBanners(comunaId?: string | null): Promise<Banner[]> {
+  // Con el modo Principal (0042); sin la migración, como antes.
+  const conPrincipal = await consultarBanners('id, imagen_url, orden, enlace, principal', comunaId);
+  if (!faltaColumnaNueva(conPrincipal.error)) {
+    if (conPrincipal.error) throw conPrincipal.error;
+    return ordenarPrincipales((conPrincipal.data ?? []) as unknown as Banner[]);
+  }
   const conEnlace = await consultarBanners('id, imagen_url, orden, enlace', comunaId);
   if (!faltaColumnaNueva(conEnlace.error)) {
     if (conEnlace.error) throw conEnlace.error;
@@ -98,6 +112,41 @@ export async function fetchBanners(comunaId?: string | null): Promise<Banner[]> 
   const basico = await consultarBanners('id, imagen_url, orden', comunaId);
   if (basico.error) throw basico.error;
   return ((basico.data ?? []) as unknown as Omit<Banner, 'enlace'>[]).map((b) => ({ ...b, enlace: null }));
+}
+
+const CLAVE_PRINCIPALES = 'kheep.principalesVistos';
+/** Los principales que en ESTA apertura de la app van primero. */
+const principalesDeLaSesion = new Set<string>();
+
+/**
+ * Modo Principal (pedido del cliente): un banner principal sale primero en
+ * el carrusel UNA sola vez por teléfono — durante la primera apertura de la
+ * app en que aparece. El teléfono recuerda cuáles ya mostró primero; la
+ * próxima vez que se abra la app, quedan en el orden normal con los demás.
+ * Mientras la app siga abierta, siguen primero (volver a Inicio no los
+ * desordena).
+ */
+async function ordenarPrincipales(banners: Banner[]): Promise<Banner[]> {
+  const principales = banners.filter((b) => b.principal);
+  if (principales.length === 0) return banners;
+
+  let vistos: string[] = [];
+  try {
+    vistos = JSON.parse((await AsyncStorage.getItem(CLAVE_PRINCIPALES)) ?? '[]');
+  } catch {
+    vistos = [];
+  }
+  const nuevos = principales.filter((b) => !vistos.includes(b.id));
+  for (const b of nuevos) principalesDeLaSesion.add(b.id);
+  if (nuevos.length > 0) {
+    // Se recuerdan los últimos 300: de sobra para los banners vigentes.
+    const guardar = [...vistos, ...nuevos.map((b) => b.id)].slice(-300);
+    AsyncStorage.setItem(CLAVE_PRINCIPALES, JSON.stringify(guardar)).catch(() => {});
+  }
+
+  const primero = banners.filter((b) => principalesDeLaSesion.has(b.id));
+  if (primero.length === 0) return banners;
+  return [...primero, ...banners.filter((b) => !principalesDeLaSesion.has(b.id))];
 }
 
 async function consultarBanners(columnas: string, comunaId?: string | null) {
@@ -353,14 +402,19 @@ export async function fetchPublicacionesPorIds(ids: string[]): Promise<Publicaci
 }
 
 export async function fetchPublicacionDetalle(id: string): Promise<PublicacionDetalle | null> {
-  const { data, error } = await supabase
-    .from('publicaciones')
-    .select(
-      'id, titulo, descripcion, logo_url, telefono, destacado, categoria_id, categoria:categorias(nombre), comuna:comunas(nombre), productos(id, nombre, descripcion, precio, imagen_url, orden)',
-    )
-    .eq('id', id)
-    .order('orden', { referencedTable: 'productos', ascending: true })
-    .maybeSingle();
+  const base =
+    'id, titulo, descripcion, logo_url, telefono, destacado, estado, categoria_id, categoria:categorias(nombre), comuna:comunas(nombre), productos(id, nombre, descripcion, precio, imagen_url, orden)';
+  const consultar = (columnas: string) =>
+    supabase
+      .from('publicaciones')
+      .select(columnas)
+      .eq('id', id)
+      .order('orden', { referencedTable: 'productos', ascending: true })
+      .maybeSingle();
+  // `rechazo_foto` llega con la 0039: sin ella se pide lo demás.
+  let respuesta = await consultar(`${base}, rechazo_foto`);
+  if (respuesta.error?.code === '42703') respuesta = await consultar(base);
+  const { data, error } = respuesta;
 
   if (error) throw error;
   return data as unknown as PublicacionDetalle | null;
@@ -454,14 +508,18 @@ export async function fetchMisPublicaciones(): Promise<MiPublicacion[]> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return [];
 
-  const { data, error } = await supabase
-    .from('publicaciones')
-    .select(
-      'id, titulo, logo_url, estado, destacado, categoria:categorias(nombre), comuna:comunas(nombre), productos(id)',
-    )
-    .eq('usuario_id', auth.user.id)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false });
+  const base = 'id, titulo, logo_url, estado, destacado, categoria:categorias(nombre), comuna:comunas(nombre), productos(id)';
+  const consultar = (columnas: string) =>
+    supabase
+      .from('publicaciones')
+      .select(columnas)
+      .eq('usuario_id', auth.user!.id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+  // `rechazo_foto` llega con la 0039: sin ella se pide lo demás.
+  let respuesta = await consultar(`${base}, rechazo_foto`);
+  if (respuesta.error?.code === '42703') respuesta = await consultar(base);
+  const { data, error } = respuesta;
 
   if (error) throw error;
   return (data as unknown as MiPublicacion[]) ?? [];
@@ -474,6 +532,12 @@ type EditarPublicacion = {
   logoUrl: string | null;
   /** A dónde escriben los interesados; si no viene, no se cambia. */
   telefono?: string;
+  /**
+   * Devolverla a revisión (0036): al reenviar una rechazada, o al editar una
+   * aprobada de alguien sin "Directo". El dueño solo puede pasarla a
+   * "pendiente", nunca aprobarse a sí mismo.
+   */
+  aRevision?: boolean;
 };
 
 /**
@@ -491,11 +555,18 @@ export async function actualizarPublicacion(id: string, input: EditarPublicacion
       comuna_id: input.comunaId,
       logo_url: input.logoUrl,
       ...(input.telefono ? { telefono: input.telefono } : {}),
+      ...(input.aRevision ? { estado: 'pendiente' } : {}),
     })
     .eq('id', id)
     .select('id');
 
-  if (error) throw error;
+  if (error) {
+    // Sin la migración 0036 la base no deja al dueño cambiar el estado.
+    if (input.aRevision && (error.code === '42501' || /row-level security/i.test(error.message ?? ''))) {
+      throw new Error('Falta ejecutar la migración 0036 en Supabase para reenviar publicaciones a revisión.');
+    }
+    throw error;
+  }
   // Con el permiso "Editar" apagado la base no rechaza: simplemente no cambia
   // nada. Sin esta comprobación la app diría "guardado" sin haber guardado.
   if (!data || data.length === 0) throw new Error(SIN_PERMISO_EDITAR);
@@ -817,6 +888,12 @@ export type BannerAdmin = {
   enlace: string | null;
   vistas: number;
   clics: number;
+  /** Personas distintas que lo vieron (0040). */
+  vistas_unicas: number;
+  /** false = no sale en el carrusel (por ejemplo, en pausa). */
+  activo: boolean;
+  /** Desde cuándo está en pausa (0041); null = no pausado. */
+  pausado_en: string | null;
   autor: { nombre: string } | null;
   comuna: { nombre: string } | null;
 };
@@ -829,34 +906,72 @@ export type BannerAdmin = {
  */
 export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
   const ahora = new Date().toISOString();
-  const base = 'id, comuna_id, imagen_url, fecha_inicio, fecha_fin, pagado, ';
+  const base = 'id, comuna_id, imagen_url, fecha_inicio, fecha_fin, pagado, activo, ';
   const relaciones = 'autor:profiles!banners_usuario_id_fkey(nombre), comuna:comunas(nombre)';
 
-  const consultar = (columnas: string) =>
+  // Los publicados y vigentes, también los pausados: uno en pausa sigue acá
+  // (para reanudarlo) aunque su fecha de término ya haya pasado, porque al
+  // reanudar se corre lo que duró la pausa.
+  const consultar = (columnas: string, conPausa: boolean) =>
     supabase
       .from('banners')
       .select(columnas)
-      .eq('activo', true)
+      .eq('pagado', true)
       .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
-      .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}`)
+      .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}${conPausa ? ',pausado_en.not.is.null' : ''}`)
       .order('orden', { ascending: true });
 
-  // Igual que en el catálogo: sin la migración 0025 se muestra la lista sin
-  // enlace ni métricas, en vez de un error.
-  const completo = await consultar(`${base}enlace, vistas, clics, ${relaciones}`);
-  if (!faltaColumnaNueva(completo.error)) {
-    if (completo.error) throw completo.error;
-    return (completo.data as unknown as BannerAdmin[]) ?? [];
+  // Sin las migraciones 0041 / 0040 / 0025 se muestra la lista sin esos
+  // datos, en vez de un error.
+  const conPausa = await consultar(`${base}enlace, vistas, clics, vistas_unicas, pausado_en, ${relaciones}`, true);
+  if (!faltaColumnaNueva(conPausa.error)) {
+    if (conPausa.error) throw conPausa.error;
+    return (conPausa.data as unknown as BannerAdmin[]) ?? [];
   }
 
-  const simple = await consultar(base + relaciones);
+  const conUnicas = await consultar(`${base}enlace, vistas, clics, vistas_unicas, ${relaciones}`, false);
+  if (!faltaColumnaNueva(conUnicas.error)) {
+    if (conUnicas.error) throw conUnicas.error;
+    return ((conUnicas.data ?? []) as unknown as Omit<BannerAdmin, 'pausado_en'>[]).map((b) => ({ ...b, pausado_en: null }));
+  }
+
+  const completo = await consultar(`${base}enlace, vistas, clics, ${relaciones}`, false);
+  if (!faltaColumnaNueva(completo.error)) {
+    if (completo.error) throw completo.error;
+    return ((completo.data ?? []) as unknown as Omit<BannerAdmin, 'vistas_unicas' | 'pausado_en'>[]).map((b) => ({
+      ...b,
+      vistas_unicas: 0,
+      pausado_en: null,
+    }));
+  }
+
+  const simple = await consultar(base + relaciones, false);
   if (simple.error) throw simple.error;
-  return ((simple.data ?? []) as unknown as Omit<BannerAdmin, 'enlace' | 'vistas' | 'clics'>[]).map((b) => ({
+  return (
+    (simple.data ?? []) as unknown as Omit<BannerAdmin, 'enlace' | 'vistas' | 'clics' | 'vistas_unicas' | 'pausado_en'>[]
+  ).map((b) => ({
     ...b,
     enlace: null,
     vistas: 0,
     clics: 0,
+    vistas_unicas: 0,
+    pausado_en: null,
   }));
+}
+
+/**
+ * Pausa o reanuda un banner (0041). En pausa no se muestra y su tiempo se
+ * congela; al reanudar sigue con lo que le quedaba. Lo hace la base, con su
+ * propia hora.
+ */
+export async function pausarBanner(id: string, pausar: boolean): Promise<void> {
+  const { error } = await supabase.rpc(pausar ? 'pausar_banner' : 'reanudar_banner', { p_banner: id });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '')) {
+      throw new Error('Falta ejecutar la migración 0041 en Supabase para pausar banners.');
+    }
+    throw error;
+  }
 }
 
 /**
@@ -868,7 +983,33 @@ export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
  * interrumpirle nada al usuario.
  */
 export async function registrarVistaBanner(bannerId: string): Promise<void> {
-  await supabase.rpc('registrar_vista_banner', { p_banner: bannerId });
+  // Con quién lo ve (0040), para contar personas distintas además de vistas.
+  const visitante = await idDeVisitante();
+  const { error } = await supabase.rpc('registrar_vista_banner', { p_banner: bannerId, p_visitante: visitante });
+  // Sin la migración 0040 la función no recibe al visitante: se cuenta la vista igual.
+  if (error) await supabase.rpc('registrar_vista_banner', { p_banner: bannerId });
+}
+
+const CLAVE_VISITANTE = 'kheep.visitante';
+let visitanteEnMemoria: string | null = null;
+
+/**
+ * Un identificador al azar de este teléfono, guardado en el propio teléfono
+ * (no es un dato personal): sirve para contar a cada persona una sola vez
+ * entre las vistas de un banner, tenga o no cuenta.
+ */
+async function idDeVisitante(): Promise<string> {
+  if (visitanteEnMemoria) return visitanteEnMemoria;
+  try {
+    const guardado = await AsyncStorage.getItem(CLAVE_VISITANTE);
+    if (guardado) return (visitanteEnMemoria = guardado);
+  } catch {
+    // Sin almacenamiento se usa uno para esta sesión.
+  }
+  const nuevo = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}${Math.random().toString(36).slice(2, 8)}`;
+  visitanteEnMemoria = nuevo;
+  AsyncStorage.setItem(CLAVE_VISITANTE, nuevo).catch(() => {});
+  return nuevo;
 }
 
 export async function registrarClicBanner(bannerId: string): Promise<void> {
@@ -1155,7 +1296,11 @@ export async function eliminarBanner(id: string): Promise<void> {
   const { data, error } = await supabase.from('banners').delete().eq('id', id).select('id, imagen_url');
   if (error) throw error;
   if (!data || data.length === 0) throw new Error('No se pudo eliminar el banner.');
-  await borrarImagenDeStorage('banners', data[0].imagen_url as string | null);
+  // Un banner publicado en varias comunas son varias copias con la misma
+  // imagen: el archivo se borra solo si ya no lo usa ninguna otra.
+  const url = data[0].imagen_url as string | null;
+  const { count } = await supabase.from('banners').select('id', { count: 'exact', head: true }).eq('imagen_url', url ?? '');
+  if (!count) await borrarImagenDeStorage('banners', url);
 }
 
 export const PRECIO_BANNER_POR_DIA = 500;
@@ -1169,20 +1314,91 @@ export type MiBanner = {
   pagado: boolean;
   activo: boolean;
   fecha_fin: string | null;
+  /** Revisión (0037): pendiente, aprobado o rechazado. */
+  estado: 'pendiente' | 'aprobado' | 'rechazado';
 };
 
-export async function fetchMisBanners(): Promise<MiBanner[]> {
+/**
+ * Los banners del comerciante. `conRevision` dice si la base ya tiene la
+ * revisión de banners (migración 0037): sin ella se sigue como antes (se paga
+ * y se activa al tiro).
+ */
+export async function fetchMisBanners(): Promise<{ banners: MiBanner[]; conRevision: boolean }> {
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return [];
+  if (!auth.user) return { banners: [], conRevision: false };
 
+  const base = 'id, imagen_url, comuna_id, comuna:comunas(nombre), dias, pagado, activo, fecha_fin';
+  const consultar = (columnas: string) =>
+    supabase.from('banners').select(columnas).eq('usuario_id', auth.user!.id).order('created_at', { ascending: false });
+
+  const conEstado = await consultar(`${base}, estado`);
+  if (conEstado.error?.code === '42703') {
+    const sinEstado = await consultar(base);
+    if (sinEstado.error) throw sinEstado.error;
+    const filas = (sinEstado.data as unknown as Omit<MiBanner, 'estado'>[]) ?? [];
+    return { banners: filas.map((b) => ({ ...b, estado: 'aprobado' as const })), conRevision: false };
+  }
+  if (conEstado.error) throw conEstado.error;
+  return { banners: (conEstado.data as unknown as MiBanner[]) ?? [], conRevision: true };
+}
+
+/** Un banner esperando revisión, para Aprobar. */
+export type BannerEnRevision = {
+  id: string;
+  imagen_url: string;
+  usuario_id: string;
+  dias: number | null;
+  enlace: string | null;
+  created_at: string;
+  comuna: { nombre: string } | null;
+  autor: { nombre: string } | null;
+};
+
+/**
+ * Los banners pendientes de revisión, del que más espera al más reciente (la
+ * base decide cuáles ve cada admin). Se pueden pedir solo los de una comuna
+ * o los de un perfil.
+ */
+export async function fetchBannersPendientes(filtro?: { comunaId?: string; usuarioId?: string }): Promise<BannerEnRevision[]> {
+  let request = supabase
+    .from('banners')
+    .select(
+      'id, imagen_url, usuario_id, dias, enlace, created_at, comuna:comunas(nombre), autor:profiles!banners_usuario_id_fkey(nombre)',
+    )
+    .eq('estado', 'pendiente')
+    .order('created_at', { ascending: true });
+  if (filtro?.comunaId) request = request.eq('comuna_id', filtro.comunaId);
+  if (filtro?.usuarioId) request = request.eq('usuario_id', filtro.usuarioId);
+  const { data, error } = await request;
+  // Sin la migración 0037 no hay revisión de banners: no hay pendientes.
+  if (error?.code === '42703') return [];
+  if (error) throw error;
+  return (data as unknown as BannerEnRevision[]) ?? [];
+}
+
+async function cambiarEstadoBanner(id: string, estado: 'aprobado' | 'rechazado'): Promise<void> {
+  // Mientras el cobro no esté conectado (pedido del cliente), aprobar también
+  // lo da por pagado: así se activa al tiro por sus días (ver
+  // fn_banner_activar_pago en la 0037). Cuando haya pago real, se quita
+  // `pagado` de acá y el comerciante paga después de la aprobación.
+  const cambio = estado === 'aprobado' ? { estado, pagado: true } : { estado };
+  const { data, error } = await supabase.from('banners').update(cambio).eq('id', id).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo cambiar el banner. Revisa que tengas permiso en su comuna.');
+}
+
+export const aprobarBanner = (id: string) => cambiarEstadoBanner(id, 'aprobado');
+export const rechazarBanner = (id: string) => cambiarEstadoBanner(id, 'rechazado');
+
+/** El comerciante cambia la imagen de un banner rechazado y lo manda de nuevo a revisión. */
+export async function reenviarBanner(id: string, imagenUrl: string): Promise<void> {
   const { data, error } = await supabase
     .from('banners')
-    .select('id, imagen_url, comuna_id, comuna:comunas(nombre), dias, pagado, activo, fecha_fin')
-    .eq('usuario_id', auth.user.id)
-    .order('created_at', { ascending: false });
-
+    .update({ imagen_url: imagenUrl, estado: 'pendiente' })
+    .eq('id', id)
+    .select('id');
   if (error) throw error;
-  return (data as unknown as MiBanner[]) ?? [];
+  if (!data || data.length === 0) throw new Error('No se pudo reenviar el banner.');
 }
 
 export async function crearBanner(input: {
@@ -1239,6 +1455,10 @@ export async function crearBanners(input: {
   enlace?: string | null;
   prioritario?: boolean;
   pagado?: boolean;
+  /** Solo admins (0042): sale primero una vez por teléfono. */
+  principal?: boolean;
+  /** Duración en horas (0042); si viene, manda sobre `dias`. */
+  horas?: number | null;
 }): Promise<string[]> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error('Debes iniciar sesión.');
@@ -1255,11 +1475,18 @@ export async function crearBanners(input: {
         orden: input.prioritario ? -100 : 0,
         enlace,
         pagado: input.pagado ?? false,
+        ...(input.principal ? { principal: true } : {}),
+        ...(input.horas ? { horas: input.horas } : {}),
       })),
     )
     .select('id');
 
-  if (error) throw error;
+  if (error) {
+    if ((input.principal || input.horas) && (faltaColumnaNueva(error) || error.code === 'PGRST204')) {
+      throw new Error('Falta ejecutar la migración 0042 en Supabase para el modo Principal y las horas.');
+    }
+    throw error;
+  }
   return (data ?? []).map((fila) => fila.id as string);
 }
 
@@ -1271,7 +1498,12 @@ export async function crearBanners(input: {
  */
 export async function pagarBanner(id: string): Promise<void> {
   const { error } = await supabase.from('banners').update({ pagado: true }).eq('id', id);
-  if (error) throw error;
+  if (error) {
+    if (/aprobado antes de pagarlo/i.test(error.message ?? '')) {
+      throw new Error('Tu banner todavía está en revisión: lo puedes pagar cuando lo aprueben.');
+    }
+    throw error;
+  }
 }
 
 // ============================================================================
@@ -1319,7 +1551,20 @@ export async function aprobarPublicacion(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function rechazarPublicacion(id: string): Promise<void> {
+/**
+ * Rechaza una publicación. `foto` (1, 2, 3…) es por cuál foto fue, para que el
+ * comerciante sepa qué cambiar (0039; sin la migración se rechaza igual, sin
+ * guardar el número).
+ */
+export async function rechazarPublicacion(id: string, foto?: number): Promise<void> {
+  if (foto) {
+    const { error } = await supabase
+      .from('publicaciones')
+      .update({ estado: 'rechazado', rechazo_foto: foto })
+      .eq('id', id);
+    if (!error) return;
+    if (error.code !== '42703' && error.code !== 'PGRST204') throw error;
+  }
   const { error } = await supabase.from('publicaciones').update({ estado: 'rechazado' }).eq('id', id);
   if (error) throw error;
 }
@@ -1643,6 +1888,12 @@ export type PerfilEnCategoria = {
   publicaciones: number;
   /** Cuántas de esas esperan aprobación. */
   pendientes: number;
+  /** Fotos de productos por revisar en esas pendientes: el "(7)" de la lista. */
+  fotosPorRevisar: number;
+  /** Desde cuándo espera su pendiente más antigua (para la lista "Publicación"). */
+  pendienteDesde: string | null;
+  /** El propio comerciante pausó su perfil (0038). Distinto de `activo`, que es del admin. */
+  pausado: boolean;
   /** Cuándo se registró la cuenta (para ordenar de más antiguo a más reciente). */
   created_at: string;
   /** 2 = publica directo, sin pasar por Aprobar. */
@@ -1665,43 +1916,68 @@ export async function fetchPerfilesDeCategoria(comunaId: string, categoriaId: st
   const consultar = (columnasAutor: string) =>
     supabase
       .from('publicaciones')
-      .select(`estado, autor:profiles!publicaciones_usuario_id_fkey(${columnasAutor})`)
+      .select(`estado, created_at, productos(count), autor:profiles!publicaciones_usuario_id_fkey(${columnasAutor})`)
       .eq('comuna_id', comunaId)
       .eq('categoria_id', categoriaId)
       .is('deleted_at', null);
-  // `puede_editar` llega con la migración 0033: sin ella se pide lo demás.
-  let respuesta = await consultar(`${base}, puede_editar`);
+  // `pausado` llega con la 0038 y `puede_editar` con la 0033: sin ellas se
+  // pide lo demás.
+  let respuesta = await consultar(`${base}, puede_editar, pausado`);
+  if (respuesta.error?.code === '42703') respuesta = await consultar(`${base}, puede_editar`);
   if (respuesta.error?.code === '42703') respuesta = await consultar(base);
   const { data, error } = respuesta;
   if (error) throw error;
 
-  type Fila = { estado: string; autor: Omit<PerfilEnCategoria, 'publicaciones' | 'pendientes'> | null };
+  type Fila = {
+    estado: string;
+    created_at: string;
+    productos: { count: number }[] | null;
+    autor: Omit<PerfilEnCategoria, 'publicaciones' | 'pendientes' | 'fotosPorRevisar' | 'pendienteDesde'> | null;
+  };
   const porPerfil = new Map<string, PerfilEnCategoria>();
   for (const fila of (data as unknown as Fila[]) ?? []) {
     if (!fila.autor) continue;
     const pendiente = fila.estado === 'pendiente' ? 1 : 0;
+    const fotos = pendiente ? (fila.productos?.[0]?.count ?? 0) : 0;
     const existente = porPerfil.get(fila.autor.id);
     if (existente) {
       existente.publicaciones += 1;
       existente.pendientes += pendiente;
+      existente.fotosPorRevisar += fotos;
+      if (pendiente && (!existente.pendienteDesde || fila.created_at < existente.pendienteDesde)) {
+        existente.pendienteDesde = fila.created_at;
+      }
     } else {
       porPerfil.set(fila.autor.id, {
         ...fila.autor,
         nivel: fila.autor.nivel ?? 1,
         suspendida: Boolean(fila.autor.suspendida),
         puede_editar: fila.autor.puede_editar ?? true,
+        pausado: Boolean(fila.autor.pausado),
         publicaciones: 1,
         pendientes: pendiente,
+        fotosPorRevisar: fotos,
+        pendienteDesde: pendiente ? fila.created_at : null,
       });
     }
   }
   return [...porPerfil.values()].sort((a, b) => a.nombre.localeCompare(b.nombre));
 }
 
+/** Cambia el nombre de una cuenta desde el panel (por ejemplo, el de un administrador). */
+export async function actualizarNombrePerfil(perfilId: string, nombre: string): Promise<void> {
+  const limpio = nombre.trim();
+  if (!limpio) throw new Error('Escribe un nombre.');
+  const { data, error } = await supabase.from('profiles').update({ nombre: limpio }).eq('id', perfilId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo cambiar el nombre. Revisa que tu cuenta sea de administrador.');
+}
+
 /**
- * Ocultar / volver a mostrar un perfil. Oculto, ni él ni sus publicaciones
- * aparecen en el catálogo (lo aplica la base, ver 0017), pero la cuenta sigue
- * intacta y se puede volver a mostrar con un toque.
+ * Ocultar / volver a mostrar un perfil (el interruptor del admin). Oculto, ni
+ * él ni sus publicaciones aparecen en el catálogo (lo aplica la base, ver
+ * 0017), pero la cuenta sigue intacta y se puede volver a mostrar con un
+ * toque. El comerciante no puede deshacerlo (0038).
  */
 export async function actualizarVisibilidadPerfil(perfilId: string, activo: boolean): Promise<void> {
   const { data, error } = await supabase.from('profiles').update({ activo }).eq('id', perfilId).select('id');
@@ -1920,6 +2196,10 @@ export type PublicacionEnRevision = PublicacionResumen & {
 export async function fetchPublicacionesEnRevision(filtro: {
   soloPendientes?: boolean;
   usuarioId?: string;
+  /** Solo las de esta comuna y categoría (la vista de un perfil desde su categoría). */
+  comunaId?: string;
+  categoriaId?: string;
+  estado?: 'pendiente' | 'aprobado' | 'rechazado';
 }): Promise<PublicacionEnRevision[]> {
   let request = supabase
     .from('publicaciones')
@@ -1930,9 +2210,29 @@ export async function fetchPublicacionesEnRevision(filtro: {
     .order('created_at', { ascending: false });
   if (filtro.soloPendientes) request = request.eq('estado', 'pendiente');
   if (filtro.usuarioId) request = request.eq('usuario_id', filtro.usuarioId);
+  if (filtro.comunaId) request = request.eq('comuna_id', filtro.comunaId);
+  if (filtro.categoriaId) request = request.eq('categoria_id', filtro.categoriaId);
+  if (filtro.estado) request = request.eq('estado', filtro.estado);
   const { data, error } = await request;
   if (error) throw error;
   return (data as unknown as PublicacionEnRevision[]) ?? [];
+}
+
+/** Un banner de un perfil, para verlo desde el panel. */
+export type BannerDePerfil = { id: string; imagen_url: string; fecha_fin: string | null };
+
+/** Los banners que un perfil tiene mostrándose en una comuna. */
+export async function fetchBannersDePerfil(usuarioId: string, comunaId: string): Promise<BannerDePerfil[]> {
+  const { data, error } = await supabase
+    .from('banners')
+    .select('id, imagen_url, fecha_fin')
+    .eq('usuario_id', usuarioId)
+    .eq('comuna_id', comunaId)
+    .eq('activo', true)
+    .or(`fecha_fin.is.null,fecha_fin.gte.${new Date().toISOString()}`)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data as BannerDePerfil[]) ?? [];
 }
 
 export async function actualizarNivelPerfil(perfilId: string, nivel: 1 | 2): Promise<void> {
@@ -1941,4 +2241,72 @@ export async function actualizarNivelPerfil(perfilId: string, nivel: 1 | 2): Pro
   if (!data || data.length === 0) {
     throw new Error('No se pudo cambiar el permiso. Revisa que tu cuenta sea de administrador.');
   }
+}
+
+/**
+ * Cómo está la visibilidad de la propia cuenta: `pausado` lo maneja el
+ * comerciante; `ocultoPorAdmin` es del administrador y manda sobre lo otro.
+ * `disponible` es false si la base todavía no tiene la migración 0038.
+ */
+export async function fetchMiVisibilidad(): Promise<{ pausado: boolean; ocultoPorAdmin: boolean; disponible: boolean }> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return { pausado: false, ocultoPorAdmin: false, disponible: false };
+  const { data, error } = await supabase.from('profiles').select('activo, pausado').eq('id', auth.user.id).maybeSingle();
+  if (error?.code === '42703') return { pausado: false, ocultoPorAdmin: false, disponible: false };
+  if (error) throw error;
+  return { pausado: Boolean(data?.pausado), ocultoPorAdmin: data?.activo === false, disponible: true };
+}
+
+/** El comerciante pausa (o vuelve a mostrar) su perfil, de forma voluntaria. */
+export async function pausarMiPerfil(pausado: boolean): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('Inicia sesión de nuevo.');
+  const { data, error } = await supabase.from('profiles').update({ pausado }).eq('id', auth.user.id).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo cambiar la visibilidad de tu perfil.');
+}
+
+/**
+ * Precios por día de los banners (0043): por región y, si tiene, por comuna.
+ * `disponible` es false si la base todavía no tiene la migración.
+ */
+export type PreciosBanner = {
+  regiones: Record<string, number>;
+  comunas: Record<string, number>;
+  disponible: boolean;
+};
+
+export async function fetchPreciosBanner(): Promise<PreciosBanner> {
+  const [regiones, comunas] = await Promise.all([
+    supabase.from('precios_banner_region').select('region, precio'),
+    supabase.from('comunas').select('id, precio_banner').not('precio_banner', 'is', null),
+  ]);
+  if (regiones.error || comunas.error) return { regiones: {}, comunas: {}, disponible: false };
+  return {
+    regiones: Object.fromEntries((regiones.data ?? []).map((r) => [r.region as string, r.precio as number])),
+    comunas: Object.fromEntries((comunas.data ?? []).map((c) => [c.id as string, c.precio_banner as number])),
+    disponible: true,
+  };
+}
+
+/** Lo que cuesta por día un banner en una comuna: el suyo, el de su región o el base. */
+export function precioBannerEn(comuna: { id: string; region?: string | null }, precios: PreciosBanner | null): number {
+  if (!precios) return PRECIO_BANNER_POR_DIA;
+  return precios.comunas[comuna.id] ?? (comuna.region ? precios.regiones[comuna.region] : undefined) ?? PRECIO_BANNER_POR_DIA;
+}
+
+/** El precio por día de una región; null lo quita (sus comunas usan el base). */
+export async function guardarPrecioRegion(region: string, precio: number | null): Promise<void> {
+  const { error } =
+    precio === null
+      ? await supabase.from('precios_banner_region').delete().eq('region', region)
+      : await supabase.from('precios_banner_region').upsert({ region, precio, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+/** El precio por día de una comuna; null lo quita (usa el de su región). */
+export async function guardarPrecioComuna(comunaId: string, precio: number | null): Promise<void> {
+  const { data, error } = await supabase.from('comunas').update({ precio_banner: precio }).eq('id', comunaId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('No se pudo guardar el precio. Revisa que tu cuenta sea de administrador.');
 }

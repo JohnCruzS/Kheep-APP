@@ -16,7 +16,7 @@ import { Comuna, MiPerfil, actualizarPerfil, fetchComunas, fetchMiPerfil } from 
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
-import { isValidChileanPhone, normalizeChileanPhone } from '@/lib/validation';
+import { MENSAJE_CELULAR, celularLocal, isValidChileanPhone, normalizeChileanPhone, soloCelular } from '@/lib/validation';
 import { useSession } from '@/providers/SessionProvider';
 import { FotoRemota } from '@/components/ui/FotoRemota';
 
@@ -84,7 +84,7 @@ function EditarPerfilForm({
   onSaved: () => void;
 }) {
   const [nombre, setNombre] = useState(perfil.nombre);
-  const [telefono, setTelefono] = useState((perfil.telefono_contacto ?? '').replace('+56', ''));
+  const [telefono, setTelefono] = useState(celularLocal(perfil.telefono_contacto));
   const [logo, setLogo] = useState<PickedImage | null>(null);
   const [logoUrl, setLogoUrl] = useState(perfil.logo_url);
   const [comunaId, setComunaId] = useState<string | null>(perfil.comuna_id);
@@ -109,7 +109,7 @@ function EditarPerfilForm({
       return;
     }
     if (!isValidChileanPhone(telefono)) {
-      setError('Ingresa un teléfono chileno válido (ej: 9 1234 5678).');
+      setError(MENSAJE_CELULAR);
       return;
     }
 
@@ -153,9 +153,11 @@ function EditarPerfilForm({
       <TextField
         label="Teléfono"
         value={telefono}
-        onChangeText={setTelefono}
-        keyboardType="phone-pad"
-        hint="9 1234 5678 (sin el +56, lo agregamos nosotros)"
+        onChangeText={(t) => setTelefono(soloCelular(t))}
+        keyboardType="number-pad"
+        maxLength={9}
+        placeholder="912345678"
+        hint="9 y ocho dígitos (sin el +56, lo agregamos nosotros)"
       />
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}

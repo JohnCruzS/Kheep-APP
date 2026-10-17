@@ -8,7 +8,7 @@ import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import { puede } from '@/lib/administradores';
 import { useSession } from '@/providers/SessionProvider';
-import { fetchPublicacionesPendientes } from '@/lib/catalog';
+import { fetchBannersPendientes, fetchPublicacionesPendientes } from '@/lib/catalog';
 import { precargarBanners, precargarTitulo } from '@/lib/cacheAdmin';
 import { REJILLA, u } from '@/lib/rejilla';
 import { supabase } from '@/lib/supabase';
@@ -38,8 +38,9 @@ export function PanelGeneral() {
       // van a estar y la pantalla aparece completa, sin ruedita de carga.
       if (esGeneral) void precargarTitulo().catch(() => {});
       void precargarBanners().catch(() => {});
-      fetchPublicacionesPendientes()
-        .then((lista) => activo && setPendientes(lista.length))
+      // Publicaciones y banners esperando revisión.
+      Promise.all([fetchPublicacionesPendientes(), fetchBannersPendientes().catch(() => [])])
+        .then(([lista, banners]) => activo && setPendientes(lista.length + banners.length))
         .catch(() => activo && setPendientes(null));
       return () => {
         activo = false;
@@ -63,7 +64,7 @@ export function PanelGeneral() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <EncabezadoMarca subtitulo="Admin" />
+      <EncabezadoMarca subtitulo="Chile" />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {esGeneral && <Opcion label="Título" onPress={() => router.push('/(app)/admin/logos')} />}
@@ -82,14 +83,17 @@ export function PanelGeneral() {
             <Opcion label="Métricas" onPress={() => router.push('/(app)/admin/metricas')} />
           </>
         )}
-        {esGeneral && <Opcion label="Admins" onPress={() => router.push('/(app)/admin/administradores')} />}
 
         {/* "Datos": las imágenes que ya no usa nadie y el contenido vencido. */}
         {esGeneral && <Opcion label="Datos" onPress={() => router.push('/(app)/admin/limpieza')} />}
 
-        {/* La cuenta del propio admin: al pasar esta pestaña a ser el panel,
-            "Editar perfil" y "Cerrar sesión" se quedaban sin ningún camino. */}
-        <Opcion label="Cuenta" onPress={() => router.push('/(app)/perfil/cuenta')} />
+        {/* "Admin": los administradores y la cuenta propia ("Administración",
+            con su correo y su contraseña). Por eso el general ya no tiene
+            "Cuenta" aparte (maqueta del cliente). */}
+        {esGeneral && <Opcion label="Admin" onPress={() => router.push('/(app)/admin/administradores')} />}
+
+        {/* El de zona no entra a "Admin": su cuenta sigue teniendo su lugar. */}
+        {!esGeneral && <Opcion label="Cuenta" onPress={() => router.push('/(app)/perfil/cuenta')} />}
 
         {/* A la vista, no escondido dentro de "Cuenta": el admin comparte
             teléfono o entra desde otro y tiene que poder salir sin buscar. */}
@@ -143,8 +147,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TarjetaLista.borde,
     paddingHorizontal: TarjetaLista.sangria,
-    paddingVertical: TarjetaLista.aireVertical,
-    marginBottom: TarjetaLista.separacion,
+    // Maqueta del cliente: cada tarjeta mide 240 de 1000 del ancho, igual que
+    // las de Admin, y entre una y otra va un margen lateral.
+    height: u(240),
+    marginBottom: u(REJILLA.margenLateral),
   },
   tarjetaPresionada: {
     backgroundColor: Colors.backgroundAlt,
@@ -161,8 +167,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingVertical: 10,
   },
+  // Poppins Light en rojo (maqueta del cliente), igual que "Nuevo" en Admin.
   salirLabel: {
-    fontFamily: Fonts.light,
+    fontFamily: Fonts.delgada,
     fontSize: 25,
     color: Colors.accent,
   },

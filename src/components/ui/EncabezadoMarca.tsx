@@ -1,4 +1,5 @@
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useRef } from 'react';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TituloPosicionado } from '@/components/ui/BrandLogo';
@@ -27,7 +28,31 @@ const SEPARACION_DEBAJO = 8;
  * Sin flecha de volver (pedido del cliente): se vuelve con el botón o el
  * gesto atrás del teléfono.
  */
-export function EncabezadoMarca({ subtitulo }: { subtitulo: string }) {
+export function EncabezadoMarca({
+  subtitulo,
+  onDobleToque,
+}: {
+  subtitulo: string;
+  /**
+   * Dos toques seguidos sobre el título hacen esto (por ejemplo, en Comunas,
+   * alternar entre ver todas y solo las visibles). Sin él, el encabezado no
+   * responde a toques.
+   */
+  onDobleToque?: () => void;
+}) {
+  const ultimoToque = useRef(0);
+  function alTocar() {
+    const ahora = Date.now();
+    // Medio segundo entre un toque y otro, contado desde que el dedo toca la
+    // pantalla: con 0,35 s contados al soltar, un doble toque normal con el
+    // dedo a veces no alcanzaba a registrarse.
+    if (ahora - ultimoToque.current < 500) {
+      ultimoToque.current = 0;
+      onDobleToque?.();
+    } else {
+      ultimoToque.current = ahora;
+    }
+  }
   const { width } = useWindowDimensions();
   // Todas las pantallas lo ponen dentro de un área segura de arriba: esta
   // franja (la barra de estado) ya está reservada fuera del encabezado.
@@ -61,6 +86,14 @@ export function EncabezadoMarca({ subtitulo }: { subtitulo: string }) {
           </Text>
         }
       />
+      {onDobleToque && (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPressIn={alTocar}
+          accessibilityRole="button"
+          accessibilityHint="Toca dos veces para cambiar lo que se muestra"
+        />
+      )}
     </View>
   );
 }

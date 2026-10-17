@@ -13,13 +13,16 @@ import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import {
   Comuna,
   MiBanner,
-  PRECIO_BANNER_POR_DIA,
+  PreciosBanner,
+  fetchPreciosBanner,
+  precioBannerEn,
   CUPO_BANNERS,
   contarBannersVigentes,
   crearBanners,
   fetchComunas,
   fetchMisBanners,
   pagarBanner,
+  reenviarBanner,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
@@ -41,7 +44,13 @@ export default function PublicarBannerScreen() {
   const esZona = profile?.rol === 'admin_zona';
 
   const [misBanners, setMisBanners] = useState<MiBanner[]>([]);
+  // Con la migración 0037 el banner de un comerciante pasa por revisión antes
+  // de pagarse; sin ella se sigue como antes (se paga y se activa al tiro).
+  const [conRevision, setConRevision] = useState(false);
+  const [ocupado, setOcupado] = useState<string | null>(null);
   const [comunas, setComunas] = useState<Comuna[]>([]);
+  /** Precios por día de cada región y comuna (0043). */
+  const [precios, setPrecios] = useState<PreciosBanner | null>(null);
   const [loadingList, setLoadingList] = useState(true);
 
   const [imagen, setImagen] = useState<PickedImage | null>(null);
@@ -65,8 +74,10 @@ export default function PublicarBannerScreen() {
   const cargar = useCallback(async () => {
     setLoadingList(true);
     try {
-      const [banners, comunasData] = await Promise.all([fetchMisBanners(), fetchComunas()]);
-      setMisBanners(banners);
+      const [banners, comunasData, p] = await Promise.all([fetchMisBanners(), fetchComunas(), fetchPreciosBanner()]);
+      setPrecios(p);
+      setMisBanners(banners.banners);
+      setConRevision(banners.conRevision);
       setComunas(comunasData);
       // Los administradores parten con todo lo suyo prendido (el general, el
       // país entero) y apagan donde no va; un comerciante parte de cero.
@@ -161,7 +172,9 @@ export default function PublicarBannerScreen() {
         prioritario: esAdmin,
       });
 
-      if (!esAdmin && !esZona) {
+      if (!esAdmin && !esZona && conRevision) {
+        setSuccess('¡Listo! Tu banner quedó en revisión. Cuando lo aprueben, se publica.');
+      } else if (!esAdmin && !esZona) {
         for (const id of ids) await pagarBanner(id);
         setSuccess(`¡Listo! Pagaste $${precio.toLocaleString('es-CL')} y tu banner ya está activo.`);
       } else {
@@ -180,9 +193,50 @@ export default function PublicarBannerScreen() {
     }
   }
 
+  /** Pagar (simulado) un banner ya aprobado: se activa por sus días. */
+  async function handlePagar(banner: MiBanner) {
+    setError(null);
+    setSuccess(null);
+    setOcupado(banner.id);
+    try {
+      await pagarBanner(banner.id);
+      setSuccess('¡Listo! Tu banner ya está activo.');
+      await cargar();
+    } catch (err) {
+      setError(getErrorMessage(err, 'No se pudo pagar el banner.'));
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  /** Rechazado: se elige otra imagen (obligatorio) y vuelve a revisión. */
+  async function handleReenviar(banner: MiBanner) {
+    setError(null);
+    setSuccess(null);
+    try {
+      const nueva = await pickAndCompressImage({ uso: 'banner' });
+      if (!nueva) return;
+      setOcupado(banner.id);
+      const { data: auth } = await supabase.auth.getUser();
+      const url = await uploadCompressedImage('banners', auth.user!.id, nueva, `banner-${Date.now()}`);
+      await reenviarBanner(banner.id, url);
+      setSuccess('Reenviado: tu banner volvió a revisión.');
+      await cargar();
+    } catch (err) {
+      setError(getErrorMessage(err, 'No se pudo reenviar el banner.'));
+    } finally {
+      setOcupado(null);
+    }
+  }
+
   const comunaElegida = resumirZona(elegidas, disponibles, todoElPais);
-  // Un comerciante paga por cada comuna donde aparece.
-  const precio = dias * PRECIO_BANNER_POR_DIA * Math.max(1, elegidas.length);
+  // Un comerciante paga los días por el precio de cada comuna donde aparece
+  // (el de la comuna, el de su región o el base; ver 0043).
+  const precioDe = (comunaId: string | null) => {
+    const c = comunas.find((x) => x.id === comunaId);
+    return precioBannerEn({ id: comunaId ?? '', region: c?.region }, precios);
+  };
+  const precio = dias * (elegidas.length > 0 ? elegidas.reduce((suma, id) => suma + precioDe(id), 0) : precioDe(null));
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -208,6 +262,19 @@ export default function PublicarBannerScreen() {
                     <Text style={styles.miBannerComuna}>{banner.comuna?.nombre ?? 'Todas las comunas'}</Text>
                     <EstadoBanner banner={banner} />
                   </View>
+                  {ocupado === banner.id ? (
+                    <ActivityIndicator color={Colors.accent} />
+                  ) : banner.estado === 'rechazado' ? (
+                    <Pressable onPress={() => handleReenviar(banner)} hitSlop={8}>
+                      <Text style={styles.accionBanner}>Cambiar imagen</Text>
+                    </Pressable>
+                  ) : banner.estado === 'aprobado' && !banner.pagado ? (
+                    <Pressable onPress={() => handlePagar(banner)} hitSlop={8}>
+                      <Text style={styles.accionBanner}>
+                        Pagar ${((banner.dias ?? 7) * precioDe(banner.comuna_id)).toLocaleString('es-CL')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -306,7 +373,7 @@ export default function PublicarBannerScreen() {
 
           {!esAdmin && !esZona && (
             <View style={styles.precioBox}>
-              <Text style={styles.precioLabel}>Total a pagar</Text>
+              <Text style={styles.precioLabel}>{conRevision ? 'Total' : 'Total a pagar'}</Text>
               <Text style={styles.precioValor}>${precio.toLocaleString('es-CL')}</Text>
             </View>
           )}
@@ -318,14 +385,22 @@ export default function PublicarBannerScreen() {
             <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.three }} />
           ) : (
             <Button
-              label={esAdmin || esZona ? 'Publicar' : `Pagar $${precio.toLocaleString('es-CL')} (simulado)`}
+              label={
+                esAdmin || esZona
+                  ? 'Publicar'
+                  : conRevision
+                    ? 'Enviar a revisión'
+                    : `Pagar $${precio.toLocaleString('es-CL')} (simulado)`
+              }
               onPress={handlePublicar}
             />
           )}
 
-          {!esAdmin && (
+          {!esAdmin && !esZona && (
             <Text style={styles.disclaimer}>
-              El cobro real todavía no está conectado — este botón simula el pago para que puedas probar la función.
+              {conRevision
+                ? 'Un administrador revisa tu banner antes de que se publique. El cobro todavía no está conectado.'
+                : 'El cobro real todavía no está conectado — este botón simula el pago para que puedas probar la función.'}
             </Text>
           )}
       </FormScroll>
@@ -367,11 +442,17 @@ function resumirZona(elegidas: string[], disponibles: Comuna[], todoElPais: bool
 }
 
 function EstadoBanner({ banner }: { banner: MiBanner }) {
+  if (banner.estado === 'pendiente') {
+    return <Text style={[styles.estadoLabel, styles.estadoPendiente]}>En revisión</Text>;
+  }
+  if (banner.estado === 'rechazado') {
+    return <Text style={[styles.estadoLabel, styles.estadoRechazado]}>Rechazado: cambia la imagen y reenvíalo</Text>;
+  }
   // "pagado" solo aplica a un comerciante — un banner de admin queda activo
   // sin pasar por ahí, así que lo que de verdad importa para mostrar el
   // estado es `activo`, no `pagado` (ver fn_banner_defaults en la 0012).
   if (!banner.activo && !banner.pagado) {
-    return <Text style={[styles.estadoLabel, styles.estadoPendiente]}>Pendiente de pago</Text>;
+    return <Text style={[styles.estadoLabel, styles.estadoPendiente]}>Aprobado · pendiente de pago</Text>;
   }
   if (banner.activo && banner.fecha_fin) {
     const fecha = new Date(banner.fecha_fin);
@@ -460,6 +541,15 @@ const styles = StyleSheet.create({
   estadoPendiente: {
     fontFamily: Fonts.light,
     color: Colors.warning,
+  },
+  estadoRechazado: {
+    fontFamily: Fonts.light,
+    color: Colors.danger,
+  },
+  accionBanner: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    color: Colors.accent,
   },
   estadoActivo: {
     fontFamily: Fonts.light,

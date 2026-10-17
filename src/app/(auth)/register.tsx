@@ -9,7 +9,7 @@ import { TextField } from '@/components/ui/TextField';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 import { translateAuthError } from '@/lib/authErrors';
 import { supabase } from '@/lib/supabase';
-import { isValidChileanPhone, isValidEmail, normalizeChileanPhone } from '@/lib/validation';
+import { MENSAJE_CELULAR, isValidChileanPhone, isValidEmail, normalizeChileanPhone, soloCelular } from '@/lib/validation';
 
 export default function RegisterScreen() {
   const [nombre, setNombre] = useState('');
@@ -33,7 +33,7 @@ export default function RegisterScreen() {
       return;
     }
     if (!isValidChileanPhone(telefono)) {
-      setError('Ingresa un teléfono chileno válido (ej: 9 1234 5678).');
+      setError(MENSAJE_CELULAR);
       return;
     }
     if (password.length < 6) {
@@ -94,9 +94,11 @@ export default function RegisterScreen() {
       <TextField
         label="Teléfono"
         value={telefono}
-        onChangeText={setTelefono}
-        keyboardType="phone-pad"
-        hint="9 1234 5678 (sin el +56, lo agregamos nosotros)"
+        onChangeText={(t) => setTelefono(soloCelular(t))}
+        keyboardType="number-pad"
+        maxLength={9}
+        placeholder="912345678"
+        hint="9 y ocho dígitos (sin el +56, lo agregamos nosotros)"
       />
       <TextField
         label="Contraseña"

@@ -26,6 +26,7 @@ import {
   fetchComunas,
   fetchPublicacionDetalle,
 } from '@/lib/catalog';
+import { MENSAJE_CELULAR, celularLocal, isValidChileanPhone, normalizeChileanPhone, soloCelular } from '@/lib/validation';
 import { getErrorMessage } from '@/lib/errors';
 import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
 import { supabase } from '@/lib/supabase';
@@ -141,8 +142,14 @@ function EditarForm({
   // El nombre es el del perfil (no se edita acá): al guardar se vuelve a
   // tomar de ahí, por si la publicación tenía uno viejo.
   const { profile } = useSession();
+  // Aprobada: solo el texto (las fotos ya fueron aprobadas). Rechazada: se
+  // corrige todo y se reenvía. En las dos vuelve a revisión, salvo una
+  // aprobada de alguien con "Directo" (nivel 2), que sigue publicada.
+  const aprobada = publicacion.estado === 'aprobado';
+  const rechazada = publicacion.estado === 'rechazado';
+  const vuelveARevision = rechazada || (aprobada && profile?.nivel !== 2);
   const titulo = profile?.nombre?.trim() || publicacion.titulo;
-  const [telefono, setTelefono] = useState(publicacion.telefono);
+  const [telefono, setTelefono] = useState(celularLocal(publicacion.telefono));
   const [logo, setLogo] = useState<PickedImage | null>(null);
   const [logoUrl, setLogoUrl] = useState(publicacion.logo_url);
 
@@ -240,12 +247,18 @@ function EditarForm({
       setError('Ponle un nombre a tu negocio.');
       return;
     }
-    // Mismo formato que exige la base (migración 0007): +569 y ocho dígitos.
-    const telefonoLimpio = telefono.replace(/[^\d+]/g, '');
-    if (!/^\+569\d{8}$/.test(telefonoLimpio)) {
-      setError('El teléfono tiene que ser +569 y ocho dígitos, por ejemplo +56912345678.');
+    // Rechazada: para reenviarla hay que cambiar al menos una foto (el
+    // rechazo es por las imágenes); el texto puede quedar igual.
+    if (rechazada && !logo && !productos.some((p) => p.image)) {
+      setError('Para reenviarla tienes que cambiar al menos una foto (la del comercio o la de un producto).');
       return;
     }
+    // Se escribe 9 y ocho dígitos; se guarda con el +56 (formato de la base, 0007).
+    if (!isValidChileanPhone(telefono)) {
+      setError(MENSAJE_CELULAR);
+      return;
+    }
+    const telefonoLimpio = normalizeChileanPhone(telefono);
 
     setSaving(true);
     try {
@@ -259,6 +272,7 @@ function EditarForm({
         comunaId,
         logoUrl: finalLogoUrl,
         telefono: telefonoLimpio,
+        aRevision: vuelveARevision,
       });
 
       // Los productos: se guardan los nuevos y los que cambiaron. Las filas
@@ -280,7 +294,11 @@ function EditarForm({
 
       setLogoUrl(finalLogoUrl);
       setLogo(null);
-      setSuccess('Cambios guardados.');
+      setSuccess(
+        vuelveARevision
+          ? 'Enviada a revisión: un administrador la va a revisar antes de que vuelva a verse.'
+          : 'Cambios guardados.',
+      );
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudieron guardar los cambios.'));
     } finally {
@@ -311,7 +329,23 @@ function EditarForm({
   }
 
   return (
-    <LienzoPublicacion fotoUri={logo?.uri ?? logoUrl ?? null} onElegirFoto={handlePickLogo}>
+    <LienzoPublicacion fotoUri={logo?.uri ?? logoUrl ?? null} onElegirFoto={aprobada ? undefined : handlePickLogo}>
+      {/* Aprobada: las fotos no se cambian (la aprobación es por ellas). */}
+      {aprobada && (
+        <Text style={styles.nota}>
+          {vuelveARevision
+            ? 'Puedes cambiar el texto, no las fotos. Al guardar vuelve a revisión.'
+            : 'Puedes cambiar el texto, no las fotos.'}
+        </Text>
+      )}
+      {rechazada && (
+        <Text style={styles.nota}>
+          {publicacion.rechazo_foto
+            ? `Fue rechazada por la imagen ${publicacion.rechazo_foto}: cámbiala (el texto, si quieres) y reenvíala.`
+            : 'Fue rechazada: cambia la foto que haga falta (el texto, si quieres) y reenvíala.'}
+        </Text>
+      )}
+
       <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
 
       <PickerField
@@ -329,9 +363,10 @@ function EditarForm({
       <TextField
         label="Teléfono"
         value={telefono}
-        onChangeText={setTelefono}
-        keyboardType="phone-pad"
-        autoComplete="tel"
+        onChangeText={(t) => setTelefono(soloCelular(t))}
+        keyboardType="number-pad"
+        maxLength={9}
+        placeholder="912345678"
         estiloContenedor={styles.filaCampo}
       />
 
@@ -340,7 +375,7 @@ function EditarForm({
         const foto = producto.image?.uri ?? producto.imagenUrl;
         return (
           <View key={producto.id ?? `nuevo-${index}`} style={styles.productoFila}>
-            <Pressable onPress={() => handlePickProductoImage(index)}>
+            <Pressable onPress={() => handlePickProductoImage(index)} disabled={aprobada}>
               {foto ? (
                 <FotoRemota uri={foto} ancho={medidaProducto.width} style={[styles.productoFoto, medidaProducto]} />
               ) : (
@@ -377,7 +412,8 @@ function EditarForm({
         );
       })}
 
-      <Button label="Agregar" onPress={handleAgregarProducto} />
+      {/* Un producto nuevo trae foto: en una aprobada no se agregan. */}
+      {!aprobada && <Button label="Agregar" onPress={handleAgregarProducto} />}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {success ? <Text style={styles.successText}>{success}</Text> : null}
@@ -385,7 +421,7 @@ function EditarForm({
       {saving ? (
         <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.three }} />
       ) : (
-        <Button label="Guardar" variant="secondary" onPress={handleGuardar} />
+        <Button label={rechazada ? 'Reenviar' : 'Guardar'} variant="secondary" onPress={handleGuardar} />
       )}
 
       <Pressable onPress={handleEliminarPublicacion} style={styles.eliminar}>
@@ -396,6 +432,15 @@ function EditarForm({
 }
 
 const styles = StyleSheet.create({
+  // Lo que se puede cambiar según cómo quedó la publicación.
+  nota: {
+    fontFamily: Fonts.delgada,
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.cardTextMuted,
+    textAlign: 'center',
+    marginTop: Spacing.two,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,

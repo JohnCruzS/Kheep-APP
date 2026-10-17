@@ -66,6 +66,9 @@ type OpcionesImagen = {
  * comprimida a JPEG — nunca el archivo original tal cual lo tenía el
  * usuario (que puede pesar 10-20MB en un celular moderno).
  */
+/** Si ya hay una galería abierta (ver pickAndCompressImage). */
+let galeriaAbierta = false;
+
 export async function pickAndCompressImage(
   opciones: [number, number] | OpcionesImagen = {},
 ): Promise<PickedImage | null> {
@@ -87,15 +90,40 @@ export async function pickAndCompressImage(
     throw new Error('Necesitamos permiso para acceder a tus fotos.');
   }
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    quality: 1, // la compresión real la hacemos nosotros abajo, con control fino
-    allowsEditing: recortar,
-    // La foto del comercio y la del perfil se muestran en un círculo: el
-    // recorte también es circular, así se ve exactamente lo que va a quedar.
-    // (Solo Android; en iPhone el recorte del sistema es siempre cuadrado.)
-    ...(recortar ? { aspect, shape: uso === 'logo' ? ('oval' as const) : ('rectangle' as const) } : {}),
-  });
+  const abrir = () =>
+    ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 1, // la compresión real la hacemos nosotros abajo, con control fino
+      allowsEditing: recortar,
+      // La foto del comercio y la del perfil se muestran en un círculo: el
+      // recorte también es circular, así se ve exactamente lo que va a quedar.
+      // (Solo Android; en iPhone el recorte del sistema es siempre cuadrado.)
+      ...(recortar ? { aspect, shape: uso === 'logo' ? ('oval' as const) : ('rectangle' as const) } : {}),
+    });
+
+  // Una sola galería a la vez: un segundo toque mientras se abre la primera
+  // hacía fallar a Android ("unregistered ActivityResultLauncher").
+  if (galeriaAbierta) return null;
+  galeriaAbierta = true;
+  let result: ImagePicker.ImagePickerResult;
+  try {
+    try {
+      result = await abrir();
+    } catch (err) {
+      // Si Android recreó la pantalla (por ejemplo, al volver de otra app),
+      // el selector tarda un instante en volver a registrarse: se reintenta
+      // una vez antes de avisar.
+      if (!/unregistered ActivityResultLauncher/i.test(String((err as Error)?.message ?? err))) throw err;
+      await new Promise((listo) => setTimeout(listo, 600));
+      try {
+        result = await abrir();
+      } catch {
+        throw new Error('No se pudo abrir la galería. Cierra la app, vuelve a abrirla e inténtalo de nuevo.');
+      }
+    }
+  } finally {
+    galeriaAbierta = false;
+  }
 
   if (result.canceled || result.assets.length === 0) {
     return null;

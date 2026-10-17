@@ -5,6 +5,7 @@ import { Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FiltrosOrden } from '@/components/admin/FiltrosOrden';
+import { TarjetaDeslizable } from '@/components/admin/TarjetaDeslizable';
 import { MenuAcciones, type Accion } from '@/components/admin/MenuAcciones';
 import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { ImageViewer } from '@/components/catalog/ImageViewer';
@@ -26,9 +27,10 @@ import { getErrorMessage } from '@/lib/errors';
  * Publicaciones del panel mostradas en tarjetas, tal como se ven en el inicio
  * (maqueta "Últimos" del cliente). Se usa para:
  *
- *  - Aprobar: lo que espera aprobación ("Últimos (14)").
- *  - Las publicaciones de un usuario: se llega tocando el número junto a su
- *    nombre en la lista de una categoría ("Usuario2 (5)").
+ *  - Las publicaciones de un usuario ("Usuario2 (5)").
+ *  - Las pendientes de un usuario, de a una (`soloPendientes`).
+ *
+ * El Aprobar general es otra pantalla: AprobarLista.
  *
  * Tocar el nombre del comercio (que en el inicio lleva a WhatsApp) abre acá
  * lo que se puede hacer con esa publicación: aprobarla o rechazarla si está
@@ -50,9 +52,14 @@ export function RevisionEnTarjetas({
   const [lista, setLista] = useState<PublicacionEnRevision[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [orden, setOrden] = useState<'recientes' | 'antiguos'>('recientes');
+  // Primero "Antiguos", y elegido de entrada (pedido del cliente): lo que
+  // lleva más tiempo esperando se revisa primero.
+  const [orden, setOrden] = useState<'recientes' | 'antiguos'>('antiguos');
   const [elegida, setElegida] = useState<PublicacionEnRevision | null>(null);
   const [foto, setFoto] = useState<string | null>(null);
+  /** Fotos que faltan por ver de la publicación en pantalla (Aprobar). */
+  const [porVer, setPorVer] = useState(0);
+  const [avisoFotos, setAvisoFotos] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -81,6 +88,21 @@ export function RevisionEnTarjetas({
       await load();
     } catch (err) {
       Alert.alert(error, getErrorMessage(err, 'Intenta de nuevo.'));
+    }
+  }
+
+  /**
+   * Aprobar o rechazar con un gesto (Aprobar en tarjetas): la publicación sale
+   * de la pantalla al tiro y aparece la siguiente; si la base no lo acepta,
+   * vuelve a la lista y se avisa.
+   */
+  async function decidir(p: PublicacionEnRevision, aprobar: boolean) {
+    setLista((l) => l.filter((x) => x.id !== p.id));
+    try {
+      await (aprobar ? aprobarPublicacion(p.id) : rechazarPublicacion(p.id));
+    } catch (err) {
+      setLista((l) => (l.some((x) => x.id === p.id) ? l : [p, ...l]));
+      Alert.alert(aprobar ? 'No se pudo aprobar' : 'No se pudo rechazar', getErrorMessage(err, 'Intenta de nuevo.'));
     }
   }
 
@@ -143,6 +165,17 @@ export function RevisionEnTarjetas({
 
   const subtitulo = `${nombre ?? 'Últimos'} (${lista.length})`;
 
+  const filtros = soloPendientes ? (
+    <FiltrosOrden
+      opciones={[
+        { id: 'antiguos', label: 'Antiguos' },
+        { id: 'recientes', label: 'Recientes' },
+      ]}
+      elegida={orden}
+      onElegir={setOrden}
+    />
+  ) : null;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -151,13 +184,46 @@ export function RevisionEnTarjetas({
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
       {!loading && !error && lista.length === 0 && (
-        <EmptyState
+        <>
+          <EmptyState
           title={soloPendientes ? 'Todo al día' : 'Sin publicaciones'}
           message={soloPendientes ? 'No hay publicaciones esperando revisión.' : 'Este usuario no tiene publicaciones.'}
-        />
+          />
+        </>
       )}
 
-      {!loading && !error && lista.length > 0 && (
+      {/* Aprobar: de a una, como un feed. Arrastrar a la derecha rechaza;
+          hacia arriba (o dos toques en la parte blanca) aprueba. */}
+      {!loading && !error && lista.length > 0 && soloPendientes && (
+        <View style={styles.feed}>
+          {filtros}
+          <TarjetaDeslizable
+            key={ordenadas[0].id}
+            onRechazar={() => decidir(ordenadas[0], false)}
+            onAprobar={() => decidir(ordenadas[0], true)}
+            puedeAprobar={porVer === 0}
+            onAprobarBloqueado={() => {
+              setAvisoFotos(true);
+              setTimeout(() => setAvisoFotos(false), 2500);
+            }}>
+            <PublicacionCard
+              key={ordenadas[0].id}
+              publicacion={ordenadas[0]}
+              onFotosPorVer={setPorVer}
+              onContactar={(p: PublicacionResumen) => setElegida(lista.find((x) => x.id === p.id) ?? null)}
+              onVerFoto={setFoto}
+              onDobleToquePanel={() => decidir(ordenadas[0], true)}
+            />
+          </TarjetaDeslizable>
+          {avisoFotos && (
+            <Text style={styles.avisoFotos}>
+              {porVer === 1 ? 'Falta 1 foto por ver' : `Faltan ${porVer} fotos por ver`} antes de aprobar deslizando.
+            </Text>
+          )}
+        </View>
+      )}
+
+      {!loading && !error && lista.length > 0 && !soloPendientes && (
         <FlashList
           data={ordenadas}
           keyExtractor={(p) => p.id}
@@ -168,8 +234,8 @@ export function RevisionEnTarjetas({
           ListHeaderComponent={
             <FiltrosOrden
               opciones={[
-                { id: 'recientes', label: 'Recientes' },
                 { id: 'antiguos', label: 'Antiguos' },
+                { id: 'recientes', label: 'Recientes' },
               ]}
               elegida={orden}
               onElegir={setOrden}
@@ -198,6 +264,17 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  feed: {
+    flex: 1,
+    paddingHorizontal: Layout.catalogMargin,
+  },
+  avisoFotos: {
+    fontFamily: Fonts.medium,
+    fontSize: 15,
+    color: Colors.accent,
+    textAlign: 'center',
+    marginTop: Spacing.three,
   },
   estado: {
     fontFamily: Fonts.delgada,

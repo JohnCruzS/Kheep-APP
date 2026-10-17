@@ -20,6 +20,20 @@ import { logWhatsappClic } from '@/lib/catalog';
  *    directamente, primero la app de WhatsApp y si no, su página, y solo si
  *    ambas fallan se avisa.
  */
+/** Abre un chat de WhatsApp con ese número, sin mensaje ni métrica (desde el panel). */
+export async function escribirPorWhatsApp(telefono: string) {
+  const numero = telefono.replace(/[^\d]/g, '');
+  for (const enlace of [`whatsapp://send?phone=${numero}`, `https://wa.me/${numero}`]) {
+    try {
+      await Linking.openURL(enlace);
+      return;
+    } catch {
+      // Se prueba con el siguiente.
+    }
+  }
+  Alert.alert('No se pudo abrir WhatsApp', `Escríbele al ${telefono}.`);
+}
+
 export async function contactarPorWhatsApp(publicacionId: string, telefono: string, titulo: string) {
   // En segundo plano: que un problema con la métrica no impida el contacto.
   void logWhatsappClic(publicacionId).catch(() => {});
