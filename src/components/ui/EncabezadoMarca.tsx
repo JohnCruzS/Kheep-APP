@@ -25,14 +25,17 @@ const SEPARACION_DEBAJO = 8;
  * (nunca más que el perímetro de 340 del inicio): con el título arriba y
  * chico, el contenido de la pantalla empieza antes.
  *
- * Sin flecha de volver (pedido del cliente): se vuelve con el botón o el
- * gesto atrás del teléfono.
+ * Sin flecha de volver, salvo en las pantallas cuya maqueta la trae
+ * (`onVolver`): una "<" roja a la izquierda.
  */
 export function EncabezadoMarca({
   subtitulo,
   onDobleToque,
+  onVolver,
 }: {
   subtitulo: string;
+  /** Muestra la flecha "<" roja a la izquierda, que hace esto. */
+  onVolver?: () => void;
   /**
    * Dos toques seguidos sobre el título hacen esto (por ejemplo, en Comunas,
    * alternar entre ver todas y solo las visibles). Sin él, el encabezado no
@@ -94,6 +97,16 @@ export function EncabezadoMarca({
           accessibilityHint="Toca dos veces para cambiar lo que se muestra"
         />
       )}
+      {onVolver && (
+        <Pressable
+          style={[styles.volver, { top: Math.max(0, marca.centroY * unidad - insets.top) - 22 }]}
+          onPress={onVolver}
+          hitSlop={14}
+          accessibilityRole="button"
+          accessibilityLabel="Volver">
+          <Text style={styles.volverLabel}>{'<'}</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -104,6 +117,16 @@ const styles = StyleSheet.create({
     // Red de seguridad: con una medida imposible, el título no se sale del
     // encabezado ni pisa el contenido.
     overflow: 'hidden',
+  },
+  volver: {
+    position: 'absolute',
+    left: Spacing.five,
+    padding: Spacing.one,
+  },
+  volverLabel: {
+    fontFamily: Fonts.delgada,
+    fontSize: 30,
+    color: '#D90804',
   },
   subtitulo: {
     fontFamily: Fonts.delgada,

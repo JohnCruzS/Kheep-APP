@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 
 import { Layout } from '@/constants/theme';
-import { registrarClicBanner, registrarVistaBanner } from '@/lib/catalog';
+import { registrarClicBanner, registrarEvento, registrarVistaBanner } from '@/lib/catalog';
 import type { Banner } from '@/lib/catalog';
 import { REJILLA, u } from '@/lib/rejilla';
-import { FotoRemota } from '@/components/ui/FotoRemota';
+import { MedioBanner } from '@/components/catalog/MedioBanner';
+import { tipoDeMedio } from '@/lib/medios';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 /**
@@ -28,6 +29,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BANNER_WIDTH_ESTIMADO = SCREEN_WIDTH - Layout.catalogMargin * 2;
 /** Cada cuánto avanza solo el carrusel. */
 const AUTOPLAY_MS = 3000;
+/** Un banner en video espera a que termine; esto es por si nunca avisa (sin señal, por ejemplo). */
+const VIDEO_MAX_MS = 15000;
 
 /**
  * Carrusel de banners según la plantilla: la imagen llena directamente un
@@ -42,7 +45,19 @@ const AUTOPLAY_MS = 3000;
  * sin animación al primero real, que se ve idéntico. Mientras el usuario lo
  * está arrastrando con el dedo, el avance automático se pausa.
  */
-function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
+function BannerCarouselComponent({
+  banners,
+  comunaId,
+  categoriaId,
+}: {
+  banners: Banner[];
+  /** Dónde está mirando la persona: para las métricas por comuna y categoría (0045). */
+  comunaId?: string | null;
+  categoriaId?: string | null;
+}) {
+  // En refs: las métricas usan siempre la comuna y categoría de ese momento.
+  const lugar = useRef({ comunaId, categoriaId });
+  lugar.current = { comunaId, categoriaId };
   const [arrastrando, setArrastrando] = useState(false);
   /**
    * Banners ya contados en esta sesión. La vista se cuenta la primera vez que
@@ -57,11 +72,18 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
   const [ancho, setAncho] = useState(BANNER_WIDTH_ESTIMADO);
   const scrollRef = useRef<ScrollView>(null);
   const indexRef = useRef(0);
+  /**
+   * El banner que está en pantalla. Solo cambia al llegar a otro banner (no
+   * en cada cuadro del desplazamiento): decide qué video corre y cuánto se
+   * espera antes de pasar al siguiente.
+   */
+  const [visible, setVisible] = useState(0);
 
   /** Cuenta la vista de un banner, una sola vez por sesión. */
   const contarVista = (banner: Banner) => {
     if (vistos.current.has(banner.id)) return;
     vistos.current.add(banner.id);
+    registrarEvento('banner_vista', lugar.current);
     registrarVistaBanner(banner.id).catch(() => {
       // Una métrica perdida no vale interrumpir el catálogo.
     });
@@ -70,6 +92,7 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
   async function abrirEnlace(banner: Banner) {
     if (!banner.enlace) return;
     registrarClicBanner(banner.id).catch(() => {});
+    registrarEvento('banner_clic', lugar.current);
     if (await Linking.canOpenURL(banner.enlace)) await Linking.openURL(banner.enlace);
   }
 
@@ -84,13 +107,18 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [banners]);
 
+  const avanzar = () => scrollRef.current?.scrollTo({ x: (indexRef.current + 1) * ancho, animated: true });
+
+  // Avanza solo: una foto o un GIF, a los 3 segundos; un video, cuando
+  // termina (pedido del cliente: no cortarlo a la mitad).
+  const actual = banners[visible];
+  const esVideo = actual ? tipoDeMedio(actual.imagen_url) === 'video' : false;
   useEffect(() => {
     if (!enCiclo || arrastrando) return;
-    const id = setInterval(() => {
-      scrollRef.current?.scrollTo({ x: (indexRef.current + 1) * ancho, animated: true });
-    }, AUTOPLAY_MS);
-    return () => clearInterval(id);
-  }, [enCiclo, arrastrando, ancho]);
+    const id = setTimeout(avanzar, esVideo ? VIDEO_MAX_MS : AUTOPLAY_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enCiclo, arrastrando, ancho, visible, esVideo]);
 
   if (total === 0) return null;
 
@@ -101,6 +129,7 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
     if (enCiclo && x >= total * ancho - 1) {
       scrollRef.current?.scrollTo({ x: 0, animated: false });
       indexRef.current = 0;
+      setVisible(0);
       return;
     }
 
@@ -108,8 +137,9 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
     // cuadro del desplazamiento y guardarla en el estado redibujaría el
     // carrusel entero decenas de veces por segundo sin que cambie nada.
     indexRef.current = Math.round(x / ancho);
-    const visible = banners[indexRef.current];
-    if (visible) contarVista(visible);
+    const enPantalla = banners[indexRef.current];
+    if (enPantalla) contarVista(enPantalla);
+    if (indexRef.current < total) setVisible((v) => (v === indexRef.current ? v : indexRef.current));
   };
 
   function medirAncho(e: LayoutChangeEvent) {
@@ -120,6 +150,7 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
       // ancho viejo (al girar el teléfono, por ejemplo): se vuelve al primer
       // banner para no quedar a mitad de camino entre dos.
       indexRef.current = 0;
+      setVisible(0);
       scrollRef.current?.scrollTo({ x: 0, animated: false });
     }
   }
@@ -155,7 +186,15 @@ function BannerCarouselComponent({ banners }: { banners: Banner[] }) {
               onPress={() => abrirEnlace(banner)}
               disabled={!banner.enlace}
               accessibilityRole={banner.enlace ? 'link' : 'image'}>
-              <FotoRemota uri={banner.imagen_url} ancho={Dimensions.get('window').width} style={styles.image} />
+              <MedioBanner
+                uri={banner.imagen_url}
+                ancho={Dimensions.get('window').width}
+                style={styles.image}
+                activo={i === visible}
+                // Con varios banners el video no se repite: al terminar pasa al siguiente.
+                enBucle={!enCiclo}
+                onTermino={i === visible ? avanzar : undefined}
+              />
             </Pressable>
           </View>
         ))}

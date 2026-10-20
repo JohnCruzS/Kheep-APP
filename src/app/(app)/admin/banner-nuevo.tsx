@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -10,7 +9,8 @@ import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { Comuna, crearBanners, fetchComunas } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
-import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
+import { LIMITES_MEDIO, MedioElegido, elegirMedioBanner, subirMedioBanner } from '@/lib/medios';
+import { MedioBanner } from '@/components/catalog/MedioBanner';
 import { REJILLA, u } from '@/lib/rejilla';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
@@ -40,7 +40,7 @@ export default function BannerNuevoScreen() {
   const esGeneral = profile?.rol === 'admin';
 
   const [comunas, setComunas] = useState<Comuna[]>([]);
-  const [imagen, setImagen] = useState<PickedImage | null>(null);
+  const [imagen, setImagen] = useState<MedioElegido | null>(null);
   const [enlace, setEnlace] = useState('');
   const [elegidas, setElegidas] = useState<string[]>([]);
   const [eligiendo, setEligiendo] = useState(false);
@@ -72,8 +72,12 @@ export default function BannerNuevoScreen() {
 
   async function elegirFoto() {
     try {
-      const foto = await pickAndCompressImage({ uso: 'banner' });
-      if (foto) setImagen(foto);
+      // Foto, GIF o video (0044): los dos últimos, con límites de peso y duración.
+      const medio = await elegirMedioBanner();
+      if (medio) {
+        setImagen(medio);
+        setError(null);
+      }
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo abrir la galería.'));
     }
@@ -88,7 +92,7 @@ export default function BannerNuevoScreen() {
   async function publicar() {
     setError(null);
     if (!imagen) {
-      setError('Sube la imagen del banner.');
+      setError('Sube la foto, el GIF o el video del banner.');
       return;
     }
     if (elegidas.length === 0) {
@@ -105,7 +109,7 @@ export default function BannerNuevoScreen() {
     setPublicando(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
-      const imagenUrl = await uploadCompressedImage('banners', auth.user!.id, imagen, `banner-${Date.now()}`);
+      const imagenUrl = await subirMedioBanner(auth.user!.id, imagen);
       await crearBanners({
         imagenUrl,
         comunaIds: todoElPais ? [null] : elegidas,
@@ -137,9 +141,20 @@ export default function BannerNuevoScreen() {
         {/* La foto como vista previa, al alto con que se verá en el inicio. */}
         <Pressable onPress={elegirFoto} style={styles.foto} accessibilityRole="button" accessibilityLabel="Subir imagen">
           {imagen ? (
-            <Image source={{ uri: imagen.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            // Vista previa tal como se verá (el video, sin sonido y en bucle).
+            <MedioBanner
+              uri={imagen.uri}
+              tipo={imagen.tipo}
+              ancho={400}
+              style={StyleSheet.absoluteFill}
+            />
           ) : (
-            <Text style={styles.subir}>Subir</Text>
+            <>
+              <Text style={styles.subir}>Subir</Text>
+              <Text style={styles.limites}>
+                {`Foto, GIF (hasta ${LIMITES_MEDIO.gifBytes / 1024 / 1024} MB) o video (hasta ${LIMITES_MEDIO.videoSegundos} s y ${LIMITES_MEDIO.videoBytes / 1024 / 1024} MB, sin sonido)`}
+              </Text>
+            </>
           )}
         </Pressable>
 
@@ -231,6 +246,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 24,
     color: '#000000',
+  },
+  limites: {
+    fontFamily: Fonts.delgada,
+    fontSize: 13,
+    color: '#1A1A1A',
+    textAlign: 'center',
+    marginTop: Spacing.two,
+    paddingHorizontal: Spacing.four,
   },
   enlace: {
     fontFamily: Fonts.delgada,

@@ -14,7 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { EmptyState, ErrorState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
-import { FotoRemota } from '@/components/ui/FotoRemota';
+import { MedioBanner } from '@/components/catalog/MedioBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { UbicacionBanner } from '@/components/admin/UbicacionBanner';
 import { Text } from '@/components/ui/Texto';
@@ -24,6 +24,7 @@ import {
   BannerAdmin,
   pausarBanner,
   eliminarBanner,
+  purgarMediosVencidos,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { REJILLA, u } from '@/lib/rejilla';
@@ -139,6 +140,9 @@ export default function BannersAdminScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
+      // Los GIF y videos vencidos se borran solos (con su archivo) para no
+      // ocupar espacio; si falla, no importa: se intenta la próxima vez.
+      await purgarMediosVencidos().catch(() => 0);
       setBanners(filtrar(await precargarBanners()));
     } catch (err) {
       setError(getErrorMessage(err, 'Error desconocido.'));
@@ -253,12 +257,13 @@ export default function BannersAdminScreen() {
               onMomentumScrollEnd={alDeslizar}
               scrollEventThrottle={16}
               style={styles.tira}>
-              {banners.map((banner) => (
-                <FotoRemota
+              {banners.map((banner, i) => (
+                <MedioBanner
                   key={banner.id}
                   uri={banner.imagen_url}
                   ancho={ancho}
                   style={[styles.imagen, { width: ancho }, banner.pausado_en !== null && styles.apagada]}
+                  activo={i === indice}
                 />
               ))}
             </ScrollView>

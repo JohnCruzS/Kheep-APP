@@ -35,6 +35,8 @@ type Props = {
   onFotosPorVer?: (restantes: number) => void;
   /** Junto al nombre, cuántas fotos faltan por aprobar (en vez de las por ver). */
   fotosPorAprobar?: number;
+  /** Se vieron todas sus fotos (métrica "vista completa"); avisa una vez. */
+  onVistaCompleta?: () => void;
   /** Gestos sobre la parte blanca (en el panel: arrastrarla para eliminar). */
   panelHandlers?: GestureResponderHandlers;
 };
@@ -61,6 +63,7 @@ function PublicacionCardComponent({
   onFotosPorVer,
   fotosPorAprobar,
   panelHandlers,
+  onVistaCompleta,
 }: Props) {
   const ultimoToque = useRef(0);
   function alTocarPanel() {
@@ -95,6 +98,14 @@ function PublicacionCardComponent({
   useEffect(() => {
     onFotosPorVerRef.current?.(porVer);
   }, [porVer]);
+
+  // Vista completa: se pasaron todas las fotos (con una sola foto lo cuenta
+  // la lista al verla, no acá).
+  const onVistaCompletaRef = useRef(onVistaCompleta);
+  onVistaCompletaRef.current = onVistaCompleta;
+  useEffect(() => {
+    if (productos.length > 1 && porVer === 0) onVistaCompletaRef.current?.();
+  }, [porVer, productos.length]);
 
   function alDeslizar(e: NativeSyntheticEvent<NativeScrollEvent>) {
     if (ancho <= 0) return;

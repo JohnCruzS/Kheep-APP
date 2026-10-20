@@ -1303,7 +1303,8 @@ export async function eliminarBanner(id: string): Promise<void> {
   if (!count) await borrarImagenDeStorage('banners', url);
 }
 
-export const PRECIO_BANNER_POR_DIA = 500;
+/** Precio base por día de un banner donde no se puso otro (pedido del cliente: todos parten en $25.000). */
+export const PRECIO_BANNER_POR_DIA = 25000;
 
 export type MiBanner = {
   id: string;
@@ -2309,4 +2310,140 @@ export async function guardarPrecioComuna(comunaId: string, precio: number | nul
   const { data, error } = await supabase.from('comunas').update({ precio_banner: precio }).eq('id', comunaId).select('id');
   if (error) throw error;
   if (!data || data.length === 0) throw new Error('No se pudo guardar el precio. Revisa que tu cuenta sea de administrador.');
+}
+
+/**
+ * Banners GIF o video que ya vencieron (pedido del cliente: que no ocupen
+ * espacio en Supabase). Se borran solos, con su archivo, un día después de
+ * terminar — no a los seis meses como las fotos: pesan mucho más y no se
+ * reutilizan. Los pausados no se tocan (se pueden reanudar). Lo llama la
+ * pantalla de Banners del admin cada vez que se abre; devuelve cuántos borró.
+ */
+export async function purgarMediosVencidos(): Promise<number> {
+  const corte = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  let consulta = supabase
+    .from('banners')
+    .select('id, imagen_url')
+    .lt('fecha_fin', corte)
+    .or('imagen_url.ilike.%.gif,imagen_url.ilike.%.mp4');
+  // Sin la migración 0041 no existe la pausa: se consulta sin ese filtro.
+  const conPausa = await consulta.is('pausado_en', null);
+  let filas = conPausa.data;
+  if (faltaColumnaNueva(conPausa.error)) {
+    consulta = supabase
+      .from('banners')
+      .select('id, imagen_url')
+      .lt('fecha_fin', corte)
+      .or('imagen_url.ilike.%.gif,imagen_url.ilike.%.mp4');
+    filas = (await consulta).data;
+  }
+  let borrados = 0;
+  for (const fila of filas ?? []) {
+    try {
+      await eliminarBanner(fila.id as string);
+      borrados += 1;
+    } catch {
+      // Sin permiso sobre ese banner (otro admin de zona): queda para quien lo tenga.
+    }
+  }
+  return borrados;
+}
+
+// ============================================================================
+// Métricas (0045)
+// ============================================================================
+
+export type TipoEvento = 'banner_clic' | 'categoria' | 'publicacion_vista' | 'publicacion_completa' | 'banner_vista';
+
+/** Lo ya contado en esta apertura de la app: cada cosa se cuenta una vez por sesión. */
+const eventosDeLaSesion = new Set<string>();
+
+/**
+ * Suma un evento a las métricas (un número por día, comuna y categoría; ver
+ * 0045). Con `publicacionId`, la comuna y la categoría las pone la base. Se
+ * cuenta una sola vez por sesión cada cosa (`una`: qué se está contando), y
+ * falla en silencio: una métrica perdida no vale interrumpir a nadie.
+ */
+export function registrarEvento(
+  tipo: TipoEvento,
+  datos: { comunaId?: string | null; categoriaId?: string | null; publicacionId?: string | null },
+  una?: string,
+): void {
+  if (una) {
+    const clave = `${tipo}:${una}`;
+    if (eventosDeLaSesion.has(clave)) return;
+    eventosDeLaSesion.add(clave);
+  }
+  void supabase
+    .rpc('registrar_evento', {
+      p_tipo: tipo,
+      p_comuna: datos.comunaId ?? null,
+      p_categoria: datos.categoriaId ?? null,
+      p_publicacion: datos.publicacionId ?? null,
+    })
+    .then(
+      () => {},
+      () => {},
+    );
+}
+
+/** Un inicio de sesión de un negocio (se cuenta en cada comuna y categoría donde publica). */
+export function registrarLogin(): void {
+  void supabase.rpc('registrar_login').then(
+    () => {},
+    () => {},
+  );
+}
+
+export type FilaMetrica = { tipo: string; comuna_id: string; categoria_id: string; total: number };
+
+/** Los totales para el panel, desde una fecha (AAAA-MM-DD) o desde siempre. */
+export async function fetchResumenMetricas(desde: string | null): Promise<FilaMetrica[]> {
+  const { data, error } = await supabase.rpc('metricas_resumen', { p_desde: desde });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '')) {
+      throw new Error('Falta ejecutar la migración 0045 en Supabase para las métricas.');
+    }
+    throw error;
+  }
+  return ((data ?? []) as { tipo: string; comuna_id: string; categoria_id: string; total: number | string }[]).map((f) => ({
+    ...f,
+    total: Number(f.total),
+  }));
+}
+
+// ============================================================================
+// Copias de seguridad de la configuración (0046)
+// ============================================================================
+
+export type CopiaSeguridad = { id: string; nombre: string; created_at: string };
+
+const FALTA_0046 = 'Falta ejecutar la migración 0046 en Supabase para las copias de seguridad.';
+const esFaltaFuncion = (e: { code?: string; message?: string }) =>
+  e.code === 'PGRST202' || e.code === '42P01' || e.code === 'PGRST205' || /could not find|does not exist/i.test(e.message ?? '');
+
+export async function fetchCopiasSeguridad(): Promise<CopiaSeguridad[]> {
+  const { data, error } = await supabase
+    .from('copias_seguridad')
+    .select('id, nombre, created_at')
+    .order('created_at', { ascending: false });
+  if (error) throw esFaltaFuncion(error) ? new Error(FALTA_0046) : error;
+  return (data as CopiaSeguridad[]) ?? [];
+}
+
+/** Guarda cómo está configurada la app ahora (categorías por comuna, comunas visibles y precios). */
+export async function crearCopiaSeguridad(nombre?: string): Promise<void> {
+  const { error } = await supabase.rpc('crear_copia_seguridad', { p_nombre: nombre ?? null });
+  if (error) throw esFaltaFuncion(error) ? new Error(FALTA_0046) : error;
+}
+
+/** Vuelve a una copia. Antes guarda sola una copia "Antes de restaurar", para poder deshacerlo. */
+export async function restaurarCopiaSeguridad(id: string): Promise<void> {
+  const { error } = await supabase.rpc('restaurar_copia_seguridad', { p_copia: id });
+  if (error) throw esFaltaFuncion(error) ? new Error(FALTA_0046) : error;
+}
+
+export async function eliminarCopiaSeguridad(id: string): Promise<void> {
+  const { error } = await supabase.from('copias_seguridad').delete().eq('id', id);
+  if (error) throw error;
 }

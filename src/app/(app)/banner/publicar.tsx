@@ -1,12 +1,12 @@
 import { Image } from 'expo-image';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
-import { SelectorZonas } from '@/components/admin/SelectorZonas';
+import { SelectorComunasBanner } from '@/components/banner/SelectorComunasBanner';
 import { Button } from '@/components/ui/Button';
 import { FormScroll } from '@/components/ui/FormScroll';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -29,7 +29,7 @@ import { PickedImage, pickAndCompressImage, uploadCompressedImage } from '@/lib/
 import { compararRegiones, nombreRegion } from '@/lib/regiones';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
-import { FORMATO_RECORTE } from '@/lib/rejilla';
+import { FORMATO_RECORTE, REJILLA, u } from '@/lib/rejilla';
 import { FotoRemota } from '@/components/ui/FotoRemota';
 
 const OPCIONES_DIAS = [3, 7, 15, 30];
@@ -37,6 +37,7 @@ const OPCIONES_DIAS = [3, 7, 15, 30];
 const DIAS_MAX = 365;
 
 export default function PublicarBannerScreen() {
+  const router = useRouter();
   const { session, profile, permisos } = useSession();
   const esAdmin = profile?.rol === 'admin';
   // Administrador de zona: publica sin pagar, igual que el general, pero solo
@@ -58,7 +59,7 @@ export default function PublicarBannerScreen() {
   // interruptores (documento EDIT APP).
   const [elegidas, setElegidas] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [dias, setDias] = useState(7);
+  const [dias, setDias] = useState(3);
   /** A dónde lleva tocar el banner. Opcional (documento EDIT APP). */
   const [enlace, setEnlace] = useState('');
   // La duración a medida se escribe aparte: mientras el campo está vacío o a
@@ -134,11 +135,13 @@ export default function PublicarBannerScreen() {
 
     // Un enlace mal escrito no abre nada y nadie se entera: se avisa acá, no
     // después de cobrar.
-    const enlaceLimpio = enlace.trim();
-    if (enlaceLimpio && !/^https?:\/\/\S+$/i.test(enlaceLimpio)) {
-      setError('El enlace tiene que empezar con http:// o https://');
+    const enlaceEscrito = enlace.trim();
+    if (enlaceEscrito && !/^(https?:\/\/)?[\w-]+(\.[\w-]+)+\S*$/i.test(enlaceEscrito)) {
+      setError('El enlace no es válido (por ejemplo: www.kheep.cl).');
       return;
     }
+    const enlaceLimpio =
+      enlaceEscrito && !/^https?:\/\//i.test(enlaceEscrito) ? `https://${enlaceEscrito}` : enlaceEscrito;
 
     // El carrusel tiene cupo: con más banners de la cuenta, ninguno alcanza a
     // verse. Se comprueba antes de cobrar.
@@ -183,7 +186,7 @@ export default function PublicarBannerScreen() {
 
       setImagen(null);
       if (!esAdmin && !esZona) setElegidas([]);
-      setDias(7);
+      setDias(3);
       setEnlace('');
       cargar();
     } catch (err) {
@@ -236,186 +239,120 @@ export default function PublicarBannerScreen() {
     const c = comunas.find((x) => x.id === comunaId);
     return precioBannerEn({ id: comunaId ?? '', region: c?.region }, precios);
   };
-  const precio = dias * (elegidas.length > 0 ? elegidas.reduce((suma, id) => suma + precioDe(id), 0) : precioDe(null));
+  // Ejemplo: dos comunas de $20.000 por 5 días = $200.000. Sin comunas, $0.
+  const precio = dias * elegidas.reduce((suma, id) => suma + precioDe(id), 0);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Publicar banner" />
+      <EncabezadoMarca subtitulo="Banners" onVolver={() => router.back()} />
 
-      <View style={styles.card}>
-        {/* `FormScroll` se encarga del teclado igual que en el resto de la app:
-          reserva su alto y corre el formulario si el campo enfocado quedaría
-          tapado. */}
+      {/* Maqueta del cliente: la foto como vista previa, el enlace, la
+          ubicación, los días y, abajo, el botón con lo que se paga (los días
+          por la suma del precio de cada comuna elegida). "Mis banners", al
+          final de todo. */}
       <FormScroll contentContainerStyle={styles.content}>
-          {/* "Mis banners" es para el comerciante, que no tiene otra forma de
-              ver los suyos. El admin los administra todos en Panel → Banners,
-              así que acá solo estorbaba. */}
-          {!esAdmin && !esZona && !loadingList && misBanners.length > 0 && (
-            <View style={styles.misBannersSection}>
-              <Text style={styles.sectionLabel}>MIS BANNERS</Text>
-              {misBanners.map((banner) => (
-                <View key={banner.id} style={styles.miBannerRow}>
-                  <FotoRemota uri={banner.imagen_url} ancho={64} style={styles.miBannerThumb} />
-                  <View style={styles.miBannerInfo}>
-                    <Text style={styles.miBannerComuna}>{banner.comuna?.nombre ?? 'Todas las comunas'}</Text>
-                    <EstadoBanner banner={banner} />
-                  </View>
-                  {ocupado === banner.id ? (
-                    <ActivityIndicator color={Colors.accent} />
-                  ) : banner.estado === 'rechazado' ? (
-                    <Pressable onPress={() => handleReenviar(banner)} hitSlop={8}>
-                      <Text style={styles.accionBanner}>Cambiar imagen</Text>
-                    </Pressable>
-                  ) : banner.estado === 'aprobado' && !banner.pagado ? (
-                    <Pressable onPress={() => handlePagar(banner)} hitSlop={8}>
-                      <Text style={styles.accionBanner}>
-                        Pagar ${((banner.dias ?? 7) * precioDe(banner.comuna_id)).toLocaleString('es-CL')}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          )}
-
-          <Text style={styles.sectionLabel}>NUEVO BANNER</Text>
-
-          <Pressable onPress={handlePickImagen} style={styles.imagePicker}>
-            {imagen ? (
-              <Image source={{ uri: imagen.uri }} style={styles.imagePreview} contentFit="cover" />
-            ) : (
-              <View style={styles.imagePlaceholder}>
-                <Text style={styles.imagePlaceholderLabel}>Toca para subir una imagen (2:1)</Text>
-              </View>
-            )}
-          </Pressable>
-
-          {/* Un botón que abre el buscador, en vez de la fila de fichas: con
-              las ~346 comunas del país había que deslizar a ciegas hasta
-              encontrar la propia. */}
-          <Text style={styles.campoLabel}>¿Dónde se muestra?</Text>
-          <Pressable
-            style={({ pressed }) => [styles.selectorComuna, pressed && styles.selectorPresionado]}
-            onPress={() => setPickerOpen(true)}>
-            <Text style={[styles.selectorValor, !comunaElegida && styles.selectorPlaceholder]}>
-              {comunaElegida || 'Elige región o comuna'}
-            </Text>
-            <Text style={styles.selectorFlecha}>▾</Text>
-          </Pressable>
-
-          <Text style={styles.diasLabel}>¿A dónde lleva al tocarlo?</Text>
-          <TextInput
-            value={enlace}
-            onChangeText={setEnlace}
-            placeholder="https://… (opcional)"
-            placeholderTextColor={Colors.placeholder}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            style={styles.enlaceInput}
-          />
-
-          <Text style={styles.diasLabel}>¿Cuántos días quieres que dure?</Text>
-          <View style={styles.diasRow}>
-            {OPCIONES_DIAS.map((opcion) => {
-              const elegida = !aMedida && dias === opcion;
-              return (
-                <Pressable
-                  key={opcion}
-                  onPress={() => {
-                    setAMedida(false);
-                    setDias(opcion);
-                  }}
-                  style={[styles.diaChip, elegida && styles.diaChipActive]}>
-                  <Text style={[styles.diaChipLabel, elegida && styles.diaChipLabelActive]}>{opcion} días</Text>
-                </Pressable>
-              );
-            })}
-
-            <Pressable
-              onPress={() => {
-                setAMedida(true);
-                // Vacío, no con el valor anterior: quien elige "Otra" va a
-                // escribir su número, y arrastrar el viejo hacía que quedara
-                // pegado delante (7 + 45 = "745").
-                setDiasLibres('');
-              }}
-              style={[styles.diaChip, aMedida && styles.diaChipActive]}>
-              <Text style={[styles.diaChipLabel, aMedida && styles.diaChipLabelActive]}>Otra</Text>
-            </Pressable>
-          </View>
-
-          {aMedida && (
-            <View style={styles.aMedidaFila}>
-              <TextInput
-                value={diasLibres}
-                onChangeText={(texto) => {
-                  const soloNumeros = texto.replace(/[^0-9]/g, '').slice(0, 3);
-                  const numero = Number(soloNumeros);
-                  // Pasarse del tope recorta el número en el propio campo, en
-                  // vez de aceptarlo a medias: así lo que se ve escrito es
-                  // siempre lo que se va a cobrar.
-                  const limitado = numero > DIAS_MAX ? String(DIAS_MAX) : soloNumeros;
-                  setDiasLibres(limitado);
-                  if (Number(limitado) >= 1) setDias(Number(limitado));
-                }}
-                keyboardType="number-pad"
-                placeholder="Días"
-                placeholderTextColor={Colors.placeholder}
-                style={styles.aMedidaInput}
-                autoFocus
-              />
-              <Text style={styles.aMedidaHint}>días (1 a {DIAS_MAX})</Text>
-            </View>
-          )}
-
-          {!esAdmin && !esZona && (
-            <View style={styles.precioBox}>
-              <Text style={styles.precioLabel}>{conRevision ? 'Total' : 'Total a pagar'}</Text>
-              <Text style={styles.precioValor}>${precio.toLocaleString('es-CL')}</Text>
-            </View>
-          )}
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          {success ? <Text style={styles.successText}>{success}</Text> : null}
-
-          {saving ? (
-            <ActivityIndicator color={Colors.accent} style={{ marginTop: Spacing.three }} />
+        <Pressable onPress={handlePickImagen} style={styles.foto} accessibilityRole="button" accessibilityLabel="Subir imagen">
+          {imagen ? (
+            <Image source={{ uri: imagen.uri }} style={StyleSheet.absoluteFill} contentFit="cover" />
           ) : (
-            <Button
-              label={
-                esAdmin || esZona
-                  ? 'Publicar'
-                  : conRevision
-                    ? 'Enviar a revisión'
-                    : `Pagar $${precio.toLocaleString('es-CL')} (simulado)`
-              }
-              onPress={handlePublicar}
-            />
+            <Text style={styles.subir}>Subir</Text>
           )}
+        </Pressable>
 
-          {!esAdmin && !esZona && (
-            <Text style={styles.disclaimer}>
-              {conRevision
-                ? 'Un administrador revisa tu banner antes de que se publique. El cobro todavía no está conectado.'
-                : 'El cobro real todavía no está conectado — este botón simula el pago para que puedas probar la función.'}
-            </Text>
+        <TextInput
+          value={enlace}
+          onChangeText={setEnlace}
+          placeholder="Enlace"
+          placeholderTextColor={Colors.text}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          style={styles.enlace}
+        />
+
+        <Pressable
+          style={({ pressed }) => [styles.ubicacion, pressed && styles.presionado]}
+          onPress={() => setPickerOpen(true)}
+          accessibilityRole="button">
+          <Text style={styles.ubicacionLabel}>Ubicación</Text>
+        </Pressable>
+        {comunaElegida ? (
+          <Text style={styles.resumen} numberOfLines={1}>
+            {comunaElegida}
+          </Text>
+        ) : null}
+
+        <Text style={styles.duracion}>Duración / Días</Text>
+        <View style={styles.paso}>
+          <Pressable onPress={() => setDias((d) => Math.max(1, d - 1))} hitSlop={12} accessibilityLabel="Menos días">
+            <Text style={styles.pasoSigno}>-</Text>
+          </Pressable>
+          <Text style={styles.pasoValor}>{dias}</Text>
+          <Pressable onPress={() => setDias((d) => Math.min(DIAS_MAX, d + 1))} hitSlop={12} accessibilityLabel="Más días">
+            <Text style={styles.pasoSigno}>+</Text>
+          </Pressable>
+        </View>
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {success ? <Text style={styles.successText}>{success}</Text> : null}
+
+        <Pressable
+          style={({ pressed }) => [styles.pagar, pressed && styles.pagarPresionado]}
+          onPress={handlePublicar}
+          disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel={esAdmin || esZona ? 'Publicar' : `Enviar banner, total ${precio} pesos`}>
+          {saving ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.pagarLabel}>{esAdmin || esZona ? 'Publicar' : `$${precio.toLocaleString('es-CL')}`}</Text>
           )}
+        </Pressable>
+
+        {/* "Mis banners", debajo de todo (pedido del cliente). */}
+        {!esAdmin && !esZona && !loadingList && misBanners.length > 0 && (
+          <View style={styles.misBannersSection}>
+            <Text style={styles.sectionLabel}>MIS BANNERS</Text>
+            {misBanners.map((banner) => (
+              <View key={banner.id} style={styles.miBannerRow}>
+                <FotoRemota uri={banner.imagen_url} ancho={64} style={styles.miBannerThumb} />
+                <View style={styles.miBannerInfo}>
+                  <Text style={styles.miBannerComuna}>{banner.comuna?.nombre ?? 'Todas las comunas'}</Text>
+                  <EstadoBanner banner={banner} />
+                </View>
+                {ocupado === banner.id ? (
+                  <ActivityIndicator color={Colors.accent} />
+                ) : banner.estado === 'rechazado' ? (
+                  <Pressable onPress={() => handleReenviar(banner)} hitSlop={8}>
+                    <Text style={styles.accionBanner}>Cambiar imagen</Text>
+                  </Pressable>
+                ) : banner.estado === 'aprobado' && !banner.pagado ? (
+                  <Pressable onPress={() => handlePagar(banner)} hitSlop={8}>
+                    <Text style={styles.accionBanner}>
+                      Pagar ${((banner.dias ?? 7) * precioDe(banner.comuna_id)).toLocaleString('es-CL')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        )}
       </FormScroll>
 
-      <SelectorZonas
+      <SelectorComunasBanner
         visible={pickerOpen}
         comunas={disponibles}
         elegidas={elegidas}
+        dias={dias}
+        precioDe={(id) => precioDe(id)}
         onClose={() => setPickerOpen(false)}
         onListo={(ids) => {
           setElegidas(ids);
           setPickerOpen(false);
         }}
       />
-      </View>
     </SafeAreaView>
   );
 }
@@ -470,6 +407,96 @@ function EstadoBanner({ banner }: { banner: MiBanner }) {
 }
 
 const styles = StyleSheet.create({
+  foto: {
+    height: u(REJILLA.bannerAlto),
+    borderRadius: u(REJILLA.curvatura),
+    overflow: 'hidden',
+    backgroundColor: '#3C3C3C',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subir: {
+    fontFamily: Fonts.delgada,
+    fontSize: 26,
+    color: '#000000',
+  },
+  enlace: {
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
+    color: Colors.text,
+    marginTop: Spacing.four,
+    paddingHorizontal: u(REJILLA.margenLateral) * 2,
+    paddingVertical: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.surfaceBorder,
+  },
+  ubicacion: {
+    marginHorizontal: u(REJILLA.margenLateral) * 0.5,
+    marginTop: Spacing.four,
+    paddingVertical: Spacing.three,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+  },
+  presionado: {
+    opacity: 0.7,
+  },
+  ubicacionLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 22,
+    color: '#000000',
+  },
+  resumen: {
+    fontFamily: Fonts.delgada,
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: Spacing.two,
+  },
+  duracion: {
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
+    color: Colors.text,
+    textAlign: 'center',
+    marginTop: Spacing.four,
+  },
+  paso: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: u(REJILLA.margenLateral) * 0.5,
+    marginTop: Spacing.three,
+    paddingHorizontal: Spacing.five,
+    paddingVertical: Spacing.three,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.surfaceBorder,
+  },
+  pasoSigno: {
+    fontFamily: Fonts.medium,
+    fontSize: 28,
+    color: Colors.text,
+  },
+  pasoValor: {
+    fontFamily: Fonts.medium,
+    fontSize: 26,
+    color: Colors.text,
+  },
+  pagar: {
+    marginTop: Spacing.five,
+    paddingVertical: Spacing.four,
+    borderRadius: u(REJILLA.curvatura),
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+  },
+  pagarPresionado: {
+    backgroundColor: Colors.accentPressed,
+  },
+  pagarLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 24,
+    color: '#FFFFFF',
+  },
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -499,8 +526,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.card,
   },
   content: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.five,
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.six,
   },
   sectionLabel: {
@@ -511,7 +538,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
   },
   misBannersSection: {
-    marginBottom: Spacing.five,
+    marginTop: Spacing.six,
   },
   miBannerRow: {
     flexDirection: 'row',

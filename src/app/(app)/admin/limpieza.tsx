@@ -5,6 +5,7 @@ import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { CopiasSeguridad } from '@/components/admin/CopiasSeguridad';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
@@ -152,9 +153,13 @@ export default function LimpiezaScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <EncabezadoMarca subtitulo="Limpieza" />
+      <EncabezadoMarca subtitulo="Datos" />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Copias de seguridad de la configuración (0046), lo primero. */}
+        <CopiasSeguridad />
+
+        <Text style={[styles.seccionTitulo, styles.tituloLimpieza]}>Archivos sin usar</Text>
         <Text style={styles.ayuda}>
           Imágenes que siguen ocupando espacio y ya no usa ninguna publicación, comercio ni banner. Se revisan solo las
           que llevan más de 48 horas subidas, para no tocar una foto que alguien esté subiendo en este momento.
@@ -377,6 +382,9 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
   },
   seccion: {
+    marginTop: Spacing.six,
+  },
+  tituloLimpieza: {
     marginTop: Spacing.six,
   },
   seccionTitulo: {

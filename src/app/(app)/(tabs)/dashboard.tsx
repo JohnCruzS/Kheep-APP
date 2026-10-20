@@ -27,6 +27,7 @@ import {
   FilaIndiceCatalogo,
   fetchIndiceCatalogo,
   fetchPublicacionesPorIds,
+  registrarEvento,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { ordenarCatalogo } from '@/lib/ordenCatalogo';
@@ -414,11 +415,30 @@ export default function DashboardScreen() {
     }, [loadPublicaciones]),
   );
 
-  const handleSeleccionarCategoria = useCallback((id: string) => {
-    sinElegir.current = false;
-    registrarUsoCategoria(id);
-    setCategoriaId(id);
-  }, []);
+  const handleSeleccionarCategoria = useCallback(
+    (id: string) => {
+      sinElegir.current = false;
+      registrarUsoCategoria(id);
+      // Métrica: toques a categorías, por comuna y categoría (0045).
+      registrarEvento('categoria', { comunaId, categoriaId: id });
+      setCategoriaId(id);
+    },
+    [comunaId],
+  );
+
+  // Métrica: publicaciones vistas (una vez por sesión cada una). Con una sola
+  // foto, verla es verla completa.
+  const alCambiarVisibles = useCallback(
+    ({ viewableItems }: { viewableItems: { item: PublicacionResumen }[] }) => {
+      for (const { item } of viewableItems) {
+        if (!item) continue;
+        registrarEvento('publicacion_vista', { publicacionId: item.id }, item.id);
+        if (item.productos.length <= 1) registrarEvento('publicacion_completa', { publicacionId: item.id }, item.id);
+      }
+    },
+    [],
+  );
+  const configVisibles = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   // Desde la tarjeta se puede contactar sin entrar a la publicación
   // (documento EDIT APP). El clic se registra igual: es la misma métrica.
@@ -432,7 +452,13 @@ export default function DashboardScreen() {
       // Con su propia `key`: la lista recicla las tarjetas al desplazarse, y
       // sin esto una tarjeta reciclada conservaría la foto de producto que
       // estaba mostrando la anterior.
-      <PublicacionCard key={item.id} publicacion={item} onContactar={handleContactar} onVerFoto={setFotoAbierta} />
+      <PublicacionCard
+        key={item.id}
+        publicacion={item}
+        onContactar={handleContactar}
+        onVerFoto={setFotoAbierta}
+        onVistaCompleta={() => registrarEvento('publicacion_completa', { publicacionId: item.id }, item.id)}
+      />
     ),
     [handleContactar],
   );
@@ -522,7 +548,12 @@ export default function DashboardScreen() {
 
         {/* La key cambia si cambia la lista: el carrusel parte de cero en vez
             de quedar apuntando a un banner que ya no existe. */}
-        <BannerCarousel key={banners.map((b) => b.id).join(',')} banners={banners} />
+        <BannerCarousel
+          key={banners.map((b) => b.id).join(',')}
+          banners={banners}
+          comunaId={comunaId}
+          categoriaId={categoriaId}
+        />
         {/* La fila solo desaparece para quien mira sin cuenta y no hay nada
             que filtrar; con cuenta se ven todas las categorías. */}
         {(session || !comunaVacia || hayHuerfanas) && (
@@ -562,6 +593,8 @@ export default function DashboardScreen() {
             }}
             refreshing={refreshing}
             renderItem={renderItem}
+            onViewableItemsChanged={alCambiarVisibles}
+            viewabilityConfig={configVisibles}
             // FlashList recicla las tarjetas que salen de la pantalla en vez
             // de crear nuevas: el desplazamiento es más fluido en teléfonos
             // lentos. Al acercarse al final se pide la tanda siguiente.

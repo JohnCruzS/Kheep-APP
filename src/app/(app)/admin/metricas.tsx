@@ -1,79 +1,218 @@
 import { Stack } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FiltrosOrden } from '@/components/admin/FiltrosOrden';
+import { TarjetaDesplegable } from '@/components/admin/TarjetaDesplegable';
+import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
-import { EmptyState, ErrorState, LoadingState } from '@/components/catalog/CatalogState';
+import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
-import { MetricaPublicacion, fetchMetricas } from '@/lib/catalog';
-import { useSession } from '@/providers/SessionProvider';
+import { FilaMetrica, fetchCategoriasAdmin, fetchComunasAdmin, fetchResumenMetricas } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
+import { nombreRegion } from '@/lib/regiones';
+import { useSession } from '@/providers/SessionProvider';
 
+const CERO = '00000000-0000-0000-0000-000000000000';
+
+type Periodo = 'hoy' | '7' | '30' | 'todo';
+type Por = 'region' | 'comuna' | 'categoria';
+
+/**
+ * Lo que se mide (pedido del cliente), en secciones con tres datos cada una.
+ * Cada dato se puede abrir por región, por comuna o por categoría.
+ */
+const SECCIONES: { titulo: string; datos: { tipo: string; label: string }[] }[] = [
+  {
+    titulo: 'Enlaces',
+    datos: [
+      { tipo: 'whatsapp', label: 'WhatsApp' },
+      { tipo: 'banner_clic', label: 'Banners' },
+      { tipo: 'categoria', label: 'Categorías' },
+    ],
+  },
+  {
+    titulo: 'Vistas',
+    datos: [
+      { tipo: 'publicacion_vista', label: 'Publicaciones' },
+      { tipo: 'publicacion_completa', label: 'Completas' },
+      { tipo: 'banner_vista', label: 'Banners' },
+    ],
+  },
+  {
+    titulo: 'Negocios',
+    datos: [
+      { tipo: 'negocios', label: 'Total' },
+      { tipo: 'negocios_nuevos', label: 'Nuevos' },
+      { tipo: 'login', label: 'Inicios de sesión' },
+    ],
+  },
+  {
+    titulo: 'Publicaciones',
+    datos: [
+      { tipo: 'publicaciones', label: 'Publicaciones' },
+      { tipo: 'fotos', label: 'Fotos subidas' },
+      { tipo: 'banners', label: 'Banners publicados' },
+    ],
+  },
+];
+
+/**
+ * Desde qué día cuenta cada periodo (AAAA-MM-DD), o null. Con la fecha del
+ * teléfono: en el teléfono no se puede convertir a otra zona horaria, y el
+ * admin está en Chile, que es la hora con que la base guarda los días.
+ */
+function desdeDe(periodo: Periodo): string | null {
+  if (periodo === 'todo') return null;
+  const dias = periodo === 'hoy' ? 0 : Number(periodo) - 1;
+  const d = new Date(Date.now() - dias * 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const numero = (n: number) => n.toLocaleString('es-CL');
+
+/**
+ * Métricas (Panel → Métricas): Enlaces, Vistas, Negocios y Publicaciones, con
+ * tres datos cada una. Tocar una sección la abre; tocar un dato lo abre por
+ * región, comuna o categoría, de mayor a menor. Arriba, el periodo.
+ *
+ * El admin de zona ve solo sus comunas.
+ */
 export default function MetricasScreen() {
-
   const { permisos } = useSession();
-  const [metricas, setMetricas] = useState<MetricaPublicacion[]>([]);
+  // Siempre el total, sin elegir periodo (pedido del cliente).
+  const periodo: Periodo = 'todo';
+  const [filas, setFilas] = useState<FilaMetrica[]>([]);
+  const [comunas, setComunas] = useState<Record<string, { nombre: string; region: string }>>({});
+  const [categorias, setCategorias] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [seccionAbierta, setSeccionAbierta] = useState<string | null>('Enlaces');
+  const [datoAbierto, setDatoAbierto] = useState<string | null>(null);
+  const [por, setPor] = useState<Por>('region');
+
+  // Los nombres, una sola vez.
+  useEffect(() => {
+    Promise.all([fetchComunasAdmin(), fetchCategoriasAdmin()])
+      .then(([cs, cats]) => {
+        setComunas(Object.fromEntries(cs.map((c) => [c.id, { nombre: c.nombre, region: c.region }])));
+        setCategorias(Object.fromEntries(cats.map((c) => [c.id, c.nombre])));
+      })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const todas = await fetchMetricas();
+      const todas = await fetchResumenMetricas(desdeDe(periodo));
       // El de zona ve las de sus comunas.
-      setMetricas(
-        permisos?.esGeneral ? todas : todas.filter((m) => m.comuna_id && permisos?.comunas.includes(m.comuna_id)),
-      );
+      setFilas(permisos?.esGeneral ? todas : todas.filter((f) => permisos?.comunas.includes(f.comuna_id)));
     } catch (err) {
-      setError(getErrorMessage(err, 'Error desconocido.'));
+      setError(getErrorMessage(err, 'No se pudieron cargar las métricas.'));
     } finally {
       setLoading(false);
     }
-  }, [permisos]);
+  }, [periodo, permisos]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const totalClics = metricas.reduce((sum, m) => sum + m.total_clics_whatsapp, 0);
+  const totalDe = useCallback(
+    (tipo: string) => filas.filter((f) => f.tipo === tipo).reduce((s, f) => s + f.total, 0),
+    [filas],
+  );
+
+  /** Un dato repartido por región, comuna o categoría, de mayor a menor. */
+  const desglose = useMemo(() => {
+    if (!datoAbierto) return [];
+    const grupos = new Map<string, number>();
+    for (const f of filas) {
+      if (f.tipo !== datoAbierto) continue;
+      const nombre =
+        por === 'categoria'
+          ? f.categoria_id === CERO
+            ? 'Sin categoría'
+            : (categorias[f.categoria_id] ?? 'Categoría eliminada')
+          : f.comuna_id === CERO
+            ? 'Todas las comunas'
+            : por === 'comuna'
+              ? (comunas[f.comuna_id]?.nombre ?? '—')
+              : nombreRegion(comunas[f.comuna_id]?.region ?? '—');
+      grupos.set(nombre, (grupos.get(nombre) ?? 0) + f.total);
+    }
+    return [...grupos.entries()].sort((a, b) => b[1] - a[1]);
+  }, [datoAbierto, filas, por, comunas, categorias]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-
       <EncabezadoMarca subtitulo="Métricas" />
+
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
-      {!loading && !error && metricas.length === 0 && (
-        <EmptyState title="Todavía sin datos" message="Cuando alguien contacte a un comercio por WhatsApp, aparece acá." />
-      )}
 
-      {!loading && !error && metricas.length > 0 && (
-        <ScrollView contentContainerStyle={styles.content}>
-          <View style={styles.totalCard}>
-            <Text style={styles.totalLabel}>CLICS TOTALES A WHATSAPP</Text>
-            <Text style={styles.totalValor}>{totalClics.toLocaleString('es-CL')}</Text>
-          </View>
-
-          <Text style={styles.sectionLabel}>POR PUBLICACIÓN</Text>
-          {metricas.map((metrica, index) => (
-            <View key={metrica.publicacion_id} style={styles.row}>
-              <Text style={styles.rank}>{index + 1}</Text>
-              <View style={styles.rowInfo}>
-                <Text style={styles.rowTitulo} numberOfLines={1}>
-                  {metrica.titulo}
-                </Text>
-                <Text style={styles.rowSub}>
-                  {metrica.dias_con_actividad} {metrica.dias_con_actividad === 1 ? 'día' : 'días'} con actividad
-                </Text>
-              </View>
-              <Text style={styles.rowClics}>{metrica.total_clics_whatsapp}</Text>
-            </View>
-          ))}
+      {!loading && !error && (
+        <ScrollView contentContainerStyle={styles.contenido} showsVerticalScrollIndicator={false}>
+          {SECCIONES.map((seccion) => {
+            const abierta = seccionAbierta === seccion.titulo;
+            const total = seccion.datos.reduce((s, d) => s + totalDe(d.tipo), 0);
+            return (
+              <TarjetaDesplegable
+                key={seccion.titulo}
+                titulo={seccion.titulo}
+                abierta={abierta}
+                onAlternar={() => {
+                  setSeccionAbierta(abierta ? null : seccion.titulo);
+                  setDatoAbierto(null);
+                }}
+                alFinal={!abierta ? <Text style={styles.totalSeccion}>{numero(total)}</Text> : undefined}>
+                {seccion.datos.map((dato) => {
+                  const datoEstaAbierto = datoAbierto === dato.tipo;
+                  return (
+                    <View key={dato.tipo}>
+                      <Pressable
+                        style={styles.filaDato}
+                        onPress={() => setDatoAbierto(datoEstaAbierto ? null : dato.tipo)}
+                        accessibilityRole="button">
+                        <Text style={[styles.dato, datoEstaAbierto && styles.datoAbierto]}>{dato.label}</Text>
+                        <Text style={styles.valor}>{numero(totalDe(dato.tipo))}</Text>
+                      </Pressable>
+                      {datoEstaAbierto && (
+                        <View style={styles.desglose}>
+                          <FiltrosOrden
+                            opciones={[
+                              { id: 'region', label: 'Región' },
+                              { id: 'comuna', label: 'Comuna' },
+                              ...(dato.tipo === 'banners' ? [] : [{ id: 'categoria' as const, label: 'Categoría' }]),
+                            ]}
+                            elegida={dato.tipo === 'banners' && por === 'categoria' ? 'region' : por}
+                            onElegir={setPor}
+                          />
+                          {desglose.length === 0 ? (
+                            <Text style={styles.sinDatos}>Sin datos en este periodo.</Text>
+                          ) : (
+                            desglose.map(([nombre, n]) => (
+                              <View key={nombre} style={styles.filaDesglose}>
+                                <Text style={styles.nombreDesglose} numberOfLines={1}>
+                                  {nombre}
+                                </Text>
+                                <Text style={styles.valorDesglose}>{numero(n)}</Text>
+                              </View>
+                            ))
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </TarjetaDesplegable>
+            );
+          })}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -85,88 +224,58 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  topBar: {
+  contenido: {
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingBottom: Spacing.five,
+  },
+  totalSeccion: {
+    fontFamily: Fonts.delgada,
+    fontSize: 27.5,
+    color: Colors.accent,
+  },
+  filaDato: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.two,
+    paddingVertical: Spacing.two,
   },
-  backLabel: {
-    fontFamily: Fonts.medium,
+  dato: {
+    fontFamily: Fonts.delgada,
+    fontSize: 21,
     color: Colors.text,
-    fontSize: 15,
-    width: 70,
   },
-  topTitle: {
-    fontFamily: Fonts.semiBold,
-    color: Colors.text,
-    fontSize: 15,
+  datoAbierto: {
+    color: Colors.accent,
   },
-  content: {
-    padding: Spacing.three,
-    paddingBottom: Spacing.six,
+  valor: {
+    fontFamily: Fonts.delgada,
+    fontSize: 21,
+    color: Colors.accent,
   },
-  totalCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.surfaceBorder,
-    padding: Spacing.four,
-    alignItems: 'center',
-    marginBottom: Spacing.four,
+  desglose: {
+    paddingLeft: Spacing.three,
+    paddingBottom: Spacing.three,
   },
-  totalLabel: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 11,
-    letterSpacing: 0.6,
-    color: Colors.textMuted,
-    marginBottom: Spacing.two,
-  },
-  totalValor: {
-    fontFamily: Fonts.bold,
-    fontSize: 34,
-    color: Colors.success,
-  },
-  sectionLabel: {
-    fontFamily: Fonts.semiBold,
-    fontSize: 11,
-    letterSpacing: 0.6,
-    color: Colors.textMuted,
-    marginBottom: Spacing.two,
-  },
-  row: {
+  filaDesglose: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingVertical: Spacing.two + 4,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.one,
   },
-  rank: {
-    fontFamily: Fonts.semiBold,
-    width: 20,
-    fontSize: 13,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
-  rowInfo: {
+  nombreDesglose: {
     flex: 1,
+    fontFamily: Fonts.delgada,
+    fontSize: 17,
+    color: Colors.textMuted,
   },
-  rowTitulo: {
-    fontFamily: Fonts.medium,
-    fontSize: 14.5,
+  valorDesglose: {
+    fontFamily: Fonts.delgada,
+    fontSize: 17,
     color: Colors.text,
   },
-  rowSub: {
-    fontFamily: Fonts.light,
-    fontSize: 11.5,
+  sinDatos: {
+    fontFamily: Fonts.delgada,
+    fontSize: 15,
     color: Colors.textMuted,
-    marginTop: 1,
-  },
-  rowClics: {
-    fontFamily: Fonts.bold,
-    fontSize: 18,
-    color: Colors.success,
   },
 });

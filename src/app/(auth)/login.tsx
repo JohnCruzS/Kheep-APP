@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { translateAuthError } from '@/lib/authErrors';
+import { registrarLogin } from '@/lib/catalog';
 import { supabase } from '@/lib/supabase';
 import { isValidEmail } from '@/lib/validation';
 
@@ -43,6 +44,8 @@ export default function LoginScreen() {
       return;
     }
 
+    // Métrica: inicios de sesión de negocios (0045).
+    registrarLogin();
     router.replace('/(app)/(tabs)/dashboard');
   }
 
