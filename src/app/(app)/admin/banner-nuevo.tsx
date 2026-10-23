@@ -5,6 +5,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { SelectorZonas } from '@/components/admin/SelectorZonas';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { AjusteAPantalla } from '@/components/ui/AjusteAPantalla';
 import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { Comuna, crearBanners, fetchComunas } from '@/lib/catalog';
@@ -134,10 +135,8 @@ export default function BannerNuevoScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <EncabezadoMarca subtitulo="Nuevo" />
 
-      <ScrollView
-        contentContainerStyle={[styles.contenido, { paddingBottom: Spacing.three + insets.bottom }]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}>
+      {/* Sin deslizar: en una pantalla baja se achica para que quepa todo. */}
+      <AjusteAPantalla style={[styles.contenido, { paddingBottom: Spacing.three + insets.bottom }]}>
         {/* La foto como vista previa, al alto con que se verá en el inicio. */}
         <Pressable onPress={elegirFoto} style={styles.foto} accessibilityRole="button" accessibilityLabel="Subir imagen">
           {imagen ? (
@@ -207,7 +206,7 @@ export default function BannerNuevoScreen() {
           accessibilityRole="button">
           {publicando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.publicarLabel}>Publicar</Text>}
         </Pressable>
-      </ScrollView>
+      </AjusteAPantalla>
 
       <SelectorZonas
         visible={eligiendo}

@@ -5,13 +5,22 @@ import { ComponentProps, useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 
+import { EditorPantalla } from '@/components/admin/EditorPantalla';
 import { ImageViewer } from '@/components/catalog/ImageViewer';
 import { Button } from '@/components/ui/Button';
 import { Interruptor } from '@/components/ui/Interruptor';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
-import { fetchMiVisibilidad, pausarMiPerfil } from '@/lib/catalog';
+import { cambiarMiCorreo, cambiarMiFoto, cambiarMiTelefono, fetchMiVisibilidad, pausarMiPerfil } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
-import { celularLocal } from '@/lib/validation';
+import { pickAndCompressImage, uploadCompressedImage } from '@/lib/images';
+import {
+  MENSAJE_CELULAR,
+  celularLocal,
+  isValidChileanPhone,
+  isValidEmail,
+  normalizeChileanPhone,
+  soloCelular,
+} from '@/lib/validation';
 import { supabase } from '@/lib/supabase';
 import { useSession } from '@/providers/SessionProvider';
 import { FotoRemota } from '@/components/ui/FotoRemota';
@@ -29,7 +38,11 @@ export function VistaCuenta({
   email: string | undefined;
 }) {
   const router = useRouter();
+  const { refreshProfile } = useSession();
   const [verFoto, setVerFoto] = useState(false);
+  /** Qué dato está cambiando el comerciante (tocando el correo o el teléfono). */
+  const [editando, setEditando] = useState<'correo' | 'telefono' | null>(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
   // La pausa voluntaria del comerciante (0038). El admin tiene su propio
   // interruptor, que manda: si él lo ocultó, acá solo se avisa.
   const esComerciante = profile.rol === 'comerciante';
@@ -53,23 +66,41 @@ export function VistaCuenta({
     }
   }
 
+  /** Tocar la foto: elegir otra (el comerciante); el admin la ve en grande. */
+  async function cambiarFoto() {
+    try {
+      const foto = await pickAndCompressImage({ uso: 'logo' });
+      if (!foto) return;
+      setSubiendoFoto(true);
+      const { data: auth } = await supabase.auth.getUser();
+      const url = await uploadCompressedImage('logos', auth.user!.id, foto, 'logo');
+      await cambiarMiFoto(url);
+      await refreshProfile();
+    } catch (err) {
+      Alert.alert('No se pudo cambiar la foto', getErrorMessage(err, 'Intenta de nuevo.'));
+    } finally {
+      setSubiendoFoto(false);
+    }
+  }
+
   const nivelLabel = profile.rol === 'admin' ? 'Administrador' : profile.nivel === 2 ? 'Verificado' : 'En revisión';
   const nivelStyle =
     profile.rol === 'admin' ? styles.badgeAdmin : profile.nivel === 2 ? styles.badgeVerificado : styles.badgeRevision;
 
   return (
     <View style={styles.account}>
-      {/* Al tocar la foto se abre completa; sin foto no hay nada que ampliar. */}
-      {profile.logo_url ? (
-        <Pressable
-          onPress={() => setVerFoto(true)}
-          accessibilityRole="imagebutton"
-          accessibilityLabel="Ver foto de perfil">
-          <FotoRemota uri={profile.logo_url} ancho={72} style={styles.avatarImage} />
-        </Pressable>
-      ) : (
-        <View style={styles.avatarPlaceholder} />
-      )}
+      {/* El comerciante toca la foto para cambiarla; el admin, para verla completa. */}
+      <Pressable
+        onPress={esComerciante ? cambiarFoto : () => profile.logo_url && setVerFoto(true)}
+        disabled={subiendoFoto || (!esComerciante && !profile.logo_url)}
+        accessibilityRole="imagebutton"
+        accessibilityLabel={esComerciante ? 'Cambiar foto de perfil' : 'Ver foto de perfil'}>
+        {profile.logo_url ? (
+          <FotoRemota uri={profile.logo_url} ancho={72} style={[styles.avatarImage, subiendoFoto && styles.subiendo]} />
+        ) : (
+          <View style={[styles.avatarPlaceholder, subiendoFoto && styles.subiendo]} />
+        )}
+      </Pressable>
       {profile.logo_url ? (
         <ImageViewer
           images={[profile.logo_url]}
@@ -84,8 +115,13 @@ export function VistaCuenta({
       </View>
 
       <View style={styles.infoList}>
-        <InfoRow label="Correo" value={email ?? '—'} />
-        <InfoRow label="Teléfono" value={profile.telefono_contacto ? celularLocal(profile.telefono_contacto) : '—'} />
+        {/* El comerciante los toca para cambiarlos. */}
+        <InfoRow label="Correo" value={email ?? '—'} onPress={esComerciante ? () => setEditando('correo') : undefined} />
+        <InfoRow
+          label="Teléfono"
+          value={profile.telefono_contacto ? celularLocal(profile.telefono_contacto) : '—'}
+          onPress={esComerciante ? () => setEditando('telefono') : undefined}
+        />
       </View>
 
       {/* Mostrar u ocultar el perfil por un tiempo, cuando quiera
@@ -120,31 +156,72 @@ export function VistaCuenta({
           en su propia pestaña, así que acá solo repetía un camino. Y
           "Publicar banner" es para los comerciantes —que no tienen panel—;
           el admin lo hace desde Panel Admin → Banners. */}
-      <View style={styles.actionRows}>
-        <FilaAccion
-          icono="create-outline"
-          label="Editar perfil"
-          onPress={() => router.push('/(app)/perfil/editar')}
-        />
-        {profile.rol !== 'admin' && (
-          <FilaAccion
-            icono="megaphone-outline"
-            label="Publicar banner"
+      {esComerciante ? (
+        // Maqueta del cliente: "Publicar anuncio" y "Salir" en texto rojo.
+        <>
+          <Pressable
+            style={({ pressed }) => [styles.anuncio, pressed && styles.presionado]}
             onPress={() => router.push('/(app)/banner/publicar')}
-          />
-        )}
-      </View>
+            accessibilityRole="button">
+            <Text style={styles.anuncioLabel}>Publicar anuncio</Text>
+          </Pressable>
+          <Pressable onPress={salir} hitSlop={10} accessibilityRole="button">
+            <Text style={styles.salir}>Salir</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <View style={styles.actionRows}>
+            <FilaAccion
+              icono="create-outline"
+              label="Editar perfil"
+              onPress={() => router.push('/(app)/perfil/editar')}
+            />
+            {profile.rol !== 'admin' && (
+              <FilaAccion
+                icono="megaphone-outline"
+                label="Publicar banner"
+                onPress={() => router.push('/(app)/banner/publicar')}
+              />
+            )}
+          </View>
+          <Button label="Cerrar sesión" variant="secondary" onPress={salir} />
+        </>
+      )}
 
-      <Button
-        label="Cerrar sesión"
-        variant="secondary"
-        onPress={async () => {
-          await supabase.auth.signOut();
-          router.replace('/(app)/(tabs)/dashboard');
+      <EditorPantalla
+        visible={editando === 'correo'}
+        subtitulo="Correo"
+        placeholder="Correo"
+        inicial={email ?? ''}
+        propsCampo={{ keyboardType: 'email-address', autoCapitalize: 'none', autoCorrect: false }}
+        validar={(v) => (isValidEmail(v) ? null : 'Escribe un correo válido.')}
+        onCerrar={() => setEditando(null)}
+        onGuardar={async (v) => {
+          await cambiarMiCorreo(v);
+          Alert.alert('Revisa tu correo', `Te enviamos un correo a ${v.trim()} para confirmar el cambio.`);
+        }}
+      />
+      <EditorPantalla
+        visible={editando === 'telefono'}
+        subtitulo="Teléfono"
+        placeholder="912345678"
+        inicial={profile.telefono_contacto ? celularLocal(profile.telefono_contacto) : ''}
+        propsCampo={{ keyboardType: 'number-pad', maxLength: 9 }}
+        validar={(v) => (isValidChileanPhone(soloCelular(v)) ? null : MENSAJE_CELULAR)}
+        onCerrar={() => setEditando(null)}
+        onGuardar={async (v) => {
+          await cambiarMiTelefono(normalizeChileanPhone(soloCelular(v)));
+          await refreshProfile();
         }}
       />
     </View>
   );
+
+  async function salir() {
+    await supabase.auth.signOut();
+    router.replace('/(app)/(tabs)/dashboard');
+  }
 }
 
 function FilaAccion({
@@ -165,16 +242,43 @@ function FilaAccion({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, onPress }: { label: string; value: string; onPress?: () => void }) {
   return (
-    <View style={styles.infoRow}>
+    <Pressable style={styles.infoRow} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value}</Text>
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  subiendo: {
+    opacity: 0.4,
+  },
+  anuncio: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.three,
+    paddingVertical: Spacing.four,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.text,
+    alignItems: 'center',
+  },
+  presionado: {
+    opacity: 0.7,
+  },
+  anuncioLabel: {
+    fontFamily: Fonts.medium,
+    fontSize: 21,
+    color: Colors.text,
+  },
+  salir: {
+    fontFamily: Fonts.medium,
+    fontSize: 21,
+    color: Colors.accent,
+    textAlign: 'center',
+    marginTop: Spacing.five,
+  },
   visibleBox: {
     alignSelf: 'stretch',
     marginTop: Spacing.three,

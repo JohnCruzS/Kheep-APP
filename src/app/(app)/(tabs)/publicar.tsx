@@ -36,13 +36,12 @@ type ProductoDraft = {
 const EMPTY_DRAFT: ProductoDraft = { nombre: '', precio: '', image: null };
 
 /**
- * Tope de caracteres del nombre del producto (documento EDIT APP). 22 es lo
- * que entra en una línea de la tarjeta del catálogo junto al precio: más
- * largo se vería con puntos suspensivos y no serviría de nada escribirlo.
+ * Tope de caracteres del nombre del producto (pedido del cliente). Si en la
+ * tarjeta no cabe junto al precio, se desliza para leerlo entero.
  */
-const MAX_NOMBRE_PRODUCTO = 22;
-/** Hasta 9 dígitos: nadie publica un precio de mil millones. */
-const MAX_DIGITOS_PRECIO = 9;
+const MAX_NOMBRE_PRODUCTO = 100;
+/** Hasta 8 dígitos: el precio máximo es $99.999.999 (pedido del cliente). */
+const MAX_DIGITOS_PRECIO = 8;
 
 /**
  * Publicar un comercio, con el diseño de la maqueta del cliente: fondo gris

@@ -2397,9 +2397,15 @@ export function registrarLogin(): void {
 
 export type FilaMetrica = { tipo: string; comuna_id: string; categoria_id: string; total: number };
 
-/** Los totales para el panel, desde una fecha (AAAA-MM-DD) o desde siempre. */
-export async function fetchResumenMetricas(desde: string | null): Promise<FilaMetrica[]> {
-  const { data, error } = await supabase.rpc('metricas_resumen', { p_desde: desde });
+/**
+ * Los totales para el panel entre dos días (AAAA-MM-DD, los dos incluidos);
+ * null = sin límite. Con la base anterior a 0048 se usa solo "desde".
+ */
+export async function fetchResumenMetricas(desde: string | null, hasta: string | null = null): Promise<FilaMetrica[]> {
+  let { data, error } = await supabase.rpc('metricas_resumen', { p_desde: desde, p_hasta: hasta });
+  if (error && (error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? ''))) {
+    ({ data, error } = await supabase.rpc('metricas_resumen', { p_desde: desde }));
+  }
   if (error) {
     if (error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '')) {
       throw new Error('Falta ejecutar la migración 0045 en Supabase para las métricas.');
@@ -2446,4 +2452,67 @@ export async function restaurarCopiaSeguridad(id: string): Promise<void> {
 export async function eliminarCopiaSeguridad(id: string): Promise<void> {
   const { error } = await supabase.from('copias_seguridad').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ============================================================================
+// Espacio usado (0047)
+// ============================================================================
+
+/** Límites del plan gratuito de Supabase (Panel → Usage). Si se cambia de plan, se cambian acá. */
+export const LIMITES_PLAN = {
+  baseDeDatos: 500 * 1024 * 1024,
+  archivos: 1024 * 1024 * 1024,
+} as const;
+
+export type EspacioUsado = { baseDeDatos: number; archivos: Record<string, number> };
+
+/** Cuánto ocupan la base de datos y cada carpeta de archivos, en bytes. */
+export async function fetchEspacioUsado(): Promise<EspacioUsado> {
+  const { data, error } = await supabase.rpc('espacio_usado');
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '')) {
+      throw new Error('Falta ejecutar la migración 0047 en Supabase para ver el espacio usado.');
+    }
+    throw error;
+  }
+  const filas = (data ?? []) as { tipo: string; bytes: number | string }[];
+  const archivos: Record<string, number> = {};
+  let baseDeDatos = 0;
+  for (const f of filas) {
+    if (f.tipo === 'base_de_datos') baseDeDatos = Number(f.bytes);
+    else archivos[f.tipo] = Number(f.bytes);
+  }
+  return { baseDeDatos, archivos };
+}
+
+// ============================================================================
+// El comerciante cambia sus datos desde Perfil (tocando cada uno)
+// ============================================================================
+
+/** El teléfono de contacto (ya con +56); la base lo copia a sus publicaciones. */
+export async function cambiarMiTelefono(telefono: string): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('Inicia sesión de nuevo.');
+  const { error } = await supabase.from('profiles').update({ telefono_contacto: telefono }).eq('id', auth.user.id);
+  if (error) throw error;
+}
+
+/** La foto del perfil. */
+export async function cambiarMiFoto(logoUrl: string): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('Inicia sesión de nuevo.');
+  const { error } = await supabase.from('profiles').update({ logo_url: logoUrl }).eq('id', auth.user.id);
+  if (error) throw error;
+}
+
+/**
+ * El correo con que se entra. Supabase manda un correo para confirmarlo: el
+ * cambio vale recién cuando se confirma.
+ */
+export async function cambiarMiCorreo(correo: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ email: correo.trim() });
+  if (error) {
+    if (/already|registered|exists/i.test(error.message ?? '')) throw new Error('Ese correo ya tiene una cuenta.');
+    throw error;
+  }
 }

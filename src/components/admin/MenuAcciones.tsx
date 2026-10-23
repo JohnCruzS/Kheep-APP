@@ -1,7 +1,9 @@
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/Texto';
 
-import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
+import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
+import { REJILLA, u } from '@/lib/rejilla';
 
 export type Accion = {
   label: string;
@@ -30,18 +32,24 @@ export function MenuAcciones({
   acciones: Accion[];
   onClose: () => void;
 }) {
+  // Que "Cancelar" no quede debajo de la barra de botones del teléfono.
+  const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} navigationBarTranslucent statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.titulo} numberOfLines={1}>
-            {titulo}
-          </Text>
+        <Pressable
+          style={[styles.sheet, { paddingBottom: Spacing.five + Math.max(insets.bottom, 48) }]}
+          onPress={(e) => e.stopPropagation()}>
+          {titulo ? (
+            <Text style={styles.titulo} numberOfLines={1}>
+              {titulo}
+            </Text>
+          ) : null}
 
-          {acciones.map((accion) => (
+          {acciones.map((accion, i) => (
             <Pressable
               key={accion.label}
-              style={({ pressed }) => [styles.fila, pressed && styles.filaPresionada]}
+              style={({ pressed }) => [styles.fila, i === 0 && !titulo && styles.primera, pressed && styles.filaPresionada]}
               onPress={() => {
                 onClose();
                 accion.onPress();
@@ -59,49 +67,59 @@ export function MenuAcciones({
   );
 }
 
+// Con la estética del resto del panel: negro con borde, texto light grande
+// y centrado, lo peligroso y "Cancelar" en rojo.
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: Colors.backgroundAlt,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    paddingHorizontal: Spacing.four,
+    backgroundColor: Colors.background,
+    borderTopLeftRadius: u(REJILLA.curvatura) * 2,
+    borderTopRightRadius: u(REJILLA.curvatura) * 2,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: TarjetaLista.borde,
+    paddingHorizontal: u(REJILLA.margenLateral) * 2,
     paddingTop: Spacing.four,
     paddingBottom: Spacing.five,
   },
   titulo: {
-    fontFamily: Fonts.light,
-    fontSize: 19,
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
     color: Colors.accent,
+    textAlign: 'center',
     marginBottom: Spacing.three,
   },
   fila: {
-    paddingVertical: Spacing.three,
+    alignItems: 'center',
+    paddingVertical: Spacing.four,
     borderTopWidth: 1,
-    borderTopColor: Colors.surfaceBorder,
+    borderTopColor: TarjetaLista.borde,
+  },
+  primera: {
+    borderTopWidth: 0,
   },
   filaPresionada: {
-    backgroundColor: Colors.surface,
+    opacity: 0.6,
   },
   label: {
-    fontFamily: Fonts.light,
-    fontSize: 17,
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
     color: Colors.text,
   },
   labelPeligrosa: {
-    color: Colors.danger,
+    color: Colors.accent,
   },
   cancelar: {
     alignItems: 'center',
     paddingTop: Spacing.four,
   },
   cancelarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    color: Colors.textMuted,
+    fontFamily: Fonts.delgada,
+    fontSize: 22,
+    color: Colors.accent,
   },
 });

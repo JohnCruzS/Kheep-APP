@@ -169,10 +169,10 @@ export default function PreciosBannerScreen() {
         subtitulo={elegido?.nombre ?? ''}
         placeholder="$ por día"
         inicial={elegido?.precio !== null && elegido?.precio !== undefined ? String(elegido.precio) : ''}
-        propsCampo={{ keyboardType: 'number-pad' }}
+        propsCampo={{ keyboardType: 'number-pad', maxLength: 8 }}
         validar={(v) => {
           const limpio = v.replace(/\D/g, '');
-          if (limpio && (Number(limpio) < 1 || Number(limpio) > 100000000)) return 'Escribe un precio válido.';
+          if (limpio && (Number(limpio) < 1 || Number(limpio) > 99999999)) return 'Escribe un precio válido.';
           return null;
         }}
         onCerrar={() => setEditando(false)}

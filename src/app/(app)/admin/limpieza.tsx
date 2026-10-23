@@ -1,4 +1,4 @@
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { CopiasSeguridad } from '@/components/admin/CopiasSeguridad';
+import { EspacioUsado } from '@/components/admin/EspacioUsado';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import {
@@ -20,6 +21,7 @@ import {
   purgarPublicacionesBorradas,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { REJILLA, u } from '@/lib/rejilla';
 import { useSession } from '@/providers/SessionProvider';
 
 const ETIQUETA_BUCKET: Record<string, string> = {
@@ -55,6 +57,7 @@ function fechaLegible(iso: string | null): string {
  */
 export default function LimpiezaScreen() {
   const { permisos } = useSession();
+  const router = useRouter();
   const [imagenes, setImagenes] = useState<ImagenHuerfana[]>([]);
   const [loading, setLoading] = useState(true);
   const [borrando, setBorrando] = useState(false);
@@ -151,13 +154,19 @@ export default function LimpiezaScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false, animation: 'fade' }} />
 
-      <EncabezadoMarca subtitulo="Datos" />
+      {/* Dos toques en el logo vuelven al Informe. */}
+      <EncabezadoMarca subtitulo="Datos" onDobleToque={() => router.replace('/(app)/admin/metricas')} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Copias de seguridad de la configuración (0046), lo primero. */}
-        <CopiasSeguridad />
+        {/* Cuánto espacio se usa y cuánto queda (0047), lo primero. */}
+        <EspacioUsado />
+
+        {/* Copias de seguridad de la configuración (0046). */}
+        <View style={styles.tituloLimpieza}>
+          <CopiasSeguridad />
+        </View>
 
         <Text style={[styles.seccionTitulo, styles.tituloLimpieza]}>Archivos sin usar</Text>
         <Text style={styles.ayuda}>
@@ -309,7 +318,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
-    paddingHorizontal: Spacing.three,
+    // El mismo margen de los lados que el resto del panel.
+    paddingHorizontal: u(REJILLA.margenLateral),
+    paddingTop: Spacing.three,
     paddingBottom: Spacing.six,
   },
   ayuda: {

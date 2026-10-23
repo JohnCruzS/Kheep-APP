@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { altoTarjetaPanel } from '@/components/admin/PanelGeneral';
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Interruptor } from '@/components/ui/Interruptor';
@@ -47,6 +48,8 @@ export default function ComunasTabScreen() {
    * a "Chile" (pedido del cliente).
    */
   const [soloVisibles, setSoloVisibles] = useState(false);
+  /** Alto de cada región: el mismo de las tarjetas del panel del admin. */
+  const [altoTarjeta, setAltoTarjeta] = useState<number>();
 
   const load = useCallback(async () => {
     setError(null);
@@ -112,7 +115,12 @@ export default function ComunasTabScreen() {
       {error && <ErrorState message={error} onRetry={load} />}
 
       {!loading && !error && (
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          // Las regiones miden lo mismo que las tarjetas del panel del admin
+          // en esta misma pantalla (pedido del cliente).
+          onLayout={(e) => setAltoTarjeta(altoTarjetaPanel(e.nativeEvent.layout.height))}>
           {regiones.map(([region, lista]) => {
             const abierta = regionAbierta === region;
             // El total es el de la región entera, también en "Visible" (donde
@@ -124,7 +132,7 @@ export default function ComunasTabScreen() {
             return (
               <View key={region} style={styles.tarjeta}>
                 <Pressable
-                  style={styles.cabecera}
+                  style={[styles.cabecera, altoTarjeta !== undefined && { height: altoTarjeta - 2, paddingVertical: 0 }]}
                   onPress={() => setRegionAbierta(abierta ? null : region)}
                   accessibilityRole="button">
                   <Text style={styles.region} numberOfLines={1}>
@@ -183,7 +191,8 @@ const styles = StyleSheet.create({
     borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
     borderColor: TarjetaLista.borde,
-    marginBottom: TarjetaLista.separacion,
+    // La misma separación que entre las tarjetas del panel del admin.
+    marginBottom: u(REJILLA.margenLateral),
     overflow: 'hidden',
   },
   // Medidas tomadas de la maqueta del cliente: la fila de la región ocupa el

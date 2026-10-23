@@ -12,14 +12,18 @@ export function FiltrosOrden<T extends string>({
   opciones,
   elegida,
   onElegir,
+  grande,
 }: {
   opciones: { id: T; label: string }[];
   elegida: T;
   onElegir: (id: T) => void;
+  /** Letra más grande (los datos de Métricas, como en la maqueta). */
+  grande?: boolean;
 }) {
   // Con más de tres (la lista de una categoría tiene cinco) la letra baja un
   // poco y se reparten a todo el ancho, para que se vean todos de una vez.
-  const compacta = opciones.length > 3;
+  // Con letra grande no se achica: la fila se desliza de lado.
+  const compacta = opciones.length > 3 && !grande;
   return (
     // En una sola línea: si aun así no caben, se desliza de lado.
     <ScrollView
@@ -38,7 +42,7 @@ export function FiltrosOrden<T extends string>({
             hitSlop={8}
             accessibilityRole="tab"
             accessibilityState={{ selected: activa }}>
-            <Text style={[styles.label, compacta && styles.labelCompacta, activa && styles.labelActiva]}>{opcion.label}</Text>
+            <Text style={[styles.label, compacta && styles.labelCompacta, grande && styles.labelGrande, activa && styles.labelActiva]}>{opcion.label}</Text>
           </Pressable>
         );
       })}
@@ -67,6 +71,9 @@ const styles = StyleSheet.create({
   },
   labelCompacta: {
     fontSize: 15,
+  },
+  labelGrande: {
+    fontSize: 26,
   },
   labelActiva: {
     color: Colors.accent,

@@ -14,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { EmptyState, ErrorState } from '@/components/catalog/CatalogState';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { AjusteAPantalla } from '@/components/ui/AjusteAPantalla';
 import { MedioBanner } from '@/components/catalog/MedioBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { UbicacionBanner } from '@/components/admin/UbicacionBanner';
@@ -245,7 +246,8 @@ export default function BannersAdminScreen() {
       )}
 
       {!loading && !error && banners.length > 0 && actual && (
-        <ScrollView contentContainerStyle={styles.contenido} showsVerticalScrollIndicator={false}>
+        // Sin deslizar: en una pantalla baja se achica para que quepa todo.
+        <AjusteAPantalla style={styles.contenido}>
           {/* Solo la imagen se desliza; los datos de abajo pasan a ser los del
               banner que se está mirando. */}
           <View style={styles.marco} onLayout={medirAncho}>
@@ -340,7 +342,7 @@ export default function BannersAdminScreen() {
 
           {/* Debajo de todo, no flotando encima del contenido (pedido del cliente). */}
           <BotonNuevo onPress={() => router.push('/(app)/admin/banner-nuevo')} abajo={insets.bottom} />
-        </ScrollView>
+        </AjusteAPantalla>
       )}
 
       <UbicacionBanner

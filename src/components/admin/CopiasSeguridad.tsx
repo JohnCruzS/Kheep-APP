@@ -52,7 +52,8 @@ export function CopiasSeguridad() {
     setOcupado('nueva');
     setAviso(null);
     try {
-      await crearCopiaSeguridad(`Copia del ${fechaHora(new Date().toISOString())}`);
+      // La fecha va debajo del nombre: en el nombre solo se repetía.
+      await crearCopiaSeguridad('Copia');
       setAviso('Copia guardada.');
       await cargar();
     } catch (err) {

@@ -98,8 +98,10 @@ export function EditorCategoria({
           <ScrollView contentContainerStyle={styles.contenido} keyboardShouldPersistTaps="handled">
             {/* Un solo campo: el nombre. Las categorías ya no llevan icono. */}
             <View style={styles.capsula}>
+              {/* Sin texto de ejemplo, solo el cursor al centro (pedido del
+                  cliente). El espacio evita que Android lo deje al final. */}
               <TextInput
-                placeholder="Nombre (ej: Delivery)"
+                placeholder=" "
                 placeholderTextColor={Colors.placeholder}
                 value={nombre}
                 onChangeText={setNombre}
@@ -174,6 +176,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.light,
     fontSize: 19,
     color: Colors.text,
+    textAlign: 'center',
   },
   error: {
     fontFamily: Fonts.light,

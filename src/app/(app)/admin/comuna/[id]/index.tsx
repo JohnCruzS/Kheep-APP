@@ -245,7 +245,8 @@ export default function CategoriasDeComunaScreen() {
                     {...(gestiona && propsAsa ? propsAsa : {})}
                     style={styles.asa}
                     accessibilityLabel={propsAsa ? `Mover ${categoria.nombre}` : `${categoria.nombre} va siempre al final`}>
-                    <Text style={[styles.asaIcono, !propsAsa && styles.asaFija]}>➤</Text>
+                    {/* "Otro" no se mueve (va siempre al final), pero su flecha se ve igual que las demás. */}
+                    <Text style={styles.asaIcono}>➤</Text>
                   </View>
 
                   <Pressable
@@ -259,7 +260,9 @@ export default function CategoriasDeComunaScreen() {
                     // Mantener apretado el nombre abre editar, ocultar, mover,
                     // agregar a todas y eliminar. Antes eso era un botón ⋯ en
                     // la fila, que el documento no tiene.
-                    onLongPress={gestiona ? () => setAcciones(categoria) : undefined}
+                    // "Otro" no tiene menú: no se renombra, no se mueve ni se
+                    // elimina (está en todas las comunas, por defecto).
+                    onLongPress={gestiona && !esOtro(categoria) ? () => setAcciones(categoria) : undefined}
                     delayLongPress={300}>
                     <Text style={styles.nombre} numberOfLines={1}>
                       {categoria.nombre}
@@ -326,17 +329,15 @@ export default function CategoriasDeComunaScreen() {
           dibujan tres botones y acá hacen falta cinco. */}
       <MenuAcciones
         visible={acciones !== null}
-        titulo={acciones?.nombre ?? ''}
+        // Sin título (pedido del cliente): la categoría ya se ve detrás.
+        titulo=""
         onClose={() => setAcciones(null)}
         acciones={
           acciones
             ? esGeneral
               ? [
+                  // Ocultar/mostrar ya está en el interruptor de la tarjeta.
                   { label: 'Editar nombre', onPress: () => setEditando(acciones) },
-                  {
-                    label: acciones.visible ? 'Ocultar en esta comuna' : 'Mostrar en esta comuna',
-                    onPress: () => handleToggle(acciones),
-                  },
                   { label: 'Mover a otra comuna', onPress: () => setMoviendo(acciones) },
                   {
                     label: 'Agregar a todas las comunas',
@@ -350,10 +351,6 @@ export default function CategoriasDeComunaScreen() {
                 ]
               : [
                   // Administrador de zona: solo lo que se queda en su comuna.
-                  {
-                    label: acciones.visible ? 'Ocultar en esta comuna' : 'Mostrar en esta comuna',
-                    onPress: () => handleToggle(acciones),
-                  },
                   {
                     label: 'Quitar de esta comuna',
                     peligrosa: true,
@@ -447,9 +444,6 @@ const styles = StyleSheet.create({
   // La fila de "Otro", fuera de la lista arrastrable: mismo alto y separación.
   filaFija: {
     marginTop: 0,
-  },
-  asaFija: {
-    opacity: 0.25,
   },
   asaIcono: {
     fontFamily: Fonts.light,

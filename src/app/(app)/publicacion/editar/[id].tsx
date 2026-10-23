@@ -58,8 +58,8 @@ const aFila = (p: Producto): FilaProducto => ({
 });
 
 /** Mismos topes que al publicar (documento EDIT APP). */
-const MAX_NOMBRE_PRODUCTO = 22;
-const MAX_DIGITOS_PRECIO = 9;
+const MAX_NOMBRE_PRODUCTO = 100;
+const MAX_DIGITOS_PRECIO = 8;
 
 export default function EditarPublicacionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();

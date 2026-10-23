@@ -15,6 +15,7 @@ import { Colors, Fonts } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
 import type { PublicacionResumen } from '@/lib/catalog';
 import { FotoRemota } from '@/components/ui/FotoRemota';
+import { TextoDeslizante } from '@/components/ui/TextoDeslizante';
 
 type Props = {
   publicacion: PublicacionResumen;
@@ -187,9 +188,12 @@ function PublicacionCardComponent({
               accessibilityRole="button"
               accessibilityLabel={`Contactar a ${publicacion.titulo} por WhatsApp`}>
               <View style={styles.filaTitulo}>
-                <Text style={[styles.title, styles.titleEncogible]} numberOfLines={1}>
-                  {publicacion.titulo}
-                </Text>
+                {/* Si el nombre no cabe, se desliza despacio para leerlo entero. */}
+                <TextoDeslizante
+                  texto={publicacion.titulo}
+                  style={styles.title}
+                  onPress={() => onContactar(publicacion)}
+                />
                 {/* En Aprobar: las fotos que faltan por ver. Aparte del nombre
                     para que, si el nombre es largo, se acorte él y no el número. */}
                 {(onFotosPorVer || fotosPorAprobar !== undefined) && (
@@ -201,12 +205,13 @@ function PublicacionCardComponent({
           </View>
 
           {producto && (
-            <View style={styles.bottomRow} pointerEvents="none">
-              <Text style={styles.productName} numberOfLines={1}>
-                {producto.nombre}
-              </Text>
+            // `box-none`: el nombre del producto se puede arrastrar si es largo.
+            <View style={styles.bottomRow} pointerEvents="box-none">
+              <TextoDeslizante texto={producto.nombre} style={styles.productName} />
               {producto.precio > 0 && (
-                <Text style={styles.price}>$ {producto.precio.toLocaleString('es-CL')}</Text>
+                <View pointerEvents="none">
+                  <Text style={styles.price}>$ {producto.precio.toLocaleString('es-CL')}</Text>
+                </View>
               )}
             </View>
           )}

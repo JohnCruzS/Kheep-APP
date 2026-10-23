@@ -128,7 +128,9 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre, alAbrir 
           <TextInput
             value={busqueda}
             onChangeText={setBusqueda}
-            placeholder={escribiendo ? undefined : 'Buscar'}
+            // Al escribir, un espacio en vez de nada: en Android, un campo
+            // centrado sin texto ni ejemplo pone el cursor al final, no al medio.
+            placeholder={escribiendo ? ' ' : 'Buscar'}
             onFocus={() => setEscribiendo(true)}
             onBlur={() => setEscribiendo(false)}
             placeholderTextColor={Colors.textMuted}
@@ -188,7 +190,8 @@ const styles = StyleSheet.create({
     color: '#8A8A8A',
   },
   buscador: {
-    fontFamily: Fonts.light,
+    // Light de verdad (Fonts.light hoy es Medium): pedido del cliente.
+    fontFamily: Fonts.delgada,
     textAlign: 'center',
     // Cápsula, como el documento EDIT APP.
     borderWidth: 1,
@@ -209,13 +212,13 @@ const styles = StyleSheet.create({
   },
   optionLabel: {
     fontFamily: Fonts.delgada,
-    fontSize: 19,
+    fontSize: 24,
     textAlign: 'center',
     color: Colors.text,
   },
+  // La comuna actual, en rojo (no en negrita).
   optionLabelActive: {
-    fontFamily: Fonts.medium,
-    color: Colors.text,
+    color: Colors.accent,
   },
   sinResultados: {
     fontFamily: Fonts.light,

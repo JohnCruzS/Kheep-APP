@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -66,7 +66,10 @@ export function PanelGeneral() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <EncabezadoMarca subtitulo="Chile" />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {/* Sin desplazamiento: las tarjetas se achican lo justo para que todo,
+          también "Salir", quepa en cualquier pantalla (pedido del cliente). */}
+      <View style={styles.content}>
+        <View style={styles.opciones}>
         {esGeneral && <Opcion label="Título" onPress={() => router.push('/(app)/admin/logos')} />}
         {puede(permisos, 'moderar') && (
         <Opcion
@@ -78,14 +81,15 @@ export function PanelGeneral() {
         />
         )}
         {puede(permisos, 'banners') && (
-          <>
-            <Opcion label="Banners" onPress={() => router.push('/(app)/admin/banners')} />
-            <Opcion label="Métricas" onPress={() => router.push('/(app)/admin/metricas')} />
-          </>
+          <Opcion label="Banners" onPress={() => router.push('/(app)/admin/banners')} />
         )}
 
-        {/* "Datos": las imágenes que ya no usa nadie y el contenido vencido. */}
-        {esGeneral && <Opcion label="Datos" onPress={() => router.push('/(app)/admin/limpieza')} />}
+        {/* "Datos" (maqueta del cliente): entra al Informe (las métricas) y,
+            con dos toques en el logo, el general pasa al espacio usado y las
+            copias de seguridad. */}
+        {(esGeneral || puede(permisos, 'banners')) && (
+          <Opcion label="Datos" onPress={() => router.push('/(app)/admin/metricas')} />
+        )}
 
         {/* "Admin": los administradores y la cuenta propia ("Administración",
             con su correo y su contraseña). Por eso el general ya no tiene
@@ -94,15 +98,33 @@ export function PanelGeneral() {
 
         {/* El de zona no entra a "Admin": su cuenta sigue teniendo su lugar. */}
         {!esGeneral && <Opcion label="Cuenta" onPress={() => router.push('/(app)/perfil/cuenta')} />}
+        </View>
 
         {/* A la vista, no escondido dentro de "Cuenta": el admin comparte
             teléfono o entra desde otro y tiene que poder salir sin buscar. */}
         <Pressable style={styles.salir} onPress={confirmarCierre} accessibilityRole="button">
           <Text style={styles.salirLabel}>Salir</Text>
         </Pressable>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
+}
+
+/** Alto fijo de la fila de "Salir": así se puede calcular el de las tarjetas. */
+const ALTO_SALIR = 58;
+/** Tarjetas del panel del admin general. */
+const TARJETAS_PANEL = 5;
+
+/**
+ * El alto que toma cada tarjeta del panel cuando el espacio entre el
+ * encabezado y la barra de abajo mide `altoDisponible`: el de la maqueta como
+ * mucho, o menos en una pantalla baja para que quepa "Salir". Lo usan también
+ * las regiones de Comunas, para verse iguales (pedido del cliente).
+ */
+export function altoTarjetaPanel(altoDisponible: number): number {
+  const opciones = altoDisponible - Spacing.two - ALTO_SALIR;
+  const alto = opciones / TARJETAS_PANEL - u(REJILLA.margenLateral);
+  return Math.floor(Math.max(48, Math.min(u(240), alto)));
 }
 
 function Opcion({
@@ -132,8 +154,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   content: {
+    flex: 1,
     paddingHorizontal: u(REJILLA.margenLateral),
-    paddingBottom: Spacing.six,
+    paddingBottom: Spacing.two,
+  },
+  opciones: {
+    flex: 1,
   },
   // Maqueta del cliente: tarjeta negra con borde tenue, de un 21 % del ancho
   // de la pantalla de alto, y el nombre a un 11,6 % del borde.
@@ -149,7 +175,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: TarjetaLista.sangria,
     // Maqueta del cliente: cada tarjeta mide 240 de 1000 del ancho, igual que
     // las de Admin, y entre una y otra va un margen lateral.
-    height: u(240),
+    // Como mucho el alto de la maqueta; en una pantalla baja se achican
+    // todas por igual para que quepa "Salir".
+    flex: 1,
+    maxHeight: u(240),
+    minHeight: 48,
     marginBottom: u(REJILLA.margenLateral),
   },
   tarjetaPresionada: {
@@ -164,8 +194,8 @@ const styles = StyleSheet.create({
   },
   salir: {
     alignItems: 'center',
-    marginTop: 16,
-    paddingVertical: 10,
+    justifyContent: 'center',
+    height: ALTO_SALIR,
   },
   // Poppins Light en rojo (maqueta del cliente), igual que "Nuevo" en Admin.
   salirLabel: {

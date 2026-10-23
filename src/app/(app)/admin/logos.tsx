@@ -7,6 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ErrorState } from '@/components/catalog/CatalogState';
 import { Button } from '@/components/ui/Button';
+import { AjusteAPantalla } from '@/components/ui/AjusteAPantalla';
 import { ControlMedida } from '@/components/ui/ControlMedida';
 import { Guias, VistaPreviaTitulo } from '@/components/ui/VistaPreviaTitulo';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -176,7 +177,8 @@ export default function LogosAdminScreen() {
         onProporcion={setProporcion}
       />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {/* Sin deslizar: en una pantalla baja se achica para que quepa todo. */}
+      <AjusteAPantalla style={styles.content}>
 
         {error && <ErrorState message={error} onRetry={load} />}
 
@@ -245,9 +247,7 @@ export default function LogosAdminScreen() {
             <Text style={styles.guardarLabel} numberOfLines={1} adjustsFontSizeToFit>{guardando ? 'Guardando…' : 'Guardar'}</Text>
           </Pressable>
         )}
-
-
-      </ScrollView>
+      </AjusteAPantalla>
 
       <NuevoLogoModal visible={creando} onClose={() => setCreando(false)} onSaved={load} />
     </SafeAreaView>

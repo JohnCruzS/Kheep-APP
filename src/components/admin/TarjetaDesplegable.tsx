@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Interruptor } from '@/components/ui/Interruptor';
 import type { PropsMantener } from '@/components/ui/ListaArrastrable';
 import { Text } from '@/components/ui/Texto';
+import { TextoDeslizante } from '@/components/ui/TextoDeslizante';
 import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
 
@@ -78,15 +79,24 @@ export function TarjetaDesplegable({
             delayLongPress={400}
             hitSlop={4}
             accessibilityHint={pistaMantener ?? 'Mantén apretado para cambiar el nombre'}>
-            <Text style={styles.titulo} numberOfLines={1}>
-              {titulo}
-            </Text>
+            <TextoDeslizante
+              texto={titulo}
+              style={styles.titulo}
+              onPress={onAlternar}
+              onLongPress={onMantenerTitulo}
+              delayLongPress={400}
+            />
           </Pressable>
         ) : (
           <View style={styles.zonaTitulo}>
-            <Text style={styles.titulo} numberOfLines={1}>
-              {titulo}
-            </Text>
+            <TextoDeslizante
+              texto={titulo}
+              style={styles.titulo}
+              onPress={onAlternar}
+              onLongPress={mantener?.onLongPress}
+              onPressOut={mantener?.onPressOut}
+              delayLongPress={300}
+            />
           </View>
         )}
         {junto}

@@ -6,12 +6,12 @@ import logoKheep from '../../../assets/images/logo-kheep.png';
 import { MedidasLogo, useMarca } from '@/lib/marca';
 
 /**
- * Proporción del logo normal (assets/images/logo-kheep.png, 483×143). Si se
+ * Proporción del logo normal (assets/images/logo-kheep.png, 1278×379: el logo actual, rojo y blanco). Si se
  * reemplaza el archivo por otro diseño hay que actualizar este número: de acá
  * sale el alto a partir del ancho, así que una proporción equivocada lo deja
  * con el alto incorrecto.
  */
-const PROPORCION = 483 / 143;
+const PROPORCION = 1278 / 379;
 
 /** Separación entre el título y lo que va debajo, en unidades de la rejilla. */
 const SEPARACION_DEBAJO = 8;
