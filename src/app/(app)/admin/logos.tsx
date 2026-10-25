@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { Text } from '@/components/ui/Texto';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/components/catalog/CatalogState';
@@ -231,23 +232,18 @@ export default function LogosAdminScreen() {
           </View>
         )}
 
-        {/* Guardar, al final de los controles: baja con la pantalla en vez de
-            flotar encima de ella. Gris mientras no haya nada nuevo que
-            guardar, porque el cambio lo ven todos los usuarios. */}
-        {!faltaMigracion && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.guardar,
-              !hayCambios && styles.guardarApagado,
-              pressed && hayCambios && styles.guardarPresionado,
-            ]}
-            onPress={handleGuardar}
-            disabled={!hayCambios || guardando}
-            accessibilityRole="button">
-            <Text style={styles.guardarLabel} numberOfLines={1} adjustsFontSizeToFit>{guardando ? 'Guardando…' : 'Guardar'}</Text>
-          </Pressable>
-        )}
       </AjusteAPantalla>
+
+      {/* Guardar, abajo y a la misma altura que en las demás vistas. Gris
+          mientras no haya nada nuevo que guardar, porque el cambio lo ven
+          todos los usuarios. */}
+      {!faltaMigracion && (
+        <BotonPie
+          label={guardando ? 'Guardando…' : 'Guardar'}
+          onPress={handleGuardar}
+          apagado={!hayCambios || guardando}
+        />
+      )}
 
       <NuevoLogoModal visible={creando} onClose={() => setCreando(false)} onSaved={load} />
     </SafeAreaView>

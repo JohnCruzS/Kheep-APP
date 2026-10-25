@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
@@ -12,7 +13,8 @@ import { EditorCategoria } from '@/components/admin/EditorCategoria';
 import { MenuAcciones } from '@/components/admin/MenuAcciones';
 import { SelectorComuna } from '@/components/admin/SelectorComuna';
 import { Interruptor } from '@/components/ui/Interruptor';
-import { ALTO_TARJETA_LISTA, Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
+import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
+import { SEPARACION_TARJETA, useAltoTarjeta } from '@/lib/altoTarjeta';
 import {
   CATEGORIA_OTRO,
   CategoriaDeComuna,
@@ -33,7 +35,6 @@ import { useSession } from '@/providers/SessionProvider';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /** Alto de cada fila, separación incluida: lo necesita el arrastre para saber a qué posición corresponde cada píxel. */
-const ALTO_FILA = ALTO_TARJETA_LISTA + TarjetaLista.separacion;
 
 /** "Otro", la categoría por descarte: va fija al final de la lista y no se arrastra. */
 const esOtro = (c: { nombre: string }) => c.nombre.trim().toLowerCase() === CATEGORIA_OTRO.toLowerCase();
@@ -55,6 +56,10 @@ const conOtroAlFinal = <T extends { nombre: string }>(lista: T[]) => [
  */
 export default function CategoriasDeComunaScreen() {
   const router = useRouter();
+  // Las filas miden lo mismo que las tarjetas del panel del admin, con su
+  // misma separación (pedido del cliente).
+  const altoTarjeta = useAltoTarjeta();
+  const ALTO_FILA = altoTarjeta + SEPARACION_TARJETA;
   const { id: comunaId } = useLocalSearchParams<{ id: string }>();
   const { permisos } = useSession();
   const esGeneral = permisos?.esGeneral ?? false;
@@ -236,7 +241,7 @@ export default function CategoriasDeComunaScreen() {
     propsAsa: PropsAsa | null,
   ) {
     return (
-                <View style={[styles.fila, arrastrando && styles.filaArrastrando]}>
+                <View style={[styles.fila, { height: altoTarjeta }, arrastrando && styles.filaArrastrando]}>
                   {/* La flecha es el asa: se mantiene apretada y se arrastra
                       para cambiar el orden. Va aparte del resto de la fila
                       para que un deslizamiento normal siga desplazando la
@@ -317,13 +322,7 @@ export default function CategoriasDeComunaScreen() {
       </ScrollView>
 
       {/* Fijo abajo, como el documento: no se desplaza con la lista. */}
-      {gestiona && (
-        <Pressable
-          style={({ pressed }) => [styles.nueva, pressed && styles.nuevaPresionada]}
-          onPress={() => setCreando(true)}>
-          <Text style={styles.nuevaLabel} numberOfLines={1} adjustsFontSizeToFit>Nueva</Text>
-        </Pressable>
-      )}
+      {gestiona && <BotonPie label="Nueva" onPress={() => setCreando(true)} />}
 
       {/* Panel propio en vez de un `Alert`: en Android los diálogos solo
           dibujan tres botones y acá hacen falta cinco. */}
@@ -432,7 +431,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TarjetaLista.borde,
     paddingHorizontal: 19,
-    height: ALTO_FILA - TarjetaLista.separacion,
   },
   filaArrastrando: {
     backgroundColor: Colors.backgroundAlt,

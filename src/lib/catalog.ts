@@ -158,7 +158,10 @@ async function consultarBanners(columnas: string, comunaId?: string | null) {
     .eq('pagado', true)
     .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
     .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}`)
-    .order('orden', { ascending: true });
+    .order('orden', { ascending: true })
+    // El mismo desempate que en el panel: siempre en el mismo orden.
+    .order('fecha_inicio', { ascending: true, nullsFirst: true })
+    .order('id', { ascending: true });
 
   if (comunaId) {
     request = request.or(`comuna_id.is.null,comuna_id.eq.${comunaId}`);
@@ -880,6 +883,8 @@ export async function eliminarCategoria(id: string): Promise<void> {
 // desde la app — ver la nota en la migración 0012.
 export type BannerAdmin = {
   id: string;
+  /** Quién lo subió: solo sus propios banners se pueden cambiar de comunas. */
+  usuario_id: string;
   comuna_id: string | null;
   imagen_url: string;
   fecha_inicio: string | null;
@@ -894,6 +899,9 @@ export type BannerAdmin = {
   activo: boolean;
   /** Desde cuándo está en pausa (0041); null = no pausado. */
   pausado_en: string | null;
+  /** Lo contratado: en días (los comerciantes) o en horas (0042, el admin). */
+  dias: number | null;
+  horas: number | null;
   autor: { nombre: string } | null;
   comuna: { nombre: string } | null;
 };
@@ -906,7 +914,7 @@ export type BannerAdmin = {
  */
 export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
   const ahora = new Date().toISOString();
-  const base = 'id, comuna_id, imagen_url, fecha_inicio, fecha_fin, pagado, activo, ';
+  const base = 'id, usuario_id, comuna_id, imagen_url, fecha_inicio, fecha_fin, pagado, activo, ';
   const relaciones = 'autor:profiles!banners_usuario_id_fkey(nombre), comuna:comunas(nombre)';
 
   // Los publicados y vigentes, también los pausados: uno en pausa sigue acá
@@ -919,36 +927,57 @@ export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
       .eq('pagado', true)
       .or(`fecha_inicio.is.null,fecha_inicio.lte.${ahora}`)
       .or(`fecha_fin.is.null,fecha_fin.gte.${ahora}${conPausa ? ',pausado_en.not.is.null' : ''}`)
-      .order('orden', { ascending: true });
+      .order('orden', { ascending: true })
+      // Desempate fijo: con el mismo `orden`, la base los devolvía en
+      // cualquier orden y al pausar uno cambiaba de lugar.
+      .order('fecha_inicio', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true });
 
-  // Sin las migraciones 0041 / 0040 / 0025 se muestra la lista sin esos
-  // datos, en vez de un error.
+  // Sin las migraciones 0042 / 0041 / 0040 / 0025 se muestra la lista sin
+  // esos datos, en vez de un error.
+  const conHoras = await consultar(`${base}dias, horas, enlace, vistas, clics, vistas_unicas, pausado_en, ${relaciones}`, true);
+  if (!faltaColumnaNueva(conHoras.error)) {
+    if (conHoras.error) throw conHoras.error;
+    return (conHoras.data as unknown as BannerAdmin[]) ?? [];
+  }
+
+  const sinDuracion = { dias: null, horas: null };
   const conPausa = await consultar(`${base}enlace, vistas, clics, vistas_unicas, pausado_en, ${relaciones}`, true);
   if (!faltaColumnaNueva(conPausa.error)) {
     if (conPausa.error) throw conPausa.error;
-    return (conPausa.data as unknown as BannerAdmin[]) ?? [];
+    return ((conPausa.data ?? []) as unknown as Omit<BannerAdmin, 'dias' | 'horas'>[]).map((b) => ({ ...b, ...sinDuracion }));
   }
 
   const conUnicas = await consultar(`${base}enlace, vistas, clics, vistas_unicas, ${relaciones}`, false);
   if (!faltaColumnaNueva(conUnicas.error)) {
     if (conUnicas.error) throw conUnicas.error;
-    return ((conUnicas.data ?? []) as unknown as Omit<BannerAdmin, 'pausado_en'>[]).map((b) => ({ ...b, pausado_en: null }));
+    return ((conUnicas.data ?? []) as unknown as Omit<BannerAdmin, 'pausado_en' | 'dias' | 'horas'>[]).map((b) => ({
+      ...b,
+      pausado_en: null,
+      ...sinDuracion,
+    }));
   }
 
   const completo = await consultar(`${base}enlace, vistas, clics, ${relaciones}`, false);
   if (!faltaColumnaNueva(completo.error)) {
     if (completo.error) throw completo.error;
-    return ((completo.data ?? []) as unknown as Omit<BannerAdmin, 'vistas_unicas' | 'pausado_en'>[]).map((b) => ({
-      ...b,
-      vistas_unicas: 0,
-      pausado_en: null,
-    }));
+    return ((completo.data ?? []) as unknown as Omit<BannerAdmin, 'vistas_unicas' | 'pausado_en' | 'dias' | 'horas'>[]).map(
+      (b) => ({
+        ...b,
+        vistas_unicas: 0,
+        pausado_en: null,
+        ...sinDuracion,
+      }),
+    );
   }
 
   const simple = await consultar(base + relaciones, false);
   if (simple.error) throw simple.error;
   return (
-    (simple.data ?? []) as unknown as Omit<BannerAdmin, 'enlace' | 'vistas' | 'clics' | 'vistas_unicas' | 'pausado_en'>[]
+    (simple.data ?? []) as unknown as Omit<
+      BannerAdmin,
+      'enlace' | 'vistas' | 'clics' | 'vistas_unicas' | 'pausado_en' | 'dias' | 'horas'
+    >[]
   ).map((b) => ({
     ...b,
     enlace: null,
@@ -956,6 +985,7 @@ export async function fetchBannersActivosAdmin(): Promise<BannerAdmin[]> {
     clics: 0,
     vistas_unicas: 0,
     pausado_en: null,
+    ...sinDuracion,
   }));
 }
 
@@ -1160,9 +1190,11 @@ export async function eliminarImagenesHuerfanas(imagenes: ImagenHuerfana[]): Pro
   for (const bucket of ['logos', 'productos', 'banners'] as BucketImagen[]) {
     const rutas = imagenes.filter((i) => i.bucket === bucket).map((i) => i.ruta);
     if (rutas.length === 0) continue;
-    const { error } = await supabase.storage.from(bucket).remove(rutas);
+    const { data, error } = await supabase.storage.from(bucket).remove(rutas);
     if (error) throw error;
-    borradas += rutas.length;
+    // Solo lo que de verdad se borró: sin permiso, el almacenamiento no da
+    // error, simplemente no borra (ver 0049).
+    borradas += data?.length ?? 0;
   }
   return borradas;
 }
@@ -1301,6 +1333,79 @@ export async function eliminarBanner(id: string): Promise<void> {
   const url = data[0].imagen_url as string | null;
   const { count } = await supabase.from('banners').select('id', { count: 'exact', head: true }).eq('imagen_url', url ?? '');
   if (!count) await borrarImagenDeStorage('banners', url);
+}
+
+/**
+ * Cambia el enlace de un banner. Uno publicado en varias comunas son varias
+ * copias con la misma imagen: se cambia en todas. Vacío = sin enlace.
+ */
+export async function cambiarEnlaceBanner(imagenUrl: string, enlace: string): Promise<void> {
+  const limpio = enlace.trim();
+  const { error } = await supabase
+    .from('banners')
+    .update({ enlace: limpio ? limpio : null })
+    .eq('imagen_url', imagenUrl);
+  if (error) throw error;
+}
+
+/**
+ * Cambia en qué comunas está un banner propio (null = todas las comunas). Las
+ * copias de las comunas que se quitan se borran (la imagen no, la siguen
+ * usando las demás) y las nuevas se crean iguales a la original: mismo
+ * enlace, modo, inicio y término, y la misma pausa si está pausado.
+ */
+export async function cambiarUbicacionBanner(bannerId: string, comunaIds: (string | null)[]): Promise<void> {
+  if (comunaIds.length === 0) throw new Error('Elige al menos una comuna.');
+  const { data: original, error: e1 } = await supabase.from('banners').select('*').eq('id', bannerId).single();
+  if (e1) throw e1;
+  const { data: copias, error: e2 } = await supabase
+    .from('banners')
+    .select('id, comuna_id')
+    .eq('imagen_url', original.imagen_url)
+    .eq('usuario_id', original.usuario_id);
+  if (e2) throw e2;
+
+  const destino = new Set(comunaIds);
+  const actuales = new Set((copias ?? []).map((c) => c.comuna_id as string | null));
+  const sobran = (copias ?? []).filter((c) => !destino.has(c.comuna_id as string | null)).map((c) => c.id as string);
+  const faltan = comunaIds.filter((id) => !actuales.has(id));
+
+  // Primero las nuevas: si algo falla, el banner no queda sin comunas.
+  if (faltan.length > 0) {
+    const { data: nuevas, error: e3 } = await supabase
+      .from('banners')
+      .insert(
+        faltan.map((comunaId) => ({
+          usuario_id: original.usuario_id,
+          imagen_url: original.imagen_url,
+          comuna_id: comunaId,
+          dias: original.dias,
+          horas: original.horas ?? null,
+          orden: original.orden,
+          enlace: original.enlace,
+          pagado: original.pagado,
+          principal: original.principal ?? false,
+          fecha_inicio: original.fecha_inicio,
+        })),
+      )
+      .select('id');
+    if (e3) throw e3;
+    // El término y la pausa, exactos como la original (al crearlas, la base
+    // calcula el término desde el inicio y no sabe de pausas).
+    const ids = (nuevas ?? []).map((n) => n.id as string);
+    if (ids.length > 0) {
+      const { error: e4 } = await supabase
+        .from('banners')
+        .update({ fecha_fin: original.fecha_fin, pausado_en: original.pausado_en ?? null, activo: original.activo })
+        .in('id', ids);
+      if (e4) throw e4;
+    }
+  }
+
+  if (sobran.length > 0) {
+    const { error: e5 } = await supabase.from('banners').delete().in('id', sobran);
+    if (e5) throw e5;
+  }
 }
 
 /** Precio base por día de un banner donde no se puso otro (pedido del cliente: todos parten en $25.000). */

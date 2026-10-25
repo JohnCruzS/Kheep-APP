@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
@@ -84,7 +85,7 @@ export function CalendarioRango({
 
   return (
     <Modal visible={visible} animationType="none" onRequestClose={onClose}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <EncabezadoMarca subtitulo={textoRango(eleccion)} />
 
         <View style={styles.contenido}>
@@ -129,13 +130,8 @@ export function CalendarioRango({
             })}
           </View>
 
-          <Pressable
-            style={({ pressed }) => [styles.listo, { marginBottom: Spacing.three + insets.bottom }, pressed && styles.presionado]}
-            onPress={() => onListo(eleccion)}
-            accessibilityRole="button">
-            <Text style={styles.listoLabel}>Listo</Text>
-          </Pressable>
         </View>
+        <BotonPie label="Listo" onPress={() => onListo(eleccion)} />
       </SafeAreaView>
     </Modal>
   );

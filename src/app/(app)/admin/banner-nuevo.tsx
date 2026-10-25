@@ -4,11 +4,12 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput,
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SelectorZonas } from '@/components/admin/SelectorZonas';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { AjusteAPantalla } from '@/components/ui/AjusteAPantalla';
 import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
-import { Comuna, crearBanners, fetchComunas } from '@/lib/catalog';
+import { ComunaAdmin, crearBanners, fetchComunasAdmin } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { LIMITES_MEDIO, MedioElegido, elegirMedioBanner, subirMedioBanner } from '@/lib/medios';
 import { MedioBanner } from '@/components/catalog/MedioBanner';
@@ -40,8 +41,11 @@ export default function BannerNuevoScreen() {
   const { profile, permisos } = useSession();
   const esGeneral = profile?.rol === 'admin';
 
-  const [comunas, setComunas] = useState<Comuna[]>([]);
+  // Todas, visibles o no: en Ubicación, dos toques en el logo dejan solo las visibles.
+  const [comunas, setComunas] = useState<ComunaAdmin[]>([]);
   const [imagen, setImagen] = useState<MedioElegido | null>(null);
+  /** El ancho del recuadro "Subir", que es el de cada una de sus páginas. */
+  const [anchoFoto, setAnchoFoto] = useState(0);
   const [enlace, setEnlace] = useState('');
   const [elegidas, setElegidas] = useState<string[]>([]);
   const [eligiendo, setEligiendo] = useState(false);
@@ -58,7 +62,7 @@ export default function BannerNuevoScreen() {
     [comunas, esGeneral, permisos],
   );
   useEffect(() => {
-    fetchComunas()
+    fetchComunasAdmin()
       .then(setComunas)
       .catch(() => setComunas([]));
   }, []);
@@ -71,10 +75,10 @@ export default function BannerNuevoScreen() {
   const todoElPais = esGeneral && disponibles.length > 0 && elegidas.length === disponibles.length;
   const maximo = enHoras ? HORAS_MAX : DIAS_MAX;
 
-  async function elegirFoto() {
+  async function elegirFoto(modo: 'imagen' | 'animado') {
     try {
-      // Foto, GIF o video (0044): los dos últimos, con límites de peso y duración.
-      const medio = await elegirMedioBanner();
+      // Foto (con recorte) o GIF/video (0044, con límites de peso y duración).
+      const medio = await elegirMedioBanner(modo);
       if (medio) {
         setImagen(medio);
         setError(null);
@@ -136,26 +140,47 @@ export default function BannerNuevoScreen() {
       <EncabezadoMarca subtitulo="Nuevo" />
 
       {/* Sin deslizar: en una pantalla baja se achica para que quepa todo. */}
-      <AjusteAPantalla style={[styles.contenido, { paddingBottom: Spacing.three + insets.bottom }]}>
-        {/* La foto como vista previa, al alto con que se verá en el inicio. */}
-        <Pressable onPress={elegirFoto} style={styles.foto} accessibilityRole="button" accessibilityLabel="Subir imagen">
-          {imagen ? (
-            // Vista previa tal como se verá (el video, sin sonido y en bucle).
-            <MedioBanner
-              uri={imagen.uri}
-              tipo={imagen.tipo}
-              ancho={400}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : (
-            <>
-              <Text style={styles.subir}>Subir</Text>
-              <Text style={styles.limites}>
-                {`Foto, GIF (hasta ${LIMITES_MEDIO.gifBytes / 1024 / 1024} MB) o video (hasta ${LIMITES_MEDIO.videoSegundos} s y ${LIMITES_MEDIO.videoBytes / 1024 / 1024} MB, sin sonido)`}
-              </Text>
-            </>
-          )}
-        </Pressable>
+      <AjusteAPantalla style={[styles.contenido, { paddingBottom: Spacing.three }]}>
+        {/* El recuadro "Subir", al alto con que se verá en el inicio. Se
+            desliza entre dos páginas (pedido del cliente): la primera para
+            una imagen, con recorte; la segunda para un GIF o un video. La
+            elegida se ve en su página tal como quedará. */}
+        <View style={styles.foto} onLayout={(e) => setAnchoFoto(e.nativeEvent.layout.width)}>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            style={StyleSheet.absoluteFill}>
+            {(['imagen', 'animado'] as const).map((modo) => {
+              const suya = imagen && (modo === 'imagen') === (imagen.tipo === 'imagen') ? imagen : null;
+              return (
+                <Pressable
+                  key={modo}
+                  onPress={() => elegirFoto(modo)}
+                  style={[styles.pagina, { width: anchoFoto }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={modo === 'imagen' ? 'Subir imagen' : 'Subir GIF o video'}>
+                  {suya ? (
+                    // Vista previa tal como se verá (el video, sin sonido y en bucle).
+                    <MedioBanner uri={suya.uri} tipo={suya.tipo} ancho={400} style={StyleSheet.absoluteFill} />
+                  ) : modo === 'imagen' ? (
+                    <>
+                      <Text style={styles.subir}>Imagen</Text>
+                      <Text style={styles.limites}>Una foto: eliges qué parte se ve en el banner</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.subir}>GIF o video</Text>
+                      <Text style={styles.limites}>
+                        {`GIF (hasta ${LIMITES_MEDIO.gifBytes / 1024 / 1024} MB) o video (hasta ${LIMITES_MEDIO.videoSegundos} s y ${LIMITES_MEDIO.videoBytes / 1024 / 1024} MB, sin sonido)`}
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
 
         <TextInput
           value={enlace}
@@ -174,9 +199,6 @@ export default function BannerNuevoScreen() {
           accessibilityRole="button">
           <Text style={styles.ubicacionLabel}>Ubicación</Text>
         </Pressable>
-        <Text style={styles.resumen} numberOfLines={1}>
-          {todoElPais ? 'Todas las comunas' : `${elegidas.length} ${elegidas.length === 1 ? 'comuna' : 'comunas'}`}
-        </Text>
 
         {/* Tocar la palabra cambia entre días y horas. */}
         <Pressable onPress={cambiarUnidad} hitSlop={8} accessibilityRole="button">
@@ -197,16 +219,10 @@ export default function BannerNuevoScreen() {
           <Text style={[styles.tipo, principal && styles.tipoPrincipal]}>{principal ? 'Principal' : 'General'}</Text>
         </Pressable>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Pressable
-          style={({ pressed }) => [styles.publicar, pressed && styles.publicarPresionado]}
-          onPress={publicar}
-          disabled={publicando}
-          accessibilityRole="button">
-          {publicando ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.publicarLabel}>Publicar</Text>}
-        </Pressable>
       </AjusteAPantalla>
+
+      {/* Abajo y a la misma altura que en las demás vistas. */}
+      <BotonPie label="Publicar" onPress={publicar} cargando={publicando} aviso={error} />
 
       <SelectorZonas
         visible={eligiendo}
@@ -238,9 +254,14 @@ const styles = StyleSheet.create({
     borderRadius: u(REJILLA.curvatura),
     overflow: 'hidden',
     backgroundColor: '#3C3C3C',
+  },
+  pagina: {
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
   },
+
   subir: {
     fontFamily: Fonts.medium,
     fontSize: 24,
@@ -279,13 +300,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 22,
     color: '#000000',
-  },
-  resumen: {
-    fontFamily: Fonts.delgada,
-    fontSize: 14,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: Spacing.two,
   },
   unidad: {
     fontFamily: Fonts.delgada,

@@ -10,6 +10,7 @@ import { puede } from '@/lib/administradores';
 import { useSession } from '@/providers/SessionProvider';
 import { fetchBannersPendientes, fetchPublicacionesPendientes } from '@/lib/catalog';
 import { precargarBanners, precargarTitulo } from '@/lib/cacheAdmin';
+import { fijarAltoTarjeta } from '@/lib/altoTarjeta';
 import { REJILLA, u } from '@/lib/rejilla';
 import { supabase } from '@/lib/supabase';
 
@@ -137,7 +138,11 @@ function Opcion({
   onPress: () => void;
 }) {
   return (
-    <Pressable style={({ pressed }) => [styles.tarjeta, pressed && styles.tarjetaPresionada]} onPress={onPress}>
+    <Pressable
+      style={({ pressed }) => [styles.tarjeta, pressed && styles.tarjetaPresionada]}
+      onPress={onPress}
+      // Su alto es el de todas las tarjetas de la app (Comunas, Informe…).
+      onLayout={(e) => fijarAltoTarjeta(e.nativeEvent.layout.height)}>
       <Text style={styles.label}>{label}</Text>
       {insignia !== undefined && (
         <View style={styles.insignia}>

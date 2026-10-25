@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
@@ -112,11 +113,6 @@ export function EditorCategoria({
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
-            {categoria && onEliminar && (
-              <Pressable style={styles.eliminar} onPress={() => onEliminar(categoria, enTodas)} hitSlop={10}>
-                <Text style={styles.eliminarLabel}>Eliminar</Text>
-              </Pressable>
-            )}
           </ScrollView>
 
           <View style={styles.pie}>
@@ -140,9 +136,15 @@ export function EditorCategoria({
               />
             </View>
             )}
-
-            <Button label={guardando ? 'Guardando…' : 'Guardar'} onPress={handleGuardar} loading={guardando} />
           </View>
+          {/* "Eliminar", debajo de Guardar (pedido del cliente), en el lugar
+              que en los demás editores ocupa "Cancelar". */}
+          <BotonPie
+            label={guardando ? 'Guardando…' : 'Guardar'}
+            onPress={handleGuardar}
+            cargando={guardando}
+            debajo={categoria && onEliminar ? { texto: 'Eliminar', onPress: () => onEliminar(categoria, enTodas) } : undefined}
+          />
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
@@ -197,7 +199,6 @@ const styles = StyleSheet.create({
   },
   pie: {
     paddingHorizontal: u(REJILLA.margenLateral),
-    paddingBottom: Spacing.three,
   },
   switchFila: {
     flexDirection: 'row',

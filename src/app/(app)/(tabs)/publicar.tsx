@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
@@ -72,6 +72,14 @@ export default function PublicarScreen() {
         </View>
       </TarjetaClaraProvider>
     );
+  }
+
+  // Los administradores no publican comercios (pedido del cliente): si llegan
+  // acá de alguna forma, vuelven al inicio. Mientras el perfil no llega, no
+  // se muestra el formulario.
+  if (!profile) return null;
+  if (profile.rol === 'admin' || profile.rol === 'admin_zona') {
+    return <Redirect href="/(app)/(tabs)/dashboard" />;
   }
 
   return (

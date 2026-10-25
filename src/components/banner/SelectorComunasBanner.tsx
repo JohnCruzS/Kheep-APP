@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BotonPie } from '@/components/ui/BotonPie';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Interruptor } from '@/components/ui/Interruptor';
 import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import type { Comuna } from '@/lib/catalog';
+import { SEPARACION_TARJETA, useAltoTarjeta } from '@/lib/altoTarjeta';
 import { REJILLA, u } from '@/lib/rejilla';
 import { compararRegiones, nombreRegion } from '@/lib/regiones';
 
 /**
  * Dónde se muestra el banner de un comerciante (maqueta del cliente): una
- * tarjeta por región con su interruptor. Encenderla elige todas sus comunas
- * y las muestra adentro, cada una con el suyo para apagar las que no van;
- * apagarla quita todas.
+ * tarjeta por región con su interruptor. Tocar el nombre de la región la
+ * despliega (sin elegir nada) para elegir comunas sueltas; el interruptor de
+ * la región elige o quita todas sus comunas de una vez (pedido del cliente).
  *
  * Abajo, el botón rojo con lo que va costando: los días por la suma del
  * precio de las comunas elegidas. Tocarlo confirma la elección.
@@ -37,12 +39,18 @@ export function SelectorComunasBanner({
   onListo: (ids: string[]) => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  /** Las regiones desplegadas (tocando su nombre). */
+  const [abiertas, setAbiertas] = useState<string[]>([]);
+  const altoTarjeta = useAltoTarjeta();
 
-  // Cada vez que se abre parte de lo que ya estaba elegido.
+  // Cada vez que se abre parte de lo que ya estaba elegido, con desplegadas
+  // las regiones donde hay algo elegido.
   useEffect(() => {
-    if (visible) setSeleccion(new Set(elegidas));
+    if (!visible) return;
+    setSeleccion(new Set(elegidas));
+    setAbiertas([...new Set(comunas.filter((c) => elegidas.includes(c.id)).map((c) => c.region ?? ''))]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, elegidas]);
 
   const regiones = useMemo(
@@ -74,26 +82,34 @@ export function SelectorComunasBanner({
 
   return (
     <Modal visible={visible} animationType="none" onRequestClose={onClose}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <EncabezadoMarca subtitulo="Banner" />
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <EncabezadoMarca subtitulo="Banners" />
         <ScrollView contentContainerStyle={styles.contenido} showsVerticalScrollIndicator={false}>
           {regiones.map((region) => {
             const suyas = comunasDe(region);
             const elegidasAca = suyas.filter((c) => seleccion.has(c.id)).length;
             const encendida = elegidasAca > 0;
+            const abierta = abiertas.includes(region);
             return (
               <View key={region} style={styles.tarjeta}>
-                <View style={styles.cabecera}>
-                  <Text style={styles.region} numberOfLines={1}>
-                    {nombreRegion(region)}
-                  </Text>
+                <View style={[styles.cabecera, { height: altoTarjeta - 2 }]}>
+                  {/* El nombre despliega la región; el interruptor la elige entera. */}
+                  <Pressable
+                    style={styles.zonaNombre}
+                    onPress={() => setAbiertas((a) => (a.includes(region) ? a.filter((r) => r !== region) : [...a, region]))}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Ver las comunas de ${nombreRegion(region)}`}>
+                    <Text style={styles.region} numberOfLines={1}>
+                      {nombreRegion(region)}
+                    </Text>
+                  </Pressable>
                   <Interruptor
                     value={encendida}
                     onValueChange={(v) => alternarRegion(region, v)}
                     accessibilityLabel={`Mostrar en ${nombreRegion(region)}`}
                   />
                 </View>
-                {encendida && (
+                {abierta && (
                   <View style={styles.comunas}>
                     {suyas.map((comuna) => (
                       <Pressable key={comuna.id} style={styles.filaComuna} onPress={() => alternarComuna(comuna.id)}>
@@ -114,16 +130,9 @@ export function SelectorComunasBanner({
           })}
         </ScrollView>
 
-        {/* Lo que va costando; tocarlo confirma lo elegido. */}
-        <View style={[styles.pie, { paddingBottom: Spacing.three + insets.bottom }]}>
-          <Pressable
-            style={({ pressed }) => [styles.boton, pressed && styles.botonPresionado]}
-            onPress={() => onListo([...seleccion])}
-            accessibilityRole="button"
-            accessibilityLabel={`Listo, total ${total} pesos`}>
-            <Text style={styles.botonLabel}>{`$ ${total.toLocaleString('es-CL')}`}</Text>
-          </Pressable>
-        </View>
+        {/* Lo que va costando; tocarlo confirma lo elegido. Mismo botón y
+            misma altura que en las demás vistas. */}
+        <BotonPie label={`$ ${total.toLocaleString('es-CL')}`} onPress={() => onListo([...seleccion])} />
       </SafeAreaView>
     </Modal>
   );
@@ -144,7 +153,7 @@ const styles = StyleSheet.create({
     borderRadius: u(REJILLA.curvatura),
     borderWidth: 1,
     borderColor: TarjetaLista.borde,
-    marginBottom: u(REJILLA.margenLateral),
+    marginBottom: SEPARACION_TARJETA,
     paddingHorizontal: TarjetaLista.sangria,
   },
   cabecera: {
@@ -152,10 +161,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
-    height: u(240) - 2,
+  },
+  zonaNombre: {
+    flex: 1,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
   },
   region: {
-    flex: 1,
     fontFamily: Fonts.tarjeta,
     fontSize: TarjetaLista.tamanoTexto,
     color: Colors.text,
@@ -175,23 +187,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.delgada,
     fontSize: 22,
     color: Colors.text,
-  },
-  pie: {
-    paddingHorizontal: u(REJILLA.margenLateral),
-    paddingTop: Spacing.two,
-  },
-  boton: {
-    paddingVertical: Spacing.four,
-    borderRadius: u(REJILLA.curvatura),
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-  },
-  botonPresionado: {
-    backgroundColor: Colors.accentPressed,
-  },
-  botonLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 24,
-    color: '#FFFFFF',
   },
 });

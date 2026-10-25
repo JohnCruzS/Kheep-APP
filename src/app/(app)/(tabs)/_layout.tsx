@@ -28,6 +28,10 @@ export default function TabsLayout() {
   // General o de zona: los dos tienen las pestañas de administración; lo
   // que ve cada uno adentro depende de sus permisos.
   const isAdmin = profile?.rol === 'admin' || profile?.rol === 'admin_zona';
+  // Recién iniciada la sesión el perfil tarda un instante en llegar: hasta
+  // saber quién es, la barra no se muestra. Antes aparecían las pestañas de
+  // comerciante (con "Publicar") y un admin alcanzaba a publicar.
+  const perfilListo = !!session && !!profile;
 
   // Las ~346 comunas del panel se piden en segundo plano apenas entra un
   // administrador: al tocar la pestaña ya están y aparecen al instante.
@@ -45,7 +49,7 @@ export default function TabsLayout() {
         // están ocultos, e "Inicio" es la única pantalla. El invitado entra a
         // su cuenta tocando el logo del catálogo, así que la barra se
         // esconde entera y aparece recién al iniciar sesión.
-        tabBarStyle: session
+        tabBarStyle: perfilListo
           ? {
               backgroundColor: Colors.background,
               borderTopColor: Colors.surfaceBorder,
@@ -75,7 +79,7 @@ export default function TabsLayout() {
           // Oculta para invitados (no tienen cuenta) y también para admin:
           // el admin modera desde "Panel Admin", no publica comercios
           // propios.
-          href: session && !isAdmin ? undefined : null,
+          href: perfilListo && !isAdmin ? undefined : null,
           tabBarIcon: ({ color, size }) => <Ionicons name="add-circle" color={color} size={size} />,
         }}
       />

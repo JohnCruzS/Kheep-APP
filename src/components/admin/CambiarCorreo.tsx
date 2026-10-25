@@ -21,6 +21,8 @@ export function CambiarCorreo({
       visible={visible}
       subtitulo="Correo"
       placeholder="Nuevo correo"
+      // Arranca con el correo de ahora, para corregirlo sin reescribirlo.
+      inicial={actual}
       propsCampo={{ keyboardType: 'email-address' }}
       validar={(valor) => (isValidEmail(valor.trim()) ? null : 'Escribe un correo válido.')}
       onCerrar={onCerrar}

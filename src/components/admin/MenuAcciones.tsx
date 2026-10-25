@@ -20,6 +20,9 @@ export type Accion = {
  * dibujan — así se perdían "Agregar a todas las comunas" y "Eliminar". Además
  * este sigue la estética del panel, con el título en rojo y las filas
  * separadas.
+ *
+ * Sin "Cancelar" (pedido del cliente): se cierra tocando fuera del panel o
+ * con el botón atrás del teléfono.
  */
 export function MenuAcciones({
   visible,
@@ -32,13 +35,13 @@ export function MenuAcciones({
   acciones: Accion[];
   onClose: () => void;
 }) {
-  // Que "Cancelar" no quede debajo de la barra de botones del teléfono.
+  // Que la última fila no quede debajo de la barra de botones del teléfono.
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} navigationBarTranslucent statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable
-          style={[styles.sheet, { paddingBottom: Spacing.five + Math.max(insets.bottom, 48) }]}
+          style={[styles.sheet, { paddingBottom: Spacing.three + Math.max(insets.bottom, 48) }]}
           onPress={(e) => e.stopPropagation()}>
           {titulo ? (
             <Text style={styles.titulo} numberOfLines={1}>
@@ -57,10 +60,6 @@ export function MenuAcciones({
               <Text style={[styles.label, accion.peligrosa && styles.labelPeligrosa]}>{accion.label}</Text>
             </Pressable>
           ))}
-
-          <Pressable onPress={onClose} style={styles.cancelar}>
-            <Text style={styles.cancelarLabel}>Cancelar</Text>
-          </Pressable>
         </Pressable>
       </Pressable>
     </Modal>
@@ -68,7 +67,7 @@ export function MenuAcciones({
 }
 
 // Con la estética del resto del panel: negro con borde, texto light grande
-// y centrado, lo peligroso y "Cancelar" en rojo.
+// y centrado, lo peligroso en rojo.
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
@@ -111,15 +110,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
   },
   labelPeligrosa: {
-    color: Colors.accent,
-  },
-  cancelar: {
-    alignItems: 'center',
-    paddingTop: Spacing.four,
-  },
-  cancelarLabel: {
-    fontFamily: Fonts.delgada,
-    fontSize: 22,
     color: Colors.accent,
   },
 });

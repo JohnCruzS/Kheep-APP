@@ -3,6 +3,7 @@ import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
@@ -243,7 +244,7 @@ export default function PublicarBannerScreen() {
   const precio = dias * elegidas.reduce((suma, id) => suma + precioDe(id), 0);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <EncabezadoMarca subtitulo="Banners" onVolver={() => router.back()} />
@@ -298,19 +299,6 @@ export default function PublicarBannerScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {success ? <Text style={styles.successText}>{success}</Text> : null}
 
-        <Pressable
-          style={({ pressed }) => [styles.pagar, pressed && styles.pagarPresionado]}
-          onPress={handlePublicar}
-          disabled={saving}
-          accessibilityRole="button"
-          accessibilityLabel={esAdmin || esZona ? 'Publicar' : `Enviar banner, total ${precio} pesos`}>
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.pagarLabel}>{esAdmin || esZona ? 'Publicar' : `$${precio.toLocaleString('es-CL')}`}</Text>
-          )}
-        </Pressable>
-
         {/* "Mis banners", debajo de todo (pedido del cliente). */}
         {!esAdmin && !esZona && !loadingList && misBanners.length > 0 && (
           <View style={styles.misBannersSection}>
@@ -340,6 +328,14 @@ export default function PublicarBannerScreen() {
           </View>
         )}
       </FormScroll>
+
+      {/* Lo que se paga, en el botón rojo de abajo: mismo tamaño y misma
+          altura que en las demás vistas (pedido del cliente). */}
+      <BotonPie
+        label={esAdmin || esZona ? 'Publicar' : `$ ${precio.toLocaleString('es-CL')}`}
+        onPress={handlePublicar}
+        cargando={saving}
+      />
 
       <SelectorComunasBanner
         visible={pickerOpen}
@@ -481,21 +477,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 26,
     color: Colors.text,
-  },
-  pagar: {
-    marginTop: Spacing.five,
-    paddingVertical: Spacing.four,
-    borderRadius: u(REJILLA.curvatura),
-    backgroundColor: Colors.accent,
-    alignItems: 'center',
-  },
-  pagarPresionado: {
-    backgroundColor: Colors.accentPressed,
-  },
-  pagarLabel: {
-    fontFamily: Fonts.medium,
-    fontSize: 24,
-    color: '#FFFFFF',
   },
   safeArea: {
     flex: 1,

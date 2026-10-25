@@ -30,6 +30,7 @@ import {
 } from '@/lib/administradores';
 import { actualizarNombrePerfil, eliminarPerfil } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
+import { SEPARACION_TARJETA, useAltoTarjeta } from '@/lib/altoTarjeta';
 import { REJILLA, u } from '@/lib/rejilla';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -38,8 +39,7 @@ import { useSession } from '@/providers/SessionProvider';
  * cada tarjeta cerrada mide 240 de alto; entre "Administración" y el primer
  * admin van 2 márgenes laterales, y entre un admin y otro, 1.
  */
-const ALTO_TARJETA = u(240);
-const MARGEN = u(REJILLA.margenLateral);
+const MARGEN = SEPARACION_TARJETA;
 
 /** Clave de la tarjeta de la propia cuenta (la del administrador general). */
 const MI_CUENTA = '__mi_cuenta__';
@@ -62,6 +62,8 @@ const MI_CUENTA = '__mi_cuenta__';
 export default function AdministradoresScreen() {
   const router = useRouter();
   const { session, profile } = useSession();
+  /** El alto de las tarjetas del panel del admin: todas las listas miden igual. */
+  const ALTO_TARJETA = useAltoTarjeta();
   const [lista, setLista] = useState<AdminZona[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -233,7 +235,7 @@ export default function AdministradoresScreen() {
           abierta={abierta === MI_CUENTA}
           onAlternar={() => alternar(MI_CUENTA)}
           alto={ALTO_TARJETA}
-          separacion={MARGEN * 2}>
+          separacion={MARGEN}>
           <FilaCredenciales
             correo={correoPropio || '—'}
             onCambiarCorreo={() =>

@@ -1,7 +1,8 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Linking,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -13,16 +14,23 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState, ErrorState } from '@/components/catalog/CatalogState';
-import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
+import { BotonPie } from '@/components/ui/BotonPie';
+import { EncabezadoMarca, useHuecoHastaBanner } from '@/components/ui/EncabezadoMarca';
 import { AjusteAPantalla } from '@/components/ui/AjusteAPantalla';
 import { MedioBanner } from '@/components/catalog/MedioBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { UbicacionBanner } from '@/components/admin/UbicacionBanner';
+import { SelectorZonas } from '@/components/admin/SelectorZonas';
+import { EditorPantalla } from '@/components/admin/EditorPantalla';
 import { Text } from '@/components/ui/Texto';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 import { bannersEnMemoria, precargarBanners } from '@/lib/cacheAdmin';
 import {
   BannerAdmin,
+  ComunaAdmin,
+  cambiarEnlaceBanner,
+  cambiarUbicacionBanner,
+  fetchComunasAdmin,
   pausarBanner,
   eliminarBanner,
   purgarMediosVencidos,
@@ -36,25 +44,47 @@ const DIA = 24 * HORA;
 
 const dos = (n: number) => String(n).padStart(2, '0');
 
-/** 20:45:30 (horas, minutos y segundos). */
-function hms(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(s / 3600)}:${dos(Math.floor((s % 3600) / 60))}:${dos(s % 60)}`;
+/**
+ * Cuánto del tiempo contratado ya pasó (0 a 1), para la línea de avance
+ * estilo video. En pausa queda quieta.
+ */
+function progreso(banner: BannerAdmin): number {
+  if (!banner.fecha_fin) return 0;
+  const fin = new Date(banner.fecha_fin).getTime();
+  const inicio = banner.fecha_inicio ? new Date(banner.fecha_inicio).getTime() : null;
+  const ahora = banner.pausado_en ? new Date(banner.pausado_en).getTime() : Date.now();
+  const contratado = banner.horas
+    ? banner.horas * HORA
+    : banner.dias
+      ? banner.dias * DIA
+      : inicio !== null
+        ? fin - inicio
+        : null;
+  if (!contratado) return 0;
+  return Math.max(0, Math.min(1, (contratado - Math.max(0, fin - ahora)) / contratado));
 }
 
-/** 3 d 04:15 (días, horas y minutos): para banners de varios días. */
-function dhm(ms: number): string {
-  const m = Math.max(0, Math.floor(ms / 60000));
-  return `${Math.floor(m / 1440)} d ${dos(Math.floor((m % 1440) / 60))}:${dos(m % 60)}`;
+/** "3  10 : 20 : 16": días y, después, horas, minutos y segundos. */
+function restante(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400);
+  return `${d}  ${dos(Math.floor((s % 86400) / 3600))} : ${dos(Math.floor((s % 3600) / 60))} : ${dos(s % 60)}`;
 }
+
+const dias = (n: number) => `${n} ${n === 1 ? 'Día' : 'Días'}`;
 
 /**
- * El tiempo del banner, en los dos formatos de la maqueta del cliente (se
- * pasa de uno a otro tocándolo):
- *  - transcurrido: cuánto lleva de lo contratado, "20:45:30 / 24:00";
- *  - restante: cuánto le queda, "3:14:30".
- * Pasadas las 48 horas, las horas sueltas ("356:08:51") no las lee nadie: se
- * cuenta en días ("3 d 04:15 / 15 d").
+ * El tiempo del banner, con los formatos de la maqueta del cliente (se pasa
+ * de uno a otro tocándolo):
+ *  - restante: cuánto le queda, "3  10 : 20 : 16" (días, horas, minutos y
+ *    segundos);
+ *  - avance, si se contrató por horas (el admin): "24 : 21 / 48 : 00"
+ *    (horas y minutos que lleva, de las horas contratadas);
+ *  - avance, si se contrató por días (los comerciantes): "2 Días / 4 Días".
+ *
+ * El avance se cuenta como lo contratado menos lo que le queda: así no suma
+ * el tiempo que estuvo en pausa (al reanudar, el término se corre lo que duró
+ * la pausa).
  */
 function tiempo(banner: BannerAdmin, verRestante: boolean): string {
   if (!banner.fecha_fin) return 'Sin vencimiento';
@@ -63,15 +93,25 @@ function tiempo(banner: BannerAdmin, verRestante: boolean): string {
   // En pausa, el reloj queda detenido en el momento en que se pausó.
   const ahora = banner.pausado_en ? new Date(banner.pausado_en).getTime() : Date.now();
   if (fin <= ahora) return 'Terminado';
+  const queda = fin - ahora;
 
-  const total = inicio ? fin - inicio : null;
-  const enDias = (total ?? fin - ahora) > 48 * HORA;
-  if (verRestante || inicio === null || total === null) return enDias ? dhm(fin - ahora) : hms(fin - ahora);
+  // Lo contratado: las horas o los días; sin ese dato (banners antiguos), lo
+  // que va de la fecha de inicio a la de término.
+  const contratado = banner.horas
+    ? banner.horas * HORA
+    : banner.dias
+      ? banner.dias * DIA
+      : inicio !== null
+        ? fin - inicio
+        : null;
+  if (verRestante || contratado === null) return restante(queda);
 
-  const llevado = Math.min(total, Math.max(0, ahora - inicio));
-  return enDias
-    ? `${dhm(llevado)} / ${Math.round(total / DIA)} d`
-    : `${hms(llevado)} / ${Math.round(total / HORA)}:00`;
+  const llevado = Math.min(contratado, Math.max(0, contratado - queda));
+  if (banner.horas) {
+    const minutos = Math.floor(llevado / 60000);
+    return `${dos(Math.floor(minutos / 60))} : ${dos(minutos % 60)} / ${dos(banner.horas)} : 00`;
+  }
+  return `${dias(Math.floor(llevado / DIA))} / ${dias(Math.round(contratado / DIA))}`;
 }
 
 /** DD/MM/AAAA, el mismo formato que el resto de la app. */
@@ -105,8 +145,10 @@ function enlaceCorto(url: string): string {
  */
 export default function BannersAdminScreen() {
   const router = useRouter();
+  // El banner, a la misma altura y del mismo tamaño que en el inicio.
+  const huecoBanner = useHuecoHastaBanner();
   const insets = useSafeAreaInsets();
-  const { permisos } = useSession();
+  const { permisos, session } = useSession();
   const filtrar = useCallback(
     (todos: BannerAdmin[]) =>
       // El de zona administra los banners de sus comunas; los de "todas las
@@ -131,6 +173,21 @@ export default function BannersAdminScreen() {
   const [verUnicas, setVerUnicas] = useState(false);
   /** Las comunas donde está el banner, para la vista "Ubicación" (null = todas). */
   const [ubicacion, setUbicacion] = useState<string[] | null | undefined>(undefined);
+  /** Cambiar las comunas de un banner propio, y el enlace. */
+  const [editandoZonas, setEditandoZonas] = useState(false);
+  const [zonasElegidas, setZonasElegidas] = useState<string[]>([]);
+  const [editandoEnlace, setEditandoEnlace] = useState(false);
+  const [comunas, setComunas] = useState<ComunaAdmin[]>([]);
+  useEffect(() => {
+    fetchComunasAdmin()
+      .then(setComunas)
+      .catch(() => setComunas([]));
+  }, []);
+  // Las que esta cuenta puede elegir: el de zona, solo las suyas.
+  const disponibles = useMemo(
+    () => (permisos?.esGeneral ? comunas : comunas.filter((c) => permisos?.comunas.includes(c.id))),
+    [comunas, permisos],
+  );
   // El tiempo se redibuja cada segundo: congelado no dice nada.
   const [, setTic] = useState(0);
   useEffect(() => {
@@ -190,17 +247,51 @@ export default function BannersAdminScreen() {
   const [pausando, setPausando] = useState<string | null>(null);
 
   /** Pausar / Reanudar: lo hace la base y se recarga para traer el tiempo corrido. */
+  /**
+   * Pausar o reanudar al instante (antes esperaba al servidor y además
+   * recargaba toda la lista, y se notaba lento): el cambio se ve de inmediato,
+   * se guarda por detrás y, si falla, se deshace avisando. Al reanudar, el
+   * vencimiento se corre lo que estuvo en pausa, igual que hace la base.
+   */
   async function alternarPausa(banner: BannerAdmin) {
     const pausar = banner.pausado_en === null;
+    const ahora = new Date();
+    const cambiado: BannerAdmin = pausar
+      ? { ...banner, pausado_en: ahora.toISOString() }
+      : {
+          ...banner,
+          pausado_en: null,
+          fecha_fin:
+            banner.fecha_fin && banner.pausado_en
+              ? new Date(
+                  new Date(banner.fecha_fin).getTime() + (ahora.getTime() - new Date(banner.pausado_en).getTime()),
+                ).toISOString()
+              : banner.fecha_fin,
+        };
+    setBanners((lista) => lista.map((b) => (b.id === banner.id ? cambiado : b)));
     setPausando(banner.id);
     try {
       await pausarBanner(banner.id, pausar);
-      await load();
     } catch (err) {
-      Alert.alert(pausar ? 'No se pudo pausar' : 'No se pudo reanudar', getErrorMessage(err, 'Intenta de nuevo.'));
-    } finally {
+      setBanners((lista) => lista.map((b) => (b.id === banner.id ? banner : b)));
       setPausando(null);
+      Alert.alert(pausar ? 'No se pudo pausar' : 'No se pudo reanudar', getErrorMessage(err, 'Intenta de nuevo.'));
+      return;
     }
+    setPausando(null);
+    // Ya quedó guardado: se traen los datos exactos de la base, sin volver a
+    // mostrar la carga. Si esto falla, lo de pantalla ya es correcto.
+    // Se conserva el orden que se está viendo (pausar no mueve nada).
+    precargarBanners()
+      .then((lista) =>
+        setBanners((actuales) => {
+          const posicion = new Map(actuales.map((b, i) => [b.id, i]));
+          return filtrar(lista).sort(
+            (a, b) => (posicion.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (posicion.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+          );
+        }),
+      )
+      .catch(() => {});
   }
 
   /**
@@ -210,7 +301,38 @@ export default function BannersAdminScreen() {
    */
   function verUbicacion(banner: BannerAdmin) {
     const copias = banners.filter((b) => b.imagen_url === banner.imagen_url);
-    setUbicacion(copias.some((b) => b.comuna_id === null) ? null : copias.map((b) => b.comuna_id as string));
+    const enTodas = copias.some((b) => b.comuna_id === null);
+    // Los propios se pueden cambiar (pedido del cliente): se abre el mismo
+    // selector que al crearlos. Los de otros, solo se miran.
+    if (banner.usuario_id === session?.user.id) {
+      setZonasElegidas(enTodas ? disponibles.map((c) => c.id) : copias.map((b) => b.comuna_id as string));
+      setEditandoZonas(true);
+      return;
+    }
+    setUbicacion(enTodas ? null : copias.map((b) => b.comuna_id as string));
+  }
+
+  async function guardarZonas(ids: string[]) {
+    setEditandoZonas(false);
+    if (!actual) return;
+    if (ids.length === 0) {
+      Alert.alert('Elige al menos una comuna', 'Para sacarlo de todas, usa "Eliminar".');
+      return;
+    }
+    // El general con todo encendido: UNA copia para todas las comunas, como al crearlo.
+    const todas = permisos?.esGeneral && disponibles.length > 0 && disponibles.every((c) => ids.includes(c.id));
+    try {
+      await cambiarUbicacionBanner(actual.id, todas ? [null] : ids);
+      await load();
+    } catch (err) {
+      Alert.alert('No se pudo cambiar la ubicación', getErrorMessage(err, 'Intenta de nuevo.'));
+    }
+  }
+
+  /** Abre el enlace del banner, para ver que lleva a donde debe. */
+  function abrirEnlace(enlace: string) {
+    const url = /^https?:\/\//i.test(enlace) ? enlace : `https://${enlace}`;
+    Linking.openURL(url).catch(() => Alert.alert('No se pudo abrir el enlace', 'Revisa que esté bien escrito.'));
   }
 
   function medirAncho(e: LayoutChangeEvent) {
@@ -226,31 +348,30 @@ export default function BannersAdminScreen() {
   }
 
   const actual = banners[Math.min(indice, banners.length - 1)];
-  // La barra crece a medida que se avanza por los banners: un tramo por
-  // banner, y entera roja en el último (pedido del cliente).
-  const avance = banners.length > 0 ? Math.min(1, (posicion + 1) / banners.length) : 0;
+  // La línea de avance, como la de un video: cuánto del tiempo contratado
+  // del banner que se ve ya pasó (pedido del cliente).
+  const avance = actual ? progreso(actual) : 0;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false, animation: 'fade' }} />
       {/* Dos toques en el título: los precios por región y comuna (solo el general). */}
       <EncabezadoMarca
         subtitulo="Banners"
-        onDobleToque={permisos?.esGeneral ? () => router.push('/(app)/admin/precios-banner') : undefined}
+        onDobleToque={permisos?.esGeneral ? () => router.replace('/(app)/admin/precios-banner') : undefined}
       />
 
-      {loading && <View style={[styles.marco, styles.imagen, styles.silueta]} />}
+      {loading && <View style={[styles.marco, { marginTop: huecoBanner }, styles.imagen, styles.silueta]} />}
       {error && <ErrorState message={error} onRetry={load} />}
       {!loading && !error && banners.length === 0 && (
         <EmptyState title="No hay banners publicados" message="Cuando haya banners en la app, aparecerán acá." />
       )}
 
+      {/* Solo la imagen se desliza; los datos de abajo pasan a ser los del
+          banner que se está mirando. Va fuera del ajuste de abajo para que
+          nunca se achique: queda igual que en el inicio. */}
       {!loading && !error && banners.length > 0 && actual && (
-        // Sin deslizar: en una pantalla baja se achica para que quepa todo.
-        <AjusteAPantalla style={styles.contenido}>
-          {/* Solo la imagen se desliza; los datos de abajo pasan a ser los del
-              banner que se está mirando. */}
-          <View style={styles.marco} onLayout={medirAncho}>
+          <View style={[styles.marco, { marginTop: huecoBanner }]} onLayout={medirAncho}>
             <ScrollView
               horizontal
               pagingEnabled
@@ -270,7 +391,11 @@ export default function BannersAdminScreen() {
               ))}
             </ScrollView>
           </View>
+      )}
 
+      {!loading && !error && banners.length > 0 && actual && (
+        // Sin deslizar: en una pantalla baja se achica para que quepa todo.
+        <AjusteAPantalla style={styles.contenido}>
           {/* Cuál se está viendo de cuántos hay: "3/6". */}
           <Text style={styles.cupo}>
             {indice + 1}/{banners.length}
@@ -278,8 +403,10 @@ export default function BannersAdminScreen() {
 
           {/* Por dónde va el carrusel: crece con cada banner, entera en el último. */}
           <View style={styles.barra}>
-            <View style={[styles.barraLlena, { flex: avance }]} />
-            {avance < 1 && <View style={{ flex: 1 - avance }} />}
+            <View style={styles.barraFondo} />
+            <View style={[styles.barraLlena, { width: `${avance * 100}%` }]} />
+            {/* El punto, donde va el avance, como en un video. */}
+            <View style={[styles.barraPunto, { left: `${avance * 100}%` }]} />
           </View>
 
           <View style={styles.fila}>
@@ -318,11 +445,19 @@ export default function BannersAdminScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.fila}>
+          {/* El enlace: un toque lo abre (para comprobar que está bien) y
+              mantenerlo apretado lo cambia, en el editor de siempre. */}
+          <Pressable
+            style={styles.fila}
+            onPress={actual.enlace ? () => abrirEnlace(actual.enlace!) : undefined}
+            onLongPress={() => setEditandoEnlace(true)}
+            delayLongPress={400}
+            accessibilityRole="button"
+            accessibilityHint="Toca para abrir el enlace; mantén apretado para cambiarlo">
             <Text style={[actual.enlace ? styles.valor : styles.tiempo, styles.filaIzquierda]} numberOfLines={1}>
               {actual.enlace ? enlaceCorto(actual.enlace) : 'Sin enlace'}
             </Text>
-          </View>
+          </Pressable>
 
           <Pressable
             style={({ pressed }) => [styles.ubicacion, pressed && styles.pressed]}
@@ -340,8 +475,6 @@ export default function BannersAdminScreen() {
             <Text style={styles.eliminar}>{eliminando === actual.id ? 'Eliminando…' : 'Eliminar'}</Text>
           </Pressable>
 
-          {/* Debajo de todo, no flotando encima del contenido (pedido del cliente). */}
-          <BotonNuevo onPress={() => router.push('/(app)/admin/banner-nuevo')} abajo={insets.bottom} />
         </AjusteAPantalla>
       )}
 
@@ -351,28 +484,46 @@ export default function BannersAdminScreen() {
         onClose={() => setUbicacion(undefined)}
       />
 
-      {/* Sin banners, "Nuevo" va debajo del aviso. */}
-      {!loading && !error && banners.length === 0 && (
-        <BotonNuevo onPress={() => router.push('/(app)/admin/banner-nuevo')} abajo={insets.bottom} />
-      )}
-    </SafeAreaView>
-  );
-}
+      {/* Los propios se cambian de comunas, como al crearlos. */}
+      <SelectorZonas
+        visible={editandoZonas}
+        comunas={disponibles}
+        elegidas={zonasElegidas}
+        onClose={() => setEditandoZonas(false)}
+        onListo={(ids) => void guardarZonas(ids)}
+      />
 
-/** "Nuevo": publicar otro banner. */
-function BotonNuevo({ onPress, abajo }: { onPress: () => void; abajo: number }) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.nuevo, { marginBottom: Spacing.three + abajo }, pressed && styles.nuevoPresionado]}
-      onPress={onPress}>
-      <Text style={styles.nuevoLabel}>Nuevo</Text>
-    </Pressable>
+      <EditorPantalla
+        visible={editandoEnlace}
+        subtitulo="Enlace"
+        placeholder="Enlace"
+        inicial={actual?.enlace ?? ''}
+        propsCampo={{ keyboardType: 'url', autoCapitalize: 'none', autoCorrect: false }}
+        validar={(v) => (!v.trim() || /^(https?:\/\/)?[^\s.]+\.[^\s]{2,}$/i.test(v.trim()) ? null : 'Escribe un enlace válido.')}
+        onCerrar={() => setEditandoEnlace(false)}
+        onGuardar={async (v) => {
+          if (!actual) return;
+          await cambiarEnlaceBanner(actual.imagen_url, v);
+          const enlace = v.trim() ? v.trim() : null;
+          setBanners((lista) => lista.map((b) => (b.imagen_url === actual.imagen_url ? { ...b, enlace } : b)));
+        }}
+      />
+
+      {/* Sin banners (o cargando), el espacio libre empuja "Nuevo" hasta abajo. */}
+      {!(banners.length > 0 && actual) && <View style={styles.relleno} />}
+
+      {/* "Nuevo", abajo y a la misma altura que en las demás vistas. */}
+      {!loading && !error && <BotonPie label="Nuevo" onPress={() => router.push('/(app)/admin/banner-nuevo')} />}
+    </SafeAreaView>
   );
 }
 
 const margen = u(REJILLA.margenLateral);
 
 const styles = StyleSheet.create({
+  relleno: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -382,7 +533,6 @@ const styles = StyleSheet.create({
   },
   marco: {
     marginHorizontal: margen,
-    marginTop: Spacing.three,
     borderRadius: u(REJILLA.curvatura),
     overflow: 'hidden',
   },
@@ -407,13 +557,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: Spacing.three,
   },
+  // La línea de avance, como la de un video: fondo blanco, lo que pasó en
+  // rojo y un punto rojo donde va.
   barra: {
-    flexDirection: 'row',
-    height: 2,
+    height: 12,
     marginHorizontal: margen,
+    justifyContent: 'center',
+  },
+  barraFondo: {
+    height: 2,
     backgroundColor: '#FFFFFF',
   },
   barraLlena: {
+    position: 'absolute',
+    left: 0,
+    height: 2,
+    backgroundColor: Colors.accent,
+  },
+  barraPunto: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    marginLeft: -6,
+    borderRadius: 6,
     backgroundColor: Colors.accent,
   },
   fila: {

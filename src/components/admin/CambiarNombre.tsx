@@ -22,6 +22,8 @@ export function CambiarNombre({
       visible={visible}
       subtitulo="Nombre"
       placeholder="Nuevo nombre"
+      // Arranca con el nombre de ahora, para corregirlo sin reescribirlo.
+      inicial={actual}
       propsCampo={{ autoCapitalize: 'words', maxLength: 60 }}
       validar={(valor) => (valor.trim() ? null : 'Escribe un nombre.')}
       onCerrar={onCerrar}

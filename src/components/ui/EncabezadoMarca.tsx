@@ -28,6 +28,31 @@ const SEPARACION_DEBAJO = 8;
  * Sin flecha de volver, salvo en las pantallas cuya maqueta la trae
  * (`onVolver`): una "<" roja a la izquierda.
  */
+/**
+ * Hasta dónde llega el encabezado, medido desde el borde físico de arriba,
+ * y dónde empieza el banner en el inicio (el perímetro del título).
+ */
+function medidasEncabezado(width: number, centroY: number, altoLogo: number) {
+  const unidad = width / 1000;
+  const tamanoSubtitulo = Math.min(26, Math.max(14, Math.round((width * 45) / 1000)));
+  const altoSubtitulo = Math.round(tamanoSubtitulo * 1.3);
+  const perimetro = PERIMETRO_ALTO * unidad;
+  const fondoLogo = centroY * unidad + (altoLogo * unidad) / 2;
+  const fondo = Math.min(perimetro, fondoLogo + SEPARACION_DEBAJO * unidad + altoSubtitulo + Spacing.three);
+  return { unidad, tamanoSubtitulo, altoSubtitulo, perimetro, fondo };
+}
+
+/**
+ * El espacio que hay que dejar debajo del encabezado para que un banner
+ * quede exactamente a la altura del banner del inicio (pedido del cliente).
+ */
+export function useHuecoHastaBanner(): number {
+  const { width } = useWindowDimensions();
+  const marca = useMarca();
+  const { perimetro, fondo } = medidasEncabezado(width, marca.centroY, marca.alto);
+  return Math.max(0, Math.round(perimetro - fondo));
+}
+
 export function EncabezadoMarca({
   subtitulo,
   onDobleToque,
@@ -61,18 +86,12 @@ export function EncabezadoMarca({
   // franja (la barra de estado) ya está reservada fuera del encabezado.
   const insets = useSafeAreaInsets();
   const marca = useMarca();
-  const unidad = width / 1000;
   // El subtítulo, del mismo tamaño que el nombre de la comuna del inicio (45
   // de 1000 del ancho, con los mismos topes): así título y subtítulo forman
   // exactamente el mismo bloque en todas las pantallas y el tope que evita
-  // que el título pise el contenido actúa igual que allá.
-  const tamanoSubtitulo = Math.min(26, Math.max(14, Math.round((width * 45) / 1000)));
-  const altoSubtitulo = Math.round(tamanoSubtitulo * 1.3);
-
-  // Hasta dónde llega lo dibujado, medido desde el borde físico de arriba.
-  const perimetro = PERIMETRO_ALTO * unidad;
-  const fondoLogo = marca.centroY * unidad + (marca.alto * unidad) / 2;
-  const fondo = Math.min(perimetro, fondoLogo + SEPARACION_DEBAJO * unidad + altoSubtitulo + Spacing.three);
+  // que el título pise el contenido actúa igual que allá. `fondo` es hasta
+  // dónde llega lo dibujado, medido desde el borde físico de arriba.
+  const { unidad, tamanoSubtitulo, altoSubtitulo, fondo } = medidasEncabezado(width, marca.centroY, marca.alto);
   const alto = Math.max(0, Math.round(fondo - insets.top));
 
   return (

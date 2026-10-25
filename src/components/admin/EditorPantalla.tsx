@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, TextInput, View, ty
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { CampoClave } from '@/components/ui/CampoClave';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Text } from '@/components/ui/Texto';
@@ -11,9 +12,14 @@ import { getErrorMessage } from '@/lib/errors';
 import { REJILLA, u } from '@/lib/rejilla';
 
 /**
- * Editor de un solo dato a pantalla completa (maqueta del cliente): el título
- * de la app con lo que se edita debajo ("Correo", "Contraseña"), un único
- * campo al centro y, abajo, "Guardar" en rojo y "Cancelar" en texto rojo.
+ * Editor de un solo dato a pantalla completa, con el mismo diseño que el de
+ * las categorías (pedido del cliente): el título de la app con lo que se
+ * edita debajo ("Correo", "Contraseña"), un único campo en cápsula al centro
+ * —sin texto de ejemplo, con el cursor al centro— y, abajo, "Guardar" en rojo
+ * y "Cancelar" en texto rojo.
+ *
+ * Arranca con el dato de ahora (`inicial`) para editarlo; la contraseña, que
+ * no se puede mostrar, arranca vacía.
  */
 export function EditorPantalla({
   visible,
@@ -71,37 +77,43 @@ export function EditorPantalla({
       <SafeAreaView style={styles.pantalla} edges={['top', 'bottom']}>
         <EncabezadoMarca subtitulo={subtitulo} />
         <KeyboardAvoidingView style={styles.cuerpo} behavior="padding">
-          {/* El campo, centrado en el espacio libre. */}
+          {/* El campo, en cápsula y centrado en el espacio libre. El espacio
+              como texto de ejemplo deja el cursor al centro (Android lo
+              pondría al final). */}
           <View style={styles.centro}>
-            {esClave ? (
-              <CampoClave
-                placeholder={placeholder}
-                placeholderTextColor={Colors.text}
-                value={valor}
-                onChangeText={setValor}
-                style={styles.campo}
-              />
-            ) : (
-              <TextInput
-                placeholder={placeholder}
-                placeholderTextColor={Colors.text}
-                value={valor}
-                onChangeText={setValor}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.campo}
-                {...propsCampo}
-              />
-            )}
+            <View style={styles.capsula}>
+              {esClave ? (
+                <CampoClave
+                  placeholder=" "
+                  value={valor}
+                  onChangeText={setValor}
+                  style={styles.campo}
+                  autoFocus
+                  accessibilityLabel={placeholder}
+                />
+              ) : (
+                <TextInput
+                  placeholder=" "
+                  value={valor}
+                  onChangeText={setValor}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={styles.campo}
+                  autoFocus
+                  accessibilityLabel={placeholder}
+                  {...propsCampo}
+                />
+              )}
+            </View>
             {error ? <Text style={styles.error}>{error}</Text> : null}
           </View>
 
-          <View style={styles.abajo}>
-            <Button label={guardando ? 'Guardando…' : 'Guardar'} onPress={guardar} loading={guardando} />
-            <Pressable onPress={onCerrar} style={styles.cancelar} hitSlop={10} accessibilityRole="button">
-              <Text style={styles.cancelarTexto}>Cancelar</Text>
-            </Pressable>
-          </View>
+          <BotonPie
+            label={guardando ? 'Guardando…' : 'Guardar'}
+            onPress={guardar}
+            cargando={guardando}
+            debajo={{ texto: 'Cancelar', onPress: onCerrar }}
+          />
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
@@ -115,21 +127,26 @@ const styles = StyleSheet.create({
   },
   cuerpo: {
     flex: 1,
-    paddingHorizontal: u(REJILLA.margenLateral),
   },
   centro: {
     flex: 1,
+    marginHorizontal: u(REJILLA.margenLateral),
     justifyContent: 'center',
+  },
+  // La cápsula del editor de categorías: borde blanco, bien redondeada.
+  capsula: {
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
     paddingHorizontal: Spacing.four,
+    height: 66,
   },
   campo: {
-    fontFamily: Fonts.delgada,
-    fontSize: 20,
+    fontFamily: Fonts.light,
+    fontSize: 19,
     color: Colors.text,
     textAlign: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceBorder,
-    paddingVertical: Spacing.three,
   },
   error: {
     fontFamily: Fonts.delgada,

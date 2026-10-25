@@ -5,6 +5,8 @@ import { Interruptor } from '@/components/ui/Interruptor';
 import type { PropsMantener } from '@/components/ui/ListaArrastrable';
 import { Text } from '@/components/ui/Texto';
 import { TextoDeslizante } from '@/components/ui/TextoDeslizante';
+import { SEPARACION_TARJETA, useAltoTarjeta } from '@/lib/altoTarjeta';
+
 import { Colors, Fonts, Spacing, TarjetaLista } from '@/constants/theme';
 import { REJILLA, u } from '@/lib/rejilla';
 
@@ -30,9 +32,9 @@ export function TarjetaDesplegable({
   separacion,
   children,
 }: {
-  /** Alto fijo de la tarjeta cerrada, en píxeles (Admin: 240 de 1000 del ancho). */
+  /** Alto de la tarjeta cerrada; si no, el de las tarjetas del panel del admin. */
   alto?: number;
-  /** Espacio debajo de la tarjeta, en píxeles (si no, el de siempre). */
+  /** Espacio debajo de la tarjeta; si no, el del panel del admin. */
   separacion?: number;
   /**
    * Mantener apretado el NOMBRE (no el resto de la caja) hace esto —en
@@ -55,8 +57,12 @@ export function TarjetaDesplegable({
   alFinal?: ReactNode;
   children?: ReactNode;
 }) {
+  // Igual que las tarjetas del panel del admin, en todas las listas (pedido
+  // del cliente: al cambiar de vista no se nota diferencia de tamaño).
+  const altoPanel = useAltoTarjeta();
+  const altoCerrada = alto ?? altoPanel;
   return (
-    <View style={[styles.tarjeta, separacion !== undefined && { marginBottom: separacion }]}>
+    <View style={[styles.tarjeta, { marginBottom: separacion ?? SEPARACION_TARJETA }]}>
       {/* Toda la franja de arriba de la caja, de borde a borde, es el área
           para abrir o cerrar la tarjeta, y para agarrarla manteniéndola
           apretada: no solo el nombre. Lo que va adentro con su propio toque
@@ -64,7 +70,7 @@ export function TarjetaDesplegable({
       <Pressable
         // Con alto fijo, la franja mide eso (menos el borde) y el nombre va
         // centrado en ella, en vez de depender del aire de arriba y abajo.
-        style={[styles.cabecera, alto !== undefined && { height: alto - 2, paddingVertical: 0 }]}
+        style={[styles.cabecera, { height: altoCerrada - 2, paddingVertical: 0 }]}
         onPress={onAlternar}
         onLongPress={mantener?.onLongPress}
         onPressOut={mantener?.onPressOut}

@@ -13,6 +13,7 @@ import { ComunaAdmin, actualizarComunaActiva } from '@/lib/catalog';
 import { comunasEnMemoria, precargarComunas, recordarComunas } from '@/lib/cacheAdmin';
 import { getErrorMessage } from '@/lib/errors';
 import { compararRegiones, nombreRegion } from '@/lib/regiones';
+import { fijarAltoTarjeta, useAltoTarjeta } from '@/lib/altoTarjeta';
 import { REJILLA, u } from '@/lib/rejilla';
 import { useSession } from '@/providers/SessionProvider';
 
@@ -49,7 +50,7 @@ export default function ComunasTabScreen() {
    */
   const [soloVisibles, setSoloVisibles] = useState(false);
   /** Alto de cada región: el mismo de las tarjetas del panel del admin. */
-  const [altoTarjeta, setAltoTarjeta] = useState<number>();
+  const altoTarjeta = useAltoTarjeta();
 
   const load = useCallback(async () => {
     setError(null);
@@ -120,7 +121,7 @@ export default function ComunasTabScreen() {
           showsVerticalScrollIndicator={false}
           // Las regiones miden lo mismo que las tarjetas del panel del admin
           // en esta misma pantalla (pedido del cliente).
-          onLayout={(e) => setAltoTarjeta(altoTarjetaPanel(e.nativeEvent.layout.height))}>
+          onLayout={(e) => fijarAltoTarjeta(altoTarjetaPanel(e.nativeEvent.layout.height))}>
           {regiones.map(([region, lista]) => {
             const abierta = regionAbierta === region;
             // El total es el de la región entera, también en "Visible" (donde
@@ -132,7 +133,7 @@ export default function ComunasTabScreen() {
             return (
               <View key={region} style={styles.tarjeta}>
                 <Pressable
-                  style={[styles.cabecera, altoTarjeta !== undefined && { height: altoTarjeta - 2, paddingVertical: 0 }]}
+                  style={[styles.cabecera, { height: altoTarjeta - 2, paddingVertical: 0 }]}
                   onPress={() => setRegionAbierta(abierta ? null : region)}
                   accessibilityRole="button">
                   <Text style={styles.region} numberOfLines={1}>

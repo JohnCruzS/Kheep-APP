@@ -2,6 +2,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
+import { BotonPie } from '@/components/ui/BotonPie';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LoadingState } from '@/components/catalog/CatalogState';
@@ -256,10 +257,7 @@ export default function AdministradorScreen() {
   /** "Guardar", fijo abajo de la pantalla (no se desplaza con lo demás). */
   function botonGuardar(onPress: () => void, texto = 'Guardar') {
     return (
-      <View style={styles.abajo}>
-        {error && <Text style={styles.error}>{error}</Text>}
-        <Button label={guardando ? 'Guardando…' : texto} onPress={onPress} loading={guardando} />
-      </View>
+      <BotonPie label={guardando ? 'Guardando…' : texto} onPress={onPress} cargando={guardando} aviso={error} />
     );
   }
 
@@ -353,9 +351,7 @@ export default function AdministradorScreen() {
           <ScrollView contentContainerStyle={styles.contenidoUbicacion} showsVerticalScrollIndicator={false}>
             {regiones()}
           </ScrollView>
-          <View style={styles.abajo}>
-            <Button label="Guardar" onPress={() => setEligiendoUbicacion(false)} />
-          </View>
+          <BotonPie label="Guardar" onPress={() => setEligiendoUbicacion(false)} />
         </SafeAreaView>
       </Modal>
     </SafeAreaView>

@@ -38,25 +38,26 @@ export type MedioElegido = {
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 /**
- * Abre la galería para elegir la foto, el GIF o el video de un banner.
+ * Abre la galería para elegir el medio de un banner. Son dos caminos, uno por
+ * cada página del recuadro "Subir" (pedido del cliente):
  *
- *  - Foto: se recorta al centro en la forma del banner (19:9) y se comprime,
- *    igual que siempre.
- *  - GIF y video: se suben tal cual (recortarlos los dejaría quietos o sin
- *    imagen), pero se rechazan si pasan los límites, diciendo por qué. Al
- *    mostrarse llenan el recuadro del banner sin deformarse: lo que sobre de
- *    los bordes queda fuera. Conviene que vengan ya en 19:9.
+ *  - 'imagen': una foto, con el recorte del sistema en la forma del banner
+ *    (19:9) para elegir qué parte se ve, y comprimida.
+ *  - 'animado': un GIF o un video, tal cual (recortarlos los dejaría quietos
+ *    o sin imagen), pero rechazados si pasan los límites, diciendo por qué.
+ *    Al mostrarse llenan el recuadro sin deformarse: lo que sobre de los
+ *    bordes queda fuera. Si aquí se elige una foto, se recorta sola al centro.
  */
-export async function elegirMedioBanner(): Promise<MedioElegido | null> {
+export async function elegirMedioBanner(modo: 'imagen' | 'animado'): Promise<MedioElegido | null> {
   const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permiso.granted) throw new Error('Necesitamos permiso para acceder a tus fotos.');
 
-  const resultado = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images', 'videos'],
-    allowsEditing: false,
-    quality: 1,
-    videoMaxDuration: LIMITES_MEDIO.videoSegundos,
-  });
+  const [ax, ay] = FORMATO_RECORTE.banner;
+  const resultado = await ImagePicker.launchImageLibraryAsync(
+    modo === 'imagen'
+      ? { mediaTypes: ['images'], allowsEditing: true, aspect: [ax, ay], quality: 1 }
+      : { mediaTypes: ['images', 'videos'], allowsEditing: false, quality: 1, videoMaxDuration: LIMITES_MEDIO.videoSegundos },
+  );
   if (resultado.canceled || resultado.assets.length === 0) return null;
   const a = resultado.assets[0];
   const tamano = a.fileSize ?? new File(a.uri).size ?? 0;
@@ -74,7 +75,7 @@ export async function elegirMedioBanner(): Promise<MedioElegido | null> {
     return { uri: a.uri, tipo: 'video', contentType: 'video/mp4' };
   }
 
-  const esGif = (a.mimeType ?? '').toLowerCase() === 'image/gif' || a.uri.toLowerCase().endsWith('.gif');
+  const esGif = modo === 'animado' && ((a.mimeType ?? '').toLowerCase() === 'image/gif' || a.uri.toLowerCase().endsWith('.gif'));
   if (esGif) {
     if (tamano > LIMITES_MEDIO.gifBytes) {
       throw new Error(`El GIF pesa ${mb(tamano)}: el máximo es ${mb(LIMITES_MEDIO.gifBytes)}.`);
@@ -82,7 +83,8 @@ export async function elegirMedioBanner(): Promise<MedioElegido | null> {
     return { uri: a.uri, tipo: 'gif', contentType: 'image/gif' };
   }
 
-  // Foto: recorte al centro en la forma del banner y compresión.
+  // Foto: recorte al centro en la forma del banner (si ya pasó por el recorte
+  // del sistema, ya viene en esa forma y esto no le quita nada) y compresión.
   const [fx, fy] = FORMATO_RECORTE.banner;
   let ancho = a.width;
   let alto = Math.round((a.width * fy) / fx);

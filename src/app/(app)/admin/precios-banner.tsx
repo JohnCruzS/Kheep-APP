@@ -1,7 +1,7 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EditorPantalla } from '@/components/admin/EditorPantalla';
 import { ErrorState, LoadingState } from '@/components/catalog/CatalogState';
@@ -15,14 +15,13 @@ import {
   fetchComunasAdmin,
   fetchPreciosBanner,
   guardarPrecioComuna,
-  guardarPrecioRegion,
 } from '@/lib/catalog';
 import { getErrorMessage } from '@/lib/errors';
 import { REJILLA, u } from '@/lib/rejilla';
 import { compararRegiones, nombreRegion } from '@/lib/regiones';
 
-/** Lo que se está por cambiar: el precio de una región o el de una comuna. */
-type Elegido = { tipo: 'region' | 'comuna'; clave: string; nombre: string; precio: number | null };
+/** La comuna cuyo precio se está cambiando. */
+type Elegido = { clave: string; nombre: string; precio: number | null };
 
 const pesos = (n: number) => n.toLocaleString('es-CL');
 
@@ -35,12 +34,13 @@ const pesos = (n: number) => n.toLocaleString('es-CL');
  * Todos parten en el precio base ($25.000 por día) y el precio se ve
  * siempre: una comuna sin precio propio muestra el de su región.
  *
- * Tocar un precio lo elige y aparece abajo el botón rojo con ese valor; el
- * botón abre la pantalla para cambiarlo. Dejarlo vacío lo quita: la comuna
- * vuelve a cobrar el de su región, y la región el precio base.
+ * El de la región es la suma de sus comunas (lo que cuesta un día en la
+ * región completa) y se calcula solo. Lo que se edita es cada comuna: tocar
+ * su precio abre directo la pantalla para cambiarlo (pedido del cliente).
+ * Dejarlo vacío lo quita y la comuna vuelve a cobrar el de base.
  */
 export default function PreciosBannerScreen() {
-  const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [comunas, setComunas] = useState<ComunaAdmin[]>([]);
   const [precios, setPrecios] = useState<PreciosBanner | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,28 +74,21 @@ export default function PreciosBannerScreen() {
     if (!elegido) return;
     const limpio = valor.replace(/\D/g, '');
     const precio = limpio ? Number(limpio) : null;
-    if (elegido.tipo === 'region') await guardarPrecioRegion(elegido.clave, precio);
-    else await guardarPrecioComuna(elegido.clave, precio);
-    setElegido({ ...elegido, precio });
+    await guardarPrecioComuna(elegido.clave, precio);
     await load();
   }
 
-  /** El precio de una fila, tocable aunque esté vacío. */
-  function precioTocable(e: Elegido, grande: boolean) {
-    const activo = elegido?.tipo === e.tipo && elegido.clave === e.clave;
-    return (
-      <Pressable onPress={() => setElegido(e)} hitSlop={10} accessibilityRole="button" accessibilityLabel={`Precio de ${e.nombre}`}>
-        <Text style={[grande ? styles.precioRegion : styles.precioComuna, activo && styles.precioElegido]}>
-          {pesos(e.precio ?? 0)}
-        </Text>
-      </Pressable>
-    );
+  /** Lo que cobra por día una comuna: el suyo, o si no tiene, el de base. */
+  function precioDe(comuna: ComunaAdmin): number {
+    return precios?.comunas[comuna.id] ?? precios?.regiones[comuna.region] ?? PRECIO_BANNER_POR_DIA;
   }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <EncabezadoMarca subtitulo="Banner" />
+      <Stack.Screen options={{ headerShown: false, animation: 'fade' }} />
+      {/* "Banners", igual que la vista de los banners (pedido del cliente); dos
+          toques en el logo vuelven a ella, como se llegó acá. */}
+      <EncabezadoMarca subtitulo="Banners" onDobleToque={() => router.replace('/(app)/admin/banners')} />
 
       {loading && <LoadingState />}
       {error && <ErrorState message={error} onRetry={load} />}
@@ -115,15 +108,10 @@ export default function PreciosBannerScreen() {
                       {nombreRegion(region)}
                     </Text>
                   </Pressable>
-                  {precioTocable(
-                    {
-                      tipo: 'region',
-                      clave: region,
-                      nombre: nombreRegion(region),
-                      precio: precios.regiones[region] ?? PRECIO_BANNER_POR_DIA,
-                    },
-                    true,
-                  )}
+                  {/* La región completa: la suma de sus comunas, sola. */}
+                  <Text style={styles.precioRegion}>
+                    {pesos(comunasDe(region).reduce((suma, c) => suma + precioDe(c), 0))}
+                  </Text>
                 </View>
                 {abierta && (
                   <View style={styles.comunas}>
@@ -132,16 +120,17 @@ export default function PreciosBannerScreen() {
                         <Text style={styles.comuna} numberOfLines={1}>
                           {comuna.nombre}
                         </Text>
-                        {/* Sin precio propio, el de su región. */}
-                        {precioTocable(
-                          {
-                            tipo: 'comuna',
-                            clave: comuna.id,
-                            nombre: comuna.nombre,
-                            precio: precios.comunas[comuna.id] ?? precios.regiones[region] ?? PRECIO_BANNER_POR_DIA,
-                          },
-                          false,
-                        )}
+                        {/* Tocar el precio abre directo el editor. */}
+                        <Pressable
+                          onPress={() => {
+                            setElegido({ clave: comuna.id, nombre: comuna.nombre, precio: precioDe(comuna) });
+                            setEditando(true);
+                          }}
+                          hitSlop={10}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Precio de ${comuna.nombre}`}>
+                          <Text style={styles.precioComuna}>{pesos(precioDe(comuna))}</Text>
+                        </Pressable>
                       </View>
                     ))}
                   </View>
@@ -150,18 +139,6 @@ export default function PreciosBannerScreen() {
             );
           })}
         </ScrollView>
-      )}
-
-      {/* Aparece al elegir un precio: con su valor, y abre la pantalla para cambiarlo. */}
-      {elegido && (
-        <View style={[styles.pie, { paddingBottom: Spacing.three + insets.bottom }]}>
-          <Pressable
-            style={({ pressed }) => [styles.boton, pressed && styles.botonPresionado]}
-            onPress={() => setEditando(true)}
-            accessibilityRole="button">
-            <Text style={styles.botonLabel}>{`$ ${pesos(elegido.precio ?? PRECIO_BANNER_POR_DIA)}`}</Text>
-          </Pressable>
-        </View>
       )}
 
       <EditorPantalla

@@ -16,6 +16,12 @@ import { PixelRatio } from 'react-native';
  *
  * El ancho se redondea hacia arriba de 100 en 100: así todas las pantallas
  * parecidas piden la misma versión y se aprovecha mejor el caché.
+ *
+ * Siempre con `resize=contain`: pidiendo solo el ancho, Supabase deja el
+ * alto original y RECORTA los costados (una foto de 356×356 pedida a 200
+ * volvía de 200×356, solo la franja del centro). Por eso la foto de perfil
+ * no mostraba lo que se había elegido en el recorte. Con `contain` se
+ * achica entera, sin perder nada.
  */
 const TRAMO = 100;
 const ANCHO_MAX = 1600;
@@ -37,7 +43,7 @@ function esDeSupabase(url: string): boolean {
 export function urlAjustada(url: string, anchoPuntos: number): string {
   if (!esDeSupabase(url) || anchoPuntos <= 0) return url;
   const pixeles = Math.min(ANCHO_MAX, Math.ceil((anchoPuntos * PixelRatio.get()) / TRAMO) * TRAMO);
-  return `${url.replace(MARCA_ORIGINAL, MARCA_TRANSFORMADA)}?width=${pixeles}&quality=${CALIDAD}`;
+  return `${url.replace(MARCA_ORIGINAL, MARCA_TRANSFORMADA)}?width=${pixeles}&quality=${CALIDAD}&resize=contain`;
 }
 
 /**
@@ -47,5 +53,5 @@ export function urlAjustada(url: string, anchoPuntos: number): string {
  */
 export function urlDifuminada(url: string): string | null {
   if (!esDeSupabase(url)) return null;
-  return `${url.replace(MARCA_ORIGINAL, MARCA_TRANSFORMADA)}?width=32&quality=20`;
+  return `${url.replace(MARCA_ORIGINAL, MARCA_TRANSFORMADA)}?width=32&quality=20&resize=contain`;
 }
