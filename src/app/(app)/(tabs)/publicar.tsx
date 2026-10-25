@@ -4,8 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui/Texto';
 
-import { ComunaFieldPicker } from '@/components/forms/ComunaFieldPicker';
-import { PickerField } from '@/components/forms/PickerField';
 import { Button } from '@/components/ui/Button';
 import { TarjetaClaraProvider } from '@/components/ui/TarjetaClara';
 import { LienzoPublicacion, useMedidaProducto } from '@/components/forms/LienzoPublicacion';
@@ -15,6 +13,7 @@ import {
   Categoria,
   Comuna,
   MiPublicacion,
+  cambiarMiFoto,
   crearPublicacion,
   fetchCategorias,
   fetchComunas,
@@ -51,16 +50,25 @@ const MAX_DIGITOS_PRECIO = 8;
  * los dos botones: "Agregar" en rojo y "Subir" en negro.
  */
 export default function PublicarScreen() {
-  const { session, profile } = useSession();
-  // La foto del comercio: la elige la pantalla y la usa el formulario.
-  const [logo, setLogo] = useState<PickedImage | null>(null);
+  const { session, profile, refreshProfile } = useSession();
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
 
+  /**
+   * La foto del círculo es la foto de perfil de la cuenta (pedido del
+   * cliente): elegir otra acá cambia la del perfil, y la publicación usa esa.
+   */
   async function elegirFoto() {
     try {
       const image = await pickAndCompressImage({ uso: 'logo' });
-      if (image) setLogo(image);
+      if (!image || !session) return;
+      setSubiendoFoto(true);
+      const url = await uploadCompressedImage('logos', session.user.id, image, 'logo');
+      await cambiarMiFoto(url);
+      await refreshProfile();
     } catch {
-      // Si la galería no abre, se sigue sin foto: no es obligatoria.
+      // Si la galería no abre o falla la subida, queda la foto que había.
+    } finally {
+      setSubiendoFoto(false);
     }
   }
 
@@ -83,12 +91,13 @@ export default function PublicarScreen() {
   }
 
   return (
-    <LienzoPublicacion fotoUri={logo?.uri ?? null} onElegirFoto={elegirFoto}>
+    <LienzoPublicacion fotoUri={profile.logo_url ?? null} onElegirFoto={subiendoFoto ? undefined : elegirFoto}>
       <PublicarForm
         nombrePerfil={profile?.nombre ?? ''}
         telefonoContacto={profile?.telefono_contacto ?? null}
-        logo={logo}
-        onLogoUsado={() => setLogo(null)}
+        logoUrl={profile.logo_url ?? null}
+        comunaId={profile.comuna_id}
+        categoriaId={profile.categoria_id}
       />
     </LienzoPublicacion>
   );
@@ -110,8 +119,9 @@ function GuestGate() {
 function PublicarForm({
   nombrePerfil,
   telefonoContacto,
-  logo,
-  onLogoUsado,
+  logoUrl,
+  comunaId,
+  categoriaId,
 }: {
   /**
    * El nombre del comercio es el de su perfil: no se escribe de nuevo al
@@ -120,8 +130,14 @@ function PublicarForm({
    */
   nombrePerfil: string;
   telefonoContacto: string | null;
-  logo: PickedImage | null;
-  onLogoUsado: () => void;
+  /** La foto de perfil de la cuenta: es la de la publicación. */
+  logoUrl: string | null;
+  /**
+   * La comuna y la categoría del comercio (las del perfil, 0050): vienen
+   * puestas y no se cambian acá, sino en el perfil (pedido del cliente).
+   */
+  comunaId: string | null;
+  categoriaId: string | null;
 }) {
   const medidaProducto = useMedidaProducto();
   const router = useRouter();
@@ -150,9 +166,6 @@ function PublicarForm({
 
   const [comunas, setComunas] = useState<Comuna[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [comunaId, setComunaId] = useState<string | null>(null);
-  const [categoriaId, setCategoriaId] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState<'categoria' | null>(null);
 
   // Todos los productos se pueden editar en todo momento, también los ya
   // agregados: cada fila es foto, nombre y precio editables. "Agregar" suma
@@ -163,15 +176,19 @@ function PublicarForm({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Solo para mostrar los nombres de la comuna y la categoría del perfil.
   useEffect(() => {
     fetchComunas().then(setComunas).catch(() => {});
-    fetchCategorias().then(setCategorias).catch(() => {});
   }, []);
+  useEffect(() => {
+    fetchCategorias(comunaId).then(setCategorias).catch(() => {});
+  }, [comunaId]);
 
   useEffect(() => {
     if (telefonoContacto) setTelefono((actual) => actual || celularLocal(telefonoContacto));
   }, [telefonoContacto]);
 
+  const comunaNombre = comunas.find((c) => c.id === comunaId)?.nombre ?? '';
   const categoriaNombre = categorias.find((c) => c.id === categoriaId)?.nombre ?? '';
 
   const tieneAlgo = (p: ProductoDraft) => p.nombre.trim().length > 0 || !!p.image || p.precio.length > 0;
@@ -228,16 +245,12 @@ function PublicarForm({
     // Obligatorios (pedido del cliente): la foto del comercio, la comuna, la
     // categoría y la foto de cada producto. Sin ellos la tarjeta del inicio
     // queda a medias.
-    if (!logo) {
-      setError('Sube la foto de tu comercio (el círculo de arriba).');
+    if (!logoUrl) {
+      setError('Pon la foto de tu perfil (toca el círculo de arriba).');
       return;
     }
-    if (!comunaId) {
-      setError('Elige la comuna.');
-      return;
-    }
-    if (!categoriaId) {
-      setError('Elige la categoría.');
+    if (!comunaId || !categoriaId) {
+      setError('Primero elige la comuna y la categoría de tu comercio en tu perfil.');
       return;
     }
     const conContenido = productos.filter(tieneAlgo);
@@ -254,8 +267,6 @@ function PublicarForm({
     try {
       const { data: auth } = await supabase.auth.getUser();
       const userId = auth.user!.id;
-
-      const logoUrl = logo ? await uploadCompressedImage('logos', userId, logo, 'logo') : null;
 
       // Las filas vacías no se suben. El precio es opcional (documento EDIT
       // APP): sin precio va en 0 y la tarjeta no muestra nada donde iría.
@@ -277,9 +288,6 @@ function PublicarForm({
       });
 
       setSuccess('¡Listo! Tu publicación fue creada. Si tu cuenta está en revisión, un admin la va a aprobar pronto.');
-      onLogoUsado();
-      setComunaId(null);
-      setCategoriaId(null);
       setProductos([EMPTY_DRAFT]);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo guardar la publicación.'));
@@ -292,19 +300,14 @@ function PublicarForm({
   // alto y corre el formulario si el campo enfocado quedaría tapado.
   return (
     <>
-      <ComunaFieldPicker label="Comuna" comunas={comunas} selectedId={comunaId} onSelect={setComunaId} />
-
-      <PickerField
-        label="Categoría"
-        value={categoriaNombre}
-        open={pickerOpen === 'categoria'}
-        onToggle={() => setPickerOpen((p) => (p === 'categoria' ? null : 'categoria'))}
-        options={categorias.map((c) => ({ id: c.id, label: c.nombre }))}
-        onSelect={(id) => {
-          setCategoriaId(id);
-          setPickerOpen(null);
-        }}
-      />
+      {/* La comuna y la categoría del perfil, ya puestas: se cambian en el
+          perfil, no acá. Sin ellas, tocarlas lleva al perfil. */}
+      <Pressable onPress={comunaId && categoriaId ? undefined : () => router.push('/(app)/(tabs)/perfil')}>
+        <View pointerEvents="none">
+          <TextField label="Comuna" value={comunaNombre} editable={false} />
+          <TextField label="Categoría" value={categoriaNombre} editable={false} estiloContenedor={styles.filaCampo} />
+        </View>
+      </Pressable>
 
       <TextField
         label="Teléfono"

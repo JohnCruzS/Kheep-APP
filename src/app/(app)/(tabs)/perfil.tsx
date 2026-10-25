@@ -3,7 +3,7 @@ import { Text } from '@/components/ui/Texto';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PanelGeneral } from '@/components/admin/PanelGeneral';
-import { VistaCuenta } from '@/components/perfil/VistaCuenta';
+import { PerfilComercio } from '@/components/perfil/PerfilComercio';
 import { EncabezadoMarca } from '@/components/ui/EncabezadoMarca';
 import { Button } from '@/components/ui/Button';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
@@ -60,7 +60,7 @@ export default function PerfilScreen() {
           el botón de cerrar sesión quedaba cortado bajo la barra de abajo. */}
       <View style={styles.card}>
         <ScrollView contentContainerStyle={styles.cardContent} showsVerticalScrollIndicator={false}>
-          <VistaCuenta profile={profile} email={session.user.email} />
+          <PerfilComercio profile={profile} email={session.user.email} />
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -100,9 +100,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: Radius.card,
     borderTopRightRadius: Radius.card,
   },
+  // Ocupa toda la pantalla: así los botones de abajo (comuna, categoría,
+  // "Mis anuncios", "Salir") quedan abajo, como la maqueta.
   cardContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.five,
-    paddingBottom: Spacing.six,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
   },
 });

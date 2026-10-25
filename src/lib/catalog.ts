@@ -1408,6 +1408,21 @@ export async function cambiarUbicacionBanner(bannerId: string, comunaIds: (strin
   }
 }
 
+/**
+ * Cambia la comuna y/o la categoría del comercio propio (0050). Mueve sus
+ * publicaciones y respeta el límite de cambios (lo controla la base, que
+ * devuelve el mensaje con la fecha si hay que esperar).
+ */
+export async function cambiarMiNegocio(comunaId: string, categoriaId: string | null): Promise<void> {
+  const { error } = await supabase.rpc('cambiar_mi_negocio', { p_comuna: comunaId, p_categoria: categoriaId });
+  if (error) {
+    if (error.code === 'PGRST202' || /could not find the function/i.test(error.message ?? '')) {
+      throw new Error('Falta ejecutar la migración 0050 en Supabase para la comuna y categoría del comercio.');
+    }
+    throw new Error(error.message);
+  }
+}
+
 /** Precio base por día de un banner donde no se puso otro (pedido del cliente: todos parten en $25.000). */
 export const PRECIO_BANNER_POR_DIA = 25000;
 

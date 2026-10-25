@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
-import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { TituloPosicionado } from '@/components/ui/BrandLogo';
@@ -28,6 +28,8 @@ type Props = {
    * solo hace falta al abrir este selector.
    */
   nombre?: string | null;
+  /** Estilo del nombre en el botón (por ejemplo, rojo y grande en el perfil). */
+  estiloEtiqueta?: StyleProp<TextStyle>;
 };
 
 type Fila = { id: string | null; label: string };
@@ -39,7 +41,7 @@ type Fila = { id: string | null; label: string };
  * virtualizada — mostrarlas todas de una en un View sin buscador se sentía
  * lento para abrir y ni siquiera se podía hacer scroll.
  */
-function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre, alAbrir }: Props) {
+function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre, alAbrir, estiloEtiqueta }: Props) {
   // El nombre escala con el ancho de la pantalla, en la misma rejilla que el
   // título (45 de 1000), para que el bloque completo se vea igual de
   // proporcionado en un teléfono chico y en una tablet. Los topes evitan los
@@ -104,7 +106,9 @@ function ComunaPickerComponent({ comunas, selectedId, onSelect, nombre, alAbrir 
         {/* Una sola línea: partido en dos, el nombre se metía en el banner.
             Si no cabe entero se recorta con puntos suspensivos, que es más
             limpio que empujar el resto del catálogo hacia abajo. */}
-        <Text style={[styles.label, { fontSize: tamanoNombre, lineHeight: Math.round(tamanoNombre * 1.3) }]} numberOfLines={1}>
+        <Text
+          style={[styles.label, { fontSize: tamanoNombre, lineHeight: Math.round(tamanoNombre * 1.3) }, estiloEtiqueta]}
+          numberOfLines={1}>
           {label}
         </Text>
       </Pressable>

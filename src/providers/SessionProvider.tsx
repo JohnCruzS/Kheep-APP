@@ -12,6 +12,9 @@ export type Profile = {
   /** admin = administrador general; admin_zona = solo en sus comunas (0027). */
   rol: 'comerciante' | 'admin' | 'admin_zona';
   nivel: 1 | 2;
+  /** La comuna y la categoría (giro) del comercio (0050): ahí van sus publicaciones. */
+  comuna_id: string | null;
+  categoria_id: string | null;
 };
 
 type SessionContextValue = {
@@ -58,12 +61,24 @@ const SessionContext = createContext<SessionContextValue>({
  * ve cada quien (pestaña de admin, insignia de verificado, etc.) — nunca se
  * asume desde el cliente, siempre se lee de `public.profiles`.
  */
-function leerPerfil(userId: string) {
-  return supabase
+async function leerPerfil(userId: string) {
+  const respuesta = await supabase
+    .from('profiles')
+    .select('id, nombre, telefono_contacto, logo_url, rol, nivel, comuna_id, categoria_id')
+    .eq('id', userId)
+    .maybeSingle();
+  // Sin la migración 0050 no existe `categoria_id`: se lee sin ella (la app
+  // sigue funcionando, solo sin la comuna y categoría del comercio).
+  if (respuesta.error?.code !== '42703') return respuesta;
+  const sinNegocio = await supabase
     .from('profiles')
     .select('id, nombre, telefono_contacto, logo_url, rol, nivel')
     .eq('id', userId)
     .maybeSingle();
+  return {
+    ...sinNegocio,
+    data: sinNegocio.data ? { ...sinNegocio.data, comuna_id: null, categoria_id: null } : null,
+  };
 }
 
 export function SessionProvider({ children }: PropsWithChildren) {
